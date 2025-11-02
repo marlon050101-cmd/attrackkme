@@ -467,7 +467,7 @@
             }
 
             var endpoint = registerRequest.UserType == UserType.GuidanceCounselor ? "api/register/guidance" : "api/register/teacher";
-            var response = await Http.PostAsJsonAsync(endpoint, registerRequest);
+            var response = await Http.PostAsJsonAsync($"{ApiConfig.BaseUrl}{endpoint}", registerRequest);
             
             if (response.IsSuccessStatusCode)
             {
@@ -505,7 +505,7 @@
     {
         try
         {
-            var response = await Http.GetFromJsonAsync<List<string>>("api/register/regions");
+            var response = await Http.GetFromJsonAsync<List<string>>($"{ApiConfig.BaseUrl}api/register/regions");
             regions = response ?? new List<string>();
         }
         catch (Exception)
@@ -607,7 +607,7 @@
     {
         try
         {
-            var response = await Http.GetFromJsonAsync<List<SchoolInfo>>($"api/register/schools/search?name={Uri.EscapeDataString(schoolName)}");
+            var response = await Http.GetFromJsonAsync<List<SchoolInfo>>($"{ApiConfig.BaseUrl}api/register/schools/search?name={Uri.EscapeDataString(schoolName)}");
             schoolSuggestions = response?.Take(5).ToList() ?? new List<SchoolInfo>();
             showSchoolSuggestions = schoolSuggestions.Any();
         }
@@ -629,10 +629,10 @@
         try
         {
             Console.WriteLine($"Loading divisions for region: {region}");
-            var url = $"api/register/divisions/{Uri.EscapeDataString(region)}";
+            var url = $"{ApiConfig.BaseUrl}api/register/divisions/{Uri.EscapeDataString(region)}";
             Console.WriteLine($"API URL: {url}");
             Console.WriteLine($"HttpClient BaseAddress: {Http.BaseAddress}");
-            Console.WriteLine($"Full URL: {Http.BaseAddress}{url}");
+            Console.WriteLine($"Full URL: {url}");
             
             var response = await Http.GetFromJsonAsync<List<string>>(url);
             divisions = response ?? new List<string>();
@@ -652,10 +652,10 @@
         try
         {
             Console.WriteLine($"Loading districts for division: {division}");
-            var url = $"api/register/districts/{Uri.EscapeDataString(division)}";
+            var url = $"{ApiConfig.BaseUrl}api/register/districts/{Uri.EscapeDataString(division)}";
             Console.WriteLine($"API URL: {url}");
             Console.WriteLine($"HttpClient BaseAddress: {Http.BaseAddress}");
-            Console.WriteLine($"Full URL: {Http.BaseAddress}{url}");
+            Console.WriteLine($"Full URL: {url}");
             
             var response = await Http.GetFromJsonAsync<List<string>>(url);
             districts = response ?? new List<string>();

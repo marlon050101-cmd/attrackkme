@@ -19,6 +19,7 @@ namespace AttrackSharedClass.Models
         public string FullName { get; set; } = string.Empty;
         public int GradeLevel { get; set; }
         public string Section { get; set; } = string.Empty;
+        public string? Strand { get; set; }
         public string SchoolId { get; set; } = string.Empty;
         public string SchoolName { get; set; } = string.Empty;
         public DateTime CreatedAt { get; set; } = DateTime.Now;

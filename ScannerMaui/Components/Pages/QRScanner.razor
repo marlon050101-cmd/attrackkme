@@ -1825,7 +1825,7 @@
     {
         try
         {
-            var apiBaseUrl = "https://attrak.onrender.com/";
+            var apiBaseUrl = "https://attrak-8gku.onrender.com/";
             var teacherId = currentTeacher?.TeacherId ?? "unknown";
             
             var result = await OfflineDataService.SyncIndividualStudentAsync(studentId, apiBaseUrl, teacherId);
@@ -1877,7 +1877,7 @@
             await InvokeAsync(StateHasChanged);
             
             // Get API base URL from configuration
-            var apiBaseUrl = "https://attrak.onrender.com/"; // Your actual API URL
+            var apiBaseUrl = "https://attrak-8gku.onrender.com/"; // Production server URL
             
             // Get current teacher ID
             var teacherId = currentTeacher?.TeacherId ?? "unknown";

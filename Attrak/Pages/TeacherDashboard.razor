@@ -267,9 +267,6 @@
                 <button class="btn btn-info btn-lg" @onclick="GenerateAnalytics">
                     <i class="fas fa-chart-bar me-2"></i>Generate Analytics
                 </button>
-                <button class="btn btn-success btn-lg" @onclick="RefreshData">
-                    <i class="fas fa-sync-alt me-2"></i>Refresh Data
-                </button>
             </div>
         </div>
     </div>
@@ -282,7 +279,6 @@
     private TeacherClassInfo? classInfo;
     private bool isLoading = true;
     private string errorMessage = string.Empty;
-    private Timer? refreshTimer;
     private Dictionary<string, int> studentAbsences = new();
 
     protected override async Task OnInitializedAsync()
@@ -305,7 +301,6 @@
 
         // Load teacher data from API
         await LoadTeacherData();
-        StartRefreshTimer();
     }
 
     private async Task LoadTeacherData()
@@ -322,7 +317,7 @@
             try
             {
                 Console.WriteLine("DEBUG: Testing server connection...");
-                var healthResponse = await Http.GetAsync("api/health");
+                var healthResponse = await Http.GetAsync($"{ApiConfig.BaseUrl}api/health");
                 Console.WriteLine($"DEBUG: Server health check: {healthResponse.StatusCode}");
             }
             catch (Exception healthEx)
@@ -332,38 +327,58 @@
                 return;
             }
             
-            // Load teacher class information first
+            // Load teacher class information first (try to load, but don't fail completely if this fails)
             Console.WriteLine($"DEBUG: Loading teacher class info for: {teacherInfo.UserId}");
-            var teacherInfoResponse = await Http.GetFromJsonAsync<TeacherClassInfo>($"api/teacher/info/{teacherInfo.UserId}");
-            
-            if (teacherInfoResponse != null)
+            try
             {
-                Console.WriteLine($"DEBUG: Teacher info loaded - Grade: {teacherInfoResponse.GradeLevel}, Section: {teacherInfoResponse.Section}, School: {teacherInfoResponse.SchoolName}");
-                classInfo = teacherInfoResponse;
+                var teacherInfoResponse = await Http.GetFromJsonAsync<TeacherClassInfo>($"{ApiConfig.BaseUrl}api/teacher/info/{teacherInfo.UserId}");
+                
+                if (teacherInfoResponse != null)
+                {
+                    Console.WriteLine($"DEBUG: Teacher info loaded - Grade: {teacherInfoResponse.GradeLevel}, Section: {teacherInfoResponse.Section}, School: {teacherInfoResponse.SchoolName}");
+                    classInfo = teacherInfoResponse;
+                }
             }
-            else
+            catch (Exception teacherInfoEx)
             {
-                Console.WriteLine("DEBUG: Failed to load teacher class info");
-                errorMessage = "Failed to load teacher class information.";
-                return;
+                Console.WriteLine($"DEBUG: Failed to load teacher class info: {teacherInfoEx.Message}");
+                // Don't return early - continue to try loading dashboard data
             }
             
-            // Load teacher dashboard data
-            var response = await Http.GetFromJsonAsync<TeacherDashboardData>($"api/teacher/dashboard/{teacherInfo.UserId}");
-            
+            // Load teacher dashboard data (this is the main data we need)
+            Console.WriteLine($"DEBUG: Loading teacher dashboard data for: {teacherInfo.UserId}");
+            var response = await Http.GetFromJsonAsync<TeacherDashboardData>($"{ApiConfig.BaseUrl}api/teacher/dashboard/{teacherInfo.UserId}");
+            Console.WriteLine($"DEBUG: Dashboard API call completed");
             Console.WriteLine($"DEBUG: API Response: {response != null}");
             if (response != null)
             {
                 Console.WriteLine($"DEBUG: Students count: {response.Students?.Count ?? 0}");
-                students = response.Students;
-                studentsAtRisk = response.StudentsAtRisk;
-                teacherInfo = response.TeacherInfo;
-                // Use the classInfo we loaded above instead of response.ClassInfo
+                students = response.Students ?? new List<Student>();
+                studentsAtRisk = response.StudentsAtRisk ?? new List<Student>();
+                teacherInfo = response.TeacherInfo ?? teacherInfo;
+                
+                // If we got dashboard data with class info, use it
+                if (response.ClassInfo != null)
+                {
+                    classInfo = response.ClassInfo;
+                }
+                
+                // Show success message if we have students
+                if (students.Count > 0)
+                {
+                    errorMessage = string.Empty; // Clear any previous errors
+                    Console.WriteLine($"DEBUG: Successfully loaded {students.Count} students");
+                }
+                else
+                {
+                    Console.WriteLine("DEBUG: No students found for this class.");
+                    // Don't set error message - this is a valid state (empty class)
+                }
             }
             else
             {
                 Console.WriteLine("DEBUG: No response from API");
-                errorMessage = "Failed to load teacher dashboard data.";
+                errorMessage = "Failed to load teacher dashboard data. Please check if students are assigned to your class.";
             }
         }
         catch (Exception ex)
@@ -378,23 +393,11 @@
         }
     }
 
-    private void StartRefreshTimer()
-    {
-        // Refresh data every 30 seconds
-        refreshTimer = new Timer(async _ =>
-        {
-            await InvokeAsync(async () =>
-            {
-                await LoadTeacherData();
-            });
-        }, null, TimeSpan.Zero, TimeSpan.FromSeconds(30));
-    }
-
     private async Task<int> GetStudentAbsencesAsync(string studentId)
     {
         try
         {
-            var response = await Http.GetFromJsonAsync<dynamic>($"api/teacher/student-absences/{studentId}");
+            var response = await Http.GetFromJsonAsync<dynamic>($"{ApiConfig.BaseUrl}api/teacher/student-absences/{studentId}");
             if (response != null && response.absences != null)
             {
                 return (int)response.absences;
@@ -435,13 +438,6 @@
         Console.WriteLine($"Viewing details for student: {studentId}");
     }
 
-    private async Task RefreshData()
-    {
-        await LoadTeacherData();
-    }
-
-
-
     private void ExportReport()
     {
         // TODO: Implement export functionality
@@ -461,7 +457,7 @@
 
     public void Dispose()
     {
-        refreshTimer?.Dispose();
+        // No cleanup needed
     }
 }
 

@@ -1,4 +1,5 @@
 @page "/student-dashboard"
+@layout PlainLayout
 @using Attrak.Services
 @using AttrackSharedClass.Models
 @inject IAuthService AuthService
@@ -224,17 +225,17 @@
             if (currentUser?.StudentId != null)
             {
                 // Load student information
-                var studentResponse = await Http.GetFromJsonAsync<StudentInfo>($"api/register/student/{currentUser.StudentId}");
+                var studentResponse = await Http.GetFromJsonAsync<StudentInfo>($"{ApiConfig.BaseUrl}api/register/student/{currentUser.StudentId}");
                 studentInfo = studentResponse;
 
                 if (studentInfo != null)
                 {
                     // Load school information
-                    var schoolResponse = await Http.GetFromJsonAsync<SchoolInfo>($"api/register/school/{studentInfo.SchoolId}");
+                    var schoolResponse = await Http.GetFromJsonAsync<SchoolInfo>($"{ApiConfig.BaseUrl}api/register/school/{studentInfo.SchoolId}");
                     schoolInfo = schoolResponse;
 
                     // Load QR code
-                    var qrResponse = await Http.GetAsync($"api/register/student/{studentInfo.StudentId}/qr");
+                    var qrResponse = await Http.GetAsync($"{ApiConfig.BaseUrl}api/register/student/{studentInfo.StudentId}/qr");
                     if (qrResponse.IsSuccessStatusCode)
                     {
                         qrCodeData = await qrResponse.Content.ReadAsStringAsync();

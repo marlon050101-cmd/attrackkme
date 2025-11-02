@@ -683,7 +683,7 @@
     {
         try
         {
-            var response = await Http.GetFromJsonAsync<List<TeacherInfo>>("api/teachersubject/teachers");
+            var response = await Http.GetFromJsonAsync<List<TeacherInfo>>($"{ApiConfig.BaseUrl}api/teachersubject/teachers");
             if (response != null)
             {
                 teachers = response;
@@ -709,7 +709,7 @@
     {
         try
         {
-            var response = await Http.GetFromJsonAsync<List<int>>("api/teachersubject/grades");
+            var response = await Http.GetFromJsonAsync<List<int>>($"{ApiConfig.BaseUrl}api/teachersubject/grades");
             if (response != null)
             {
                 availableGrades = response;
@@ -725,7 +725,7 @@
     {
         try
         {
-            var response = await Http.GetFromJsonAsync<List<string>>("api/teachersubject/strands");
+            var response = await Http.GetFromJsonAsync<List<string>>($"{ApiConfig.BaseUrl}api/teachersubject/strands");
             if (response != null)
             {
                 availableStrands = response;
@@ -763,7 +763,7 @@
                     // Try to fetch teacher information directly by ID
                     try
                     {
-                        var teacherResponse = await Http.GetFromJsonAsync<TeacherInfo>($"api/teachersubject/teacher-info/{currentUser.TeacherId}");
+                        var teacherResponse = await Http.GetFromJsonAsync<TeacherInfo>($"{ApiConfig.BaseUrl}api/teachersubject/teacher-info/{currentUser.TeacherId}");
                         if (teacherResponse != null)
                         {
                             selectedTeacherName = teacherResponse.FullName;
@@ -847,7 +847,7 @@
                 queryParams.Add($"searchTerm={Uri.EscapeDataString(searchTerm)}");
 
             var queryString = queryParams.Any() ? "?" + string.Join("&", queryParams) : "";
-            var response = await Http.GetFromJsonAsync<List<TeacherSubjectAssignment>>($"api/teachersubject/available{queryString}");
+            var response = await Http.GetFromJsonAsync<List<TeacherSubjectAssignment>>($"{ApiConfig.BaseUrl}api/teachersubject/available{queryString}");
             
             if (response != null)
             {
@@ -872,7 +872,7 @@
 
         try
         {
-            var response = await Http.GetFromJsonAsync<List<TeacherSubjectAssignment>>($"api/teachersubject/teacher/{selectedTeacherId}");
+            var response = await Http.GetFromJsonAsync<List<TeacherSubjectAssignment>>($"{ApiConfig.BaseUrl}api/teachersubject/teacher/{selectedTeacherId}");
             
             if (response != null)
             {
@@ -909,7 +909,7 @@
                 ScheduleEnd = endTime
             };
 
-            var response = await Http.PostAsJsonAsync("api/teachersubject/assign", request);
+            var response = await Http.PostAsJsonAsync($"{ApiConfig.BaseUrl}api/teachersubject/assign", request);
             
             if (response.IsSuccessStatusCode)
             {
@@ -994,7 +994,7 @@
             StateHasChanged();
             
             var request = new { ScheduleStart = editingStartTime, ScheduleEnd = editingEndTime };
-            var response = await Http.PutAsJsonAsync($"api/teachersubject/schedule/{teacherSubjectId}", request);
+            var response = await Http.PutAsJsonAsync($"{ApiConfig.BaseUrl}api/teachersubject/schedule/{teacherSubjectId}", request);
             
             if (response.IsSuccessStatusCode)
             {
@@ -1053,7 +1053,7 @@
         {
             try
             {
-                var response = await Http.DeleteAsync($"api/teachersubject/{teacherSubjectId}");
+                var response = await Http.DeleteAsync($"{ApiConfig.BaseUrl}api/teachersubject/{teacherSubjectId}");
                 
                 if (response.IsSuccessStatusCode)
                 {
@@ -1166,7 +1166,7 @@
 
         try
         {
-            var response = await Http.PostAsJsonAsync("api/teachersubject/add-subject", newSubject);
+            var response = await Http.PostAsJsonAsync($"{ApiConfig.BaseUrl}api/teachersubject/add-subject", newSubject);
             
             if (response.IsSuccessStatusCode)
             {
@@ -1221,7 +1221,7 @@
         try
         {
             // Load sections for this subject
-            var response = await Http.GetFromJsonAsync<List<SubjectSectionInfo>>($"api/teachersubject/sections/{subject.SubjectId}");
+            var response = await Http.GetFromJsonAsync<List<SubjectSectionInfo>>($"{ApiConfig.BaseUrl}api/teachersubject/sections/{subject.SubjectId}");
             subjectSections = response ?? new List<SubjectSectionInfo>();
         }
         catch (Exception ex)
@@ -1283,7 +1283,7 @@
             }
 
             // Load available sections for this subject's grade level and teacher's school
-            var response = await Http.GetFromJsonAsync<List<SubjectSectionInfo>>($"api/teachersubject/available-sections/{subject.SubjectId}/{teacher.SchoolName}");
+            var response = await Http.GetFromJsonAsync<List<SubjectSectionInfo>>($"{ApiConfig.BaseUrl}api/teachersubject/available-sections/{subject.SubjectId}/{teacher.SchoolName}");
             availableSectionsForAssignment = response ?? new List<SubjectSectionInfo>();
         }
         catch (Exception ex)
@@ -1337,7 +1337,7 @@
                 Section = section.SectionName
             };
 
-            var response = await Http.PostAsJsonAsync("api/teachersubject/assign", request);
+            var response = await Http.PostAsJsonAsync($"{ApiConfig.BaseUrl}api/teachersubject/assign", request);
             
             if (response.IsSuccessStatusCode)
             {

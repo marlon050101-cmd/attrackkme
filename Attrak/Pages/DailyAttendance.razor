@@ -344,7 +344,7 @@
             // Load students filtered by teacher's section and school
             try
             {
-                var response = await Http.GetFromJsonAsync<List<Student>>($"{ApiConfig.BaseUrl}/api/register/students?teacherId={currentTeacherId}");
+                var response = await Http.GetFromJsonAsync<List<Student>>($"{ApiConfig.BaseUrl}api/register/students?teacherId={currentTeacherId}");
                 if (response != null)
                 {
                     students = response;
@@ -369,7 +369,7 @@
 
         try
         {
-            var response = await Http.GetFromJsonAsync<List<DailyAttendanceRecord>>($"{ApiConfig.BaseUrl}/api/dailyattendance/today/{currentTeacherId}");
+            var response = await Http.GetFromJsonAsync<List<DailyAttendanceRecord>>($"{ApiConfig.BaseUrl}api/dailyattendance/today/{currentTeacherId}");
             todayAttendanceRecords = response ?? new List<DailyAttendanceRecord>();
             
             // Calculate summary counts
@@ -465,7 +465,7 @@
                 currentTeacherName = currentUser.Username;
                 
                 // Get detailed teacher information including section and school
-                var teacherResponse = await Http.GetFromJsonAsync<TeacherInfo>($"{ApiConfig.BaseUrl}/api/register/teacher-by-user/{currentUser.UserId}");
+                var teacherResponse = await Http.GetFromJsonAsync<TeacherInfo>($"{ApiConfig.BaseUrl}api/register/teacher-by-user/{currentUser.UserId}");
                 if (teacherResponse != null)
                 {
                     currentTeacherId = teacherResponse.TeacherId;
@@ -559,7 +559,7 @@
 
         try
         {
-            var response = await Http.GetFromJsonAsync<List<DailyAttendanceRecord>>($"api/attendance/daily-history/{selectedStudentId}?days=30");
+            var response = await Http.GetFromJsonAsync<List<DailyAttendanceRecord>>($"{ApiConfig.BaseUrl}api/attendance/daily-history/{selectedStudentId}?days=30");
             attendanceHistory = response ?? new List<DailyAttendanceRecord>();
         }
         catch (Exception)
@@ -584,7 +584,7 @@
                 TimeIn = DateTime.Now.TimeOfDay
             };
 
-            var response = await Http.PostAsJsonAsync("api/attendance/daily-timein", request);
+            var response = await Http.PostAsJsonAsync($"{ApiConfig.BaseUrl}api/attendance/daily-timein", request);
             
             if (response.IsSuccessStatusCode)
             {
@@ -729,7 +729,7 @@
                 Remarks = absentReason
             };
             
-            var response = await Http.PostAsJsonAsync($"{ApiConfig.BaseUrl}/api/dailyattendance/mark-absent", request);
+            var response = await Http.PostAsJsonAsync($"{ApiConfig.BaseUrl}api/dailyattendance/mark-absent", request);
             
             if (response.IsSuccessStatusCode)
             {
@@ -773,7 +773,7 @@
         
         try
         {
-            var response = await Http.PostAsJsonAsync($"{ApiConfig.BaseUrl}/api/dailyattendance/cancel-absent", new { StudentId = studentId, Date = DateTime.Today });
+            var response = await Http.PostAsJsonAsync($"{ApiConfig.BaseUrl}api/dailyattendance/cancel-absent", new { StudentId = studentId, Date = DateTime.Today });
             
             if (response.IsSuccessStatusCode)
             {

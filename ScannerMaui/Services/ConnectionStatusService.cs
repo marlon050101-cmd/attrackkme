@@ -21,7 +21,7 @@ namespace ScannerMaui.Services
         public ConnectionStatusService(HttpClient httpClient)
         {
             _httpClient = httpClient;
-            _serverBaseUrl = "https://attrak.onrender.com";
+            _serverBaseUrl = "https://attrak-8gku.onrender.com";
         }
 
         public async Task CheckConnectionAsync()

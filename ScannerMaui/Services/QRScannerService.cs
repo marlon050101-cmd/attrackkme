@@ -67,7 +67,7 @@ namespace ScannerMaui.Services
             try
             {
                 // Get API base URL from configuration or use default
-                var apiBaseUrl = "https://attrak.onrender.com/"; // Your actual API URL
+                var apiBaseUrl = "https://attrak-8gku.onrender.com/"; // Production server URL
                 
                 // Get current teacher ID (you'll need to implement this)
                 var teacherId = "current_teacher_id"; // Replace with actual teacher ID

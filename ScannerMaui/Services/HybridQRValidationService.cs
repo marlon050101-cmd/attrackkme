@@ -23,7 +23,7 @@ namespace ScannerMaui.Services
             _httpClient.Timeout = TimeSpan.FromSeconds(10);
 
             // Get server URL from configuration or use default
-            _serverBaseUrl = "https://attrak.onrender.com/"; // Change this to your server's IP address
+            _serverBaseUrl = "https://attrak-8gku.onrender.com/"; // Production server URL
         }
 
         public async Task<QRValidationResult> ValidateQRCodeAsync(string qrCodeData, string attendanceType = "TimeIn")

@@ -60,6 +60,26 @@ namespace ServerAtrrak.Controllers
             }
         }
 
+        [HttpGet("info/{teacherId}")]
+        public async Task<ActionResult<TeacherClassInfo>> GetTeacherInfo(string teacherId)
+        {
+            try
+            {
+                var classInfo = await _teacherService.GetTeacherClassInfoAsync(teacherId);
+                
+                if (classInfo == null)
+                {
+                    return NotFound(new { message = "Teacher not found or no class assigned" });
+                }
+
+                return Ok(classInfo);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Internal server error", error = ex.Message });
+            }
+        }
+
         [HttpGet("class-info/{teacherId}")]
         public async Task<ActionResult<TeacherClassInfo>> GetTeacherClassInfo(string teacherId)
         {

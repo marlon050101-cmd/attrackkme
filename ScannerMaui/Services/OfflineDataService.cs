@@ -930,7 +930,7 @@ namespace ScannerMaui.Services
             try
             {
                 using var httpClient = new HttpClient();
-                httpClient.BaseAddress = new Uri("https://attrak.onrender.com/");
+                httpClient.BaseAddress = new Uri("https://attrak-8gku.onrender.com/");
                 httpClient.Timeout = TimeSpan.FromSeconds(10);
 
                 // Try to get student info from your API

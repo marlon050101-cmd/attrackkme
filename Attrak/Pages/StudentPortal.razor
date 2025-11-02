@@ -379,7 +379,7 @@
 
         try
         {
-            var response = await Http.PostAsJsonAsync("api/register/student", studentRegisterRequest);
+            var response = await Http.PostAsJsonAsync($"{ApiConfig.BaseUrl}api/register/student", studentRegisterRequest);
             
             if (response.IsSuccessStatusCode)
             {
@@ -427,7 +427,7 @@
     {
         try
         {
-            var response = await Http.GetFromJsonAsync<List<SchoolInfo>>("api/register/schools/all");
+            var response = await Http.GetFromJsonAsync<List<SchoolInfo>>($"{ApiConfig.BaseUrl}api/register/schools/all");
             allSchools = response ?? new List<SchoolInfo>();
         }
         catch (Exception ex)

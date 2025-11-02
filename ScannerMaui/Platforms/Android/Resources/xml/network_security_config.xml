@@ -9,7 +9,7 @@
     
     <!-- COMPLETELY DISABLE SSL VERIFICATION FOR RENDER.COM -->
     <domain-config cleartextTrafficPermitted="false">
-        <domain includeSubdomains="true">attrak.onrender.com</domain>
+        <domain includeSubdomains="true">attrak-8gku.onrender.com</domain>
         <domain includeSubdomains="true">onrender.com</domain>
         <trust-anchors>
             <!-- Trust system certificates -->

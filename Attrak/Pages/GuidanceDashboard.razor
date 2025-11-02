@@ -260,7 +260,7 @@
             errorMessage = string.Empty;
             StateHasChanged();
 
-            var response = await Http.GetFromJsonAsync<GuidanceDashboardData>($"api/guidance/dashboard/{currentUser.UserId}");
+            var response = await Http.GetFromJsonAsync<GuidanceDashboardData>($"{ApiConfig.BaseUrl}api/guidance/dashboard/{currentUser.UserId}");
             
             if (response != null)
             {

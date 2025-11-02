@@ -24,7 +24,7 @@ namespace ScannerMaui
             builder.Services.AddHttpClient("AttrakAPI", client =>
             {
                 // Use HTTPS with SSL bypass to handle certificate issues
-                client.BaseAddress = new Uri("https://attrak.onrender.com/");
+                client.BaseAddress = new Uri("https://attrak-8gku.onrender.com/");
                 client.DefaultRequestHeaders.Add("Accept", "application/json");
                 client.DefaultRequestHeaders.Add("User-Agent", "ScannerMaui/1.0");
                 // Add timeout
