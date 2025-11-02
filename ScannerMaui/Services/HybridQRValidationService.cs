@@ -2,6 +2,7 @@ using AttrackSharedClass.Models;
 using System.Text.Json;
 using System.Net.Http;
 using System.Net.Http.Json;
+using System.Text.Json.Serialization;
 
 namespace ScannerMaui.Services
 {
@@ -505,7 +506,8 @@ namespace ScannerMaui.Services
                     {
                         StudentId = studentData.StudentId,
                         Date = currentTime.Date,
-                        TimeOut = currentTime.TimeOfDay
+                        TimeOut = currentTime.TimeOfDay,
+                        TeacherId = teacher.TeacherId
                     };
 
                     System.Diagnostics.Debug.WriteLine($"Sending Time Out request to server");
@@ -869,9 +871,53 @@ namespace ScannerMaui.Services
 
     public class ServerQRValidationResult
     {
+        [JsonPropertyName("isValid")]
         public bool IsValid { get; set; }
+        
+        [JsonPropertyName("message")]
         public string Message { get; set; } = string.Empty;
+        
+        [JsonPropertyName("errorType")]
+        public ServerQRValidationErrorType ErrorType { get; set; } = ServerQRValidationErrorType.None;
+        
+        [JsonPropertyName("studentData")]
         public StudentQRData? StudentData { get; set; }
+        
+        [JsonPropertyName("qrStudentInfo")]
+        public QRStudentInfo? QRStudentInfo { get; set; }
+    }
+
+    public enum ServerQRValidationErrorType
+    {
+        None,
+        TeacherNotFound,
+        StudentNotFound,
+        InvalidFormat,
+        SchoolMismatch,
+        GradeMismatch,
+        SectionMismatch,
+        ValidationError
+    }
+
+    public class QRStudentInfo
+    {
+        [JsonPropertyName("studentId")]
+        public string StudentId { get; set; } = string.Empty;
+        
+        [JsonPropertyName("fullName")]
+        public string FullName { get; set; } = string.Empty;
+        
+        [JsonPropertyName("gradeLevel")]
+        public int GradeLevel { get; set; }
+        
+        [JsonPropertyName("section")]
+        public string Section { get; set; } = string.Empty;
+        
+        [JsonPropertyName("schoolId")]
+        public string SchoolId { get; set; } = string.Empty;
+        
+        [JsonPropertyName("strand")]
+        public string? Strand { get; set; }
     }
 
     public class QRValidationResult
@@ -896,11 +942,22 @@ namespace ScannerMaui.Services
 
     public class StudentQRData
     {
+        [JsonPropertyName("studentId")]
         public string StudentId { get; set; } = string.Empty;
+        
+        [JsonPropertyName("fullName")]
         public string FullName { get; set; } = string.Empty;
+        
+        [JsonPropertyName("gradeLevel")]
         public int GradeLevel { get; set; }
+        
+        [JsonPropertyName("section")]
         public string Section { get; set; } = string.Empty;
+        
+        [JsonPropertyName("schoolId")]
         public string SchoolId { get; set; } = string.Empty;
+        
+        [JsonPropertyName("strand")]
         public string? Strand { get; set; }
     }
 

@@ -122,6 +122,7 @@ namespace ServerAtrrak.Services
                         "Admin" => UserType.Admin,
                         "Teacher" => UserType.Teacher,
                         "Student" => UserType.Student,
+                        "GuidanceCounselor" => UserType.GuidanceCounselor,
                         _ => UserType.Admin // Default fallback
                     };
 

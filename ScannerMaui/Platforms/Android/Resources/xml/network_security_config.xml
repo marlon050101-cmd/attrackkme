@@ -1,6 +1,41 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
+    <!-- Allow cleartext traffic for development -->
     <domain-config cleartextTrafficPermitted="true">
         <domain includeSubdomains="true">voidcharm-001-site1.jtempurl.com</domain>
+        <domain includeSubdomains="true">localhost</domain>
+        <domain includeSubdomains="true">10.0.2.2</domain>
     </domain-config>
+    
+    <!-- COMPLETELY DISABLE SSL VERIFICATION FOR RENDER.COM -->
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">attrak.onrender.com</domain>
+        <domain includeSubdomains="true">onrender.com</domain>
+        <trust-anchors>
+            <!-- Trust system certificates -->
+            <certificates src="system"/>
+            <!-- Trust user-added certificates -->
+            <certificates src="user"/>
+        </trust-anchors>
+        <!-- Disable certificate pinning completely -->
+        <pin-set>
+            <!-- Empty pin set means no pinning -->
+        </pin-set>
+    </domain-config>
+    
+    <!-- Base configuration - DISABLE SSL VERIFICATION FOR ALL DOMAINS -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system"/>
+            <certificates src="user"/>
+        </trust-anchors>
+    </base-config>
+    
+    <!-- Debug configuration - DISABLE ALL SSL VERIFICATION -->
+    <debug-overrides>
+        <trust-anchors>
+            <certificates src="system"/>
+            <certificates src="user"/>
+        </trust-anchors>
+    </debug-overrides>
 </network-security-config>

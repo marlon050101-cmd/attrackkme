@@ -39,14 +39,15 @@ namespace AttrackSharedClass.Models
         [MaxLength(200)]
         public string? SchoolAddress { get; set; }
         
-        [Required]
-        public int GradeLevel { get; set; }
+        public int? GradeLevel { get; set; }
         
-        [Required]
         [MaxLength(50)]
-        public string Section { get; set; } = string.Empty;
+        public string? Section { get; set; }
         
         [MaxLength(100)]
         public string? Strand { get; set; }
+        
+        [Required]
+        public UserType UserType { get; set; } = UserType.Teacher;
     }
 }

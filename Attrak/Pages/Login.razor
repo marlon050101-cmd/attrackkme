@@ -98,15 +98,23 @@
                                 </div>
                                 <div class="card-body">
                                     <div class="row">
-                                        <div class="col-md-6 mb-3">
+                                        <div class="col-md-4 mb-3">
                                             <label for="reg-username" class="form-label">Username</label>
                                             <InputText id="reg-username" class="form-control" @bind-Value="registerRequest.Username" @oninput="OnUsernameChanged" placeholder="Enter username" />
                                             <ValidationMessage For="@(() => registerRequest.Username)" class="text-danger" />
                                         </div>
-                                        <div class="col-md-6 mb-3">
+                                        <div class="col-md-4 mb-3">
                                             <label for="reg-email" class="form-label">Email</label>
                                             <InputText id="reg-email" type="email" class="form-control" @bind-Value="registerRequest.Email" placeholder="Enter email" />
                                             <ValidationMessage For="@(() => registerRequest.Email)" class="text-danger" />
+                                        </div>
+                                        <div class="col-md-4 mb-3">
+                                            <label for="reg-usertype" class="form-label">User Type</label>
+                                            <InputSelect id="reg-usertype" class="form-select" @bind-Value="registerRequest.UserType" @bind-Value:after="OnUserTypeChanged">
+                                                <option value="@UserType.Teacher">Teacher</option>
+                                                <option value="@UserType.GuidanceCounselor">Guidance Counselor</option>
+                                            </InputSelect>
+                                            <ValidationMessage For="@(() => registerRequest.UserType)" class="text-danger" />
                                         </div>
                                     </div>
 
@@ -204,33 +212,47 @@
                                         </div>
                                     </div>
 
-                                    <div class="row">
-                                        <div class="col-md-4 mb-3">
-                                            <label for="reg-gradelevel" class="form-label">Grade Level</label>
-                                            <InputSelect id="reg-gradelevel" class="form-select" @bind-Value="registerRequest.GradeLevel" @bind-Value:after="OnGradeLevelChanged">
-                                                <option value="0">Select Grade Level</option>
-                                                <option value="7">Grade 7</option>
-                                                <option value="8">Grade 8</option>
-                                                <option value="9">Grade 9</option>
-                                                <option value="10">Grade 10</option>
-                                                <option value="11">Grade 11</option>
-                                                <option value="12">Grade 12</option>
-                                            </InputSelect>
-                                            <ValidationMessage For="@(() => registerRequest.GradeLevel)" class="text-danger" />
+                                    @if (registerRequest.UserType == UserType.Teacher)
+                                    {
+                                        <div class="row">
+                                            <div class="col-md-4 mb-3">
+                                                <label for="reg-gradelevel" class="form-label">Grade Level</label>
+                                                <InputSelect id="reg-gradelevel" class="form-select" @bind-Value="registerRequest.GradeLevel" @bind-Value:after="OnGradeLevelChanged">
+                                                    <option value="0">Select Grade Level</option>
+                                                    <option value="7">Grade 7</option>
+                                                    <option value="8">Grade 8</option>
+                                                    <option value="9">Grade 9</option>
+                                                    <option value="10">Grade 10</option>
+                                                    <option value="11">Grade 11</option>
+                                                    <option value="12">Grade 12</option>
+                                                </InputSelect>
+                                                <ValidationMessage For="@(() => registerRequest.GradeLevel)" class="text-danger" />
+                                            </div>
+                                            <div class="col-md-4 mb-3">
+                                                <label for="reg-section" class="form-label">Section</label>
+                                                <InputText id="reg-section" class="form-control text-uppercase" @bind-Value="registerRequest.Section" @oninput="OnSectionChanged" placeholder="Enter section" />
+                                                <ValidationMessage For="@(() => registerRequest.Section)" class="text-danger" />
+                                            </div>
+                                            <div class="col-md-4 mb-3">
+                                                @if (registerRequest.GradeLevel == 11 || registerRequest.GradeLevel == 12)
+                                                {
+                                                    <label for="reg-strand" class="form-label">Strand</label>
+                                                    <InputText id="reg-strand" class="form-control" @bind-Value="registerRequest.Strand" placeholder="Enter strand (e.g., STEM, ABM, HUMSS, GAS)" />
+                                                }
+                                            </div>
                                         </div>
-                                        <div class="col-md-4 mb-3">
-                                            <label for="reg-section" class="form-label">Section</label>
-                                            <InputText id="reg-section" class="form-control text-uppercase" @bind-Value="registerRequest.Section" @oninput="OnSectionChanged" placeholder="Enter section" />
-                                            <ValidationMessage For="@(() => registerRequest.Section)" class="text-danger" />
+                                    }
+                                    else if (registerRequest.UserType == UserType.GuidanceCounselor)
+                                    {
+                                        <div class="row">
+                                            <div class="col-12 mb-3">
+                                                <div class="alert alert-info">
+                                                    <i class="fas fa-info-circle me-2"></i>
+                                                    <strong>Guidance Counselor Registration:</strong> You will be registered as a Guidance Counselor with access to student monitoring and attendance tracking.
+                                                </div>
+                                            </div>
                                         </div>
-                                        <div class="col-md-4 mb-3">
-                                            @if (registerRequest.GradeLevel == 11 || registerRequest.GradeLevel == 12)
-                                            {
-                                                <label for="reg-strand" class="form-label">Strand</label>
-                                                <InputText id="reg-strand" class="form-control" @bind-Value="registerRequest.Strand" placeholder="Enter strand (e.g., STEM, ABM, HUMSS, GAS)" />
-                                            }
-                                        </div>
-                                    </div>
+                                    }
                                 </div>
                             </div>
 
@@ -257,7 +279,7 @@
                                     }
                                     else
                                     {
-                                        <span>Register as Teacher</span>
+                                        <span>Register as @(registerRequest.UserType == UserType.GuidanceCounselor ? "Guidance Counselor" : "Teacher")</span>
                                     }
                                 </button>
                             </div>
@@ -352,6 +374,18 @@
         manualDistrict = e.Value?.ToString()?.ToUpper() ?? "";
     }
 
+    private void OnUserTypeChanged()
+    {
+        // Clear values when switching to guidance counselor
+        if (registerRequest.UserType == UserType.GuidanceCounselor)
+        {
+            registerRequest.GradeLevel = null;
+            registerRequest.Section = null;
+            registerRequest.Strand = null;
+        }
+        StateHasChanged();
+    }
+
     private void OnLoginUsernameChanged(ChangeEventArgs e)
     {
         loginRequest.Username = e.Value?.ToString() ?? "";
@@ -377,7 +411,19 @@
             
             if (response.Success)
             {
-                Navigation.NavigateTo("/dashboard");
+                // Redirect based on user type
+                if (response.User?.UserType == UserType.GuidanceCounselor)
+                {
+                    Navigation.NavigateTo("/guidance-dashboard");
+                }
+                else if (response.User?.UserType == UserType.Teacher)
+                {
+                    Navigation.NavigateTo("/teacher-dashboard");
+                }
+                else
+                {
+                    Navigation.NavigateTo("/dashboard");
+                }
             }
             else
             {
@@ -420,7 +466,8 @@
                 registerRequest.District = manualDistrict;
             }
 
-            var response = await Http.PostAsJsonAsync("api/register/teacher", registerRequest);
+            var endpoint = registerRequest.UserType == UserType.GuidanceCounselor ? "api/register/guidance" : "api/register/teacher";
+            var response = await Http.PostAsJsonAsync(endpoint, registerRequest);
             
             if (response.IsSuccessStatusCode)
             {

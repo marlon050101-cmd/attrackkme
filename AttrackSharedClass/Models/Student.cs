@@ -35,6 +35,10 @@ namespace AttrackSharedClass.Models
         [MaxLength(20)]
         public string ParentsNumber { get; set; } = string.Empty;
         
+        [Required]
+        [MaxLength(10)]
+        public string Gender { get; set; } = string.Empty;
+        
         public string? QRImage { get; set; }
         
         public DateTime CreatedAt { get; set; } = DateTime.Now;
@@ -42,5 +46,9 @@ namespace AttrackSharedClass.Models
         public DateTime UpdatedAt { get; set; } = DateTime.Now;
         
         public bool IsActive { get; set; } = true;
+        
+        // Additional properties for dashboard display
+        public int AbsenceCount { get; set; } = 0;
+        public string Status { get; set; } = "Good";
     }
 }

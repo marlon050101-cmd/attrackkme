@@ -1,9 +1,17 @@
 @page "/teacher-dashboard"
 @using AttrackSharedClass.Models
+@using Attrak.Services
+@inject IAuthService AuthService
+@inject HttpClient Http
+@inject IJSRuntime JSRuntime
+@inject NavigationManager Navigation
+@layout Layoutall
+@implements IDisposable
 
 <PageTitle>Teacher Dashboard - Attrak</PageTitle>
 
 <div class="container-fluid">
+
     <!-- Header -->
     <div class="row bg-primary text-white p-3 mb-4">
         <div class="col-12">
@@ -11,8 +19,49 @@
                 <i class="fas fa-chalkboard-teacher me-2"></i>Teacher Dashboard
             </h4>
             <p class="mb-0 opacity-75">Student Attendance Monitoring System</p>
+            @if (isLoading)
+            {
+                <div class="mt-2">
+                    <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                    <span>Loading data...</span>
+                </div>
+            }
+            else
+            {
+                <div class="mt-2">
+                    <span class="badge bg-success">DEBUG: Page loaded successfully</span>
+                    <span class="badge bg-info ms-2">Students: @(students?.Count ?? 0)</span>
+                    <span class="badge bg-warning ms-2">At Risk: @(studentsAtRisk?.Count ?? 0)</span>
+                </div>
+            }
         </div>
     </div>
+
+
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="row mb-3">
+            <div class="col-12">
+                <div class="alert alert-danger" role="alert">
+                    <i class="fas fa-exclamation-triangle me-2"></i>@errorMessage
+                </div>
+            </div>
+        </div>
+    }
+    else if (students?.Any() == true)
+    {
+        <div class="row mb-3">
+            <div class="col-12">
+                <div class="alert alert-success" role="alert">
+                    <i class="fas fa-check-circle me-2"></i>Showing real student data from database
+                    <small class="d-block mt-1">
+                        <i class="fas fa-users me-1"></i>@students.Count students loaded, @studentsAtRisk.Count at risk
+                    </small>
+                </div>
+            </div>
+        </div>
+    }
+
 
     <!-- Class Information Card -->
     <div class="row mb-4">
@@ -28,19 +77,25 @@
                         <div class="col-md-3">
                             <div class="text-center">
                                 <h6 class="text-muted mb-1">Grade Level</h6>
-                                <h4 class="text-primary mb-0">Grade 11</h4>
+                                <h4 class="text-primary mb-0">Grade @(classInfo?.GradeLevel ?? 0)</h4>
                             </div>
                         </div>
                         <div class="col-md-3">
                             <div class="text-center">
                                 <h6 class="text-muted mb-1">Section</h6>
-                                <h4 class="text-success mb-0">HUMSS 2</h4>
+                                <h4 class="text-success mb-0">@(classInfo?.Section ?? "N/A")</h4>
                             </div>
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-3">
+                            <div class="text-center">
+                                <h6 class="text-muted mb-1">School</h6>
+                                <h4 class="text-warning mb-0">@(classInfo?.SchoolName ?? "N/A")</h4>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
                             <div class="text-center">
                                 <h6 class="text-muted mb-1">Adviser Name</h6>
-                                <h4 class="text-info mb-0">Alimpuangon, Lornilo S.</h4>
+                                <h4 class="text-info mb-0">@(classInfo?.FullName ?? "N/A")</h4>
                             </div>
                         </div>
                     </div>
@@ -55,7 +110,7 @@
             <div class="card bg-success text-white">
                 <div class="card-body text-center">
                     <i class="fas fa-users fa-2x mb-2"></i>
-                    <h3 class="mb-1">4</h3>
+                    <h3 class="mb-1">@(students?.Count ?? 0)</h3>
                     <p class="mb-0">Total Number of Students</p>
                 </div>
             </div>
@@ -64,8 +119,15 @@
             <div class="card bg-warning text-white">
                 <div class="card-body text-center">
                     <i class="fas fa-exclamation-triangle fa-2x mb-2"></i>
-                    <h3 class="mb-1">2</h3>
+                    <h3 class="mb-1">@(studentsAtRisk?.Count ?? 0)</h3>
                     <p class="mb-0">Students at Risk (Absences)</p>
+                    @if (studentsAtRisk?.Count > 0)
+                    {
+                        <small class="d-block mt-1">
+                            <i class="fas fa-flag me-1"></i>
+                            @studentsAtRisk.Count student(s) with 3+ absences
+                        </small>
+                    }
                 </div>
             </div>
         </div>
@@ -80,9 +142,14 @@
                         <h5 class="mb-0">
                             <i class="fas fa-table me-2"></i>Student Attendance Report
                         </h5>
-                        <span class="badge bg-light text-dark">
-                            <i class="fas fa-calendar me-1"></i>As of September
-                        </span>
+                        <div class="d-flex gap-2 align-items-center">
+                            <button class="btn btn-primary btn-sm" @onclick="NavigateToDailyAttendance">
+                                <i class="fas fa-calendar-day me-1"></i>Daily Attendance
+                            </button>
+                            <span class="badge bg-light text-dark">
+                                <i class="fas fa-calendar me-1"></i>As of @DateTime.Now.ToString("MMMM")
+                            </span>
+                        </div>
                     </div>
                 </div>
                 <div class="card-body p-0">
@@ -91,102 +158,97 @@
                             <thead class="table-light">
                                 <tr>
                                     <th class="border-0">Gender</th>
-                                    <th class="border-0">Last Name</th>
+                                    <th class="border-0">Full Name</th>
                                     <th class="border-0 text-center">No. of Absences</th>
                                     <th class="border-0 text-center">Status</th>
                                     <th class="border-0 text-center">Action</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                <!-- Male Students -->
-                                <tr class="table-primary">
-                                    <td colspan="5" class="fw-bold text-primary">
-                                        <i class="fas fa-male me-2"></i>Male Students
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td class="ps-4">
-                                        <i class="fas fa-male text-primary me-2"></i>Male
-                                    </td>
-                                    <td class="fw-semibold">Delacruz</td>
-                                    <td class="text-center">
-                                        <span class="badge bg-danger fs-6">3</span>
-                                    </td>
-                                    <td class="text-center">
-                                        <span class="badge bg-danger">
-                                            <i class="fas fa-flag me-1"></i>Flagged
-                                        </span>
-                                    </td>
-                                    <td class="text-center">
-                                        <button class="btn btn-sm btn-outline-warning">
-                                            <i class="fas fa-eye me-1"></i>View Details
-                                        </button>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td class="ps-4">
-                                        <i class="fas fa-male text-primary me-2"></i>Male
-                                    </td>
-                                    <td class="fw-semibold">Jose</td>
-                                    <td class="text-center">
-                                        <span class="badge bg-success fs-6">1</span>
-                                    </td>
-                                    <td class="text-center">
-                                        <span class="badge bg-success">
-                                            <i class="fas fa-check me-1"></i>Good
-                                        </span>
-                                    </td>
-                                    <td class="text-center">
-                                        <button class="btn btn-sm btn-outline-info">
-                                            <i class="fas fa-eye me-1"></i>View Details
-                                        </button>
-                                    </td>
-                                </tr>
+                                @if (students?.Any() == true)
+                                {
+                                    var maleStudents = students.Where(s => s.Gender?.ToLower() == "male").ToList();
+                                    var femaleStudents = students.Where(s => s.Gender?.ToLower() == "female").ToList();
 
-                                <!-- Female Students -->
-                                <tr class="table-info">
-                                    <td colspan="5" class="fw-bold text-info">
-                                        <i class="fas fa-female me-2"></i>Female Students
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td class="ps-4">
-                                        <i class="fas fa-female text-pink me-2"></i>Female
-                                    </td>
-                                    <td class="fw-semibold">Asuncion</td>
-                                    <td class="text-center">
-                                        <span class="badge bg-danger fs-6">3</span>
-                                    </td>
-                                    <td class="text-center">
-                                        <span class="badge bg-danger">
-                                            <i class="fas fa-flag me-1"></i>Flagged
-                                        </span>
-                                    </td>
-                                    <td class="text-center">
-                                        <button class="btn btn-sm btn-outline-warning">
-                                            <i class="fas fa-eye me-1"></i>View Details
-                                        </button>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td class="ps-4">
-                                        <i class="fas fa-female text-pink me-2"></i>Female
-                                    </td>
-                                    <td class="fw-semibold">De Ana</td>
-                                    <td class="text-center">
-                                        <span class="badge bg-warning fs-6">1</span>
-                                    </td>
-                                    <td class="text-center">
-                                        <span class="badge bg-warning">
-                                            <i class="fas fa-exclamation me-1"></i>1 Absence
-                                        </span>
-                                    </td>
-                                    <td class="text-center">
-                                        <button class="btn btn-sm btn-outline-info">
-                                            <i class="fas fa-eye me-1"></i>View Details
-                                        </button>
-                                    </td>
-                                </tr>
+                                    @if (maleStudents.Any())
+                                    {
+                                        <!-- Male Students -->
+                                        <tr class="table-primary">
+                                            <td colspan="5" class="fw-bold text-primary">
+                                                <i class="fas fa-male me-2"></i>Male Students
+                                            </td>
+                                        </tr>
+                                        @foreach (var student in maleStudents)
+                                        {
+                                            var absences = student.AbsenceCount;
+                                            var status = student.Status;
+                                            <tr>
+                                                <td class="ps-4">
+                                                    <i class="fas fa-male text-primary me-2"></i>Male
+                                                </td>
+                                                <td class="fw-semibold">@student.FullName</td>
+                                                <td class="text-center">
+                                                    <span class="badge @(absences >= 3 ? "bg-danger" : absences >= 1 ? "bg-warning" : "bg-success") fs-6">@absences</span>
+                                                </td>
+                                                <td class="text-center">
+                                                    <span class="badge @(absences >= 3 ? "bg-danger" : absences >= 1 ? "bg-warning" : "bg-success")">
+                                                        <i class="fas fa-@(absences >= 3 ? "flag" : absences >= 1 ? "exclamation" : "check") me-1"></i>@status
+                                                    </span>
+                                                </td>
+                                                <td class="text-center">
+                                                    <button class="btn btn-sm btn-outline-info" @onclick="() => ViewStudentDetails(student.StudentId)">
+                                                        <i class="fas fa-eye me-1"></i>View Details
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        }
+                                    }
+
+                                    @if (femaleStudents.Any())
+                                    {
+                                        <!-- Female Students -->
+                                        <tr class="table-info">
+                                            <td colspan="5" class="fw-bold text-info">
+                                                <i class="fas fa-female me-2"></i>Female Students
+                                            </td>
+                                        </tr>
+                                        @foreach (var student in femaleStudents)
+                                        {
+                                            var absences = student.AbsenceCount;
+                                            var status = student.Status;
+                                            <tr>
+                                                <td class="ps-4">
+                                                    <i class="fas fa-female text-pink me-2"></i>Female
+                                                </td>
+                                                <td class="fw-semibold">@student.FullName</td>
+                                                <td class="text-center">
+                                                    <span class="badge @(absences >= 3 ? "bg-danger" : absences >= 1 ? "bg-warning" : "bg-success") fs-6">@absences</span>
+                                                </td>
+                                                <td class="text-center">
+                                                    <span class="badge @(absences >= 3 ? "bg-danger" : absences >= 1 ? "bg-warning" : "bg-success")">
+                                                        <i class="fas fa-@(absences >= 3 ? "flag" : absences >= 1 ? "exclamation" : "check") me-1"></i>@status
+                                                    </span>
+                                                </td>
+                                                <td class="text-center">
+                                                    <button class="btn btn-sm btn-outline-info" @onclick="() => ViewStudentDetails(student.StudentId)">
+                                                        <i class="fas fa-eye me-1"></i>View Details
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        }
+                                    }
+                                }
+                                else
+                                {
+                                    <tr>
+                                        <td colspan="5" class="text-center py-4">
+                                            <div class="text-muted">
+                                                <i class="fas fa-users fa-2x mb-2"></i>
+                                                <p class="mb-0">No students found for this class.</p>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                }
                             </tbody>
                         </table>
                     </div>
@@ -199,16 +261,209 @@
     <div class="row mt-4">
         <div class="col-12">
             <div class="d-flex justify-content-center gap-3">
-                <button class="btn btn-primary btn-lg">
+                <button class="btn btn-primary btn-lg" @onclick="ExportReport">
                     <i class="fas fa-download me-2"></i>Export Report
                 </button>
-                <button class="btn btn-info btn-lg">
+                <button class="btn btn-info btn-lg" @onclick="GenerateAnalytics">
                     <i class="fas fa-chart-bar me-2"></i>Generate Analytics
+                </button>
+                <button class="btn btn-success btn-lg" @onclick="RefreshData">
+                    <i class="fas fa-sync-alt me-2"></i>Refresh Data
                 </button>
             </div>
         </div>
     </div>
 </div>
+
+@code {
+    private List<Student>? students;
+    private List<Student>? studentsAtRisk;
+    private UserInfo? teacherInfo;
+    private TeacherClassInfo? classInfo;
+    private bool isLoading = true;
+    private string errorMessage = string.Empty;
+    private Timer? refreshTimer;
+    private Dictionary<string, int> studentAbsences = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        teacherInfo = await AuthService.GetCurrentUserAsync();
+        
+        if (teacherInfo == null)
+        {
+            errorMessage = "Please log in to access this dashboard.";
+            isLoading = false;
+            return;
+        }
+
+        if (teacherInfo.UserType != UserType.Teacher)
+        {
+            errorMessage = "Access denied. This dashboard is only for teachers.";
+            isLoading = false;
+            return;
+        }
+
+        // Load teacher data from API
+        await LoadTeacherData();
+        StartRefreshTimer();
+    }
+
+    private async Task LoadTeacherData()
+    {
+        try
+        {
+            isLoading = true;
+            errorMessage = string.Empty;
+            StateHasChanged();
+
+            Console.WriteLine($"DEBUG: Loading data for teacher: {teacherInfo.UserId}");
+            
+            // Test if server is running
+            try
+            {
+                Console.WriteLine("DEBUG: Testing server connection...");
+                var healthResponse = await Http.GetAsync("api/health");
+                Console.WriteLine($"DEBUG: Server health check: {healthResponse.StatusCode}");
+            }
+            catch (Exception healthEx)
+            {
+                Console.WriteLine($"DEBUG: Server not accessible: {healthEx.Message}");
+                errorMessage = "Server is not running. Please start the server first.";
+                return;
+            }
+            
+            // Load teacher class information first
+            Console.WriteLine($"DEBUG: Loading teacher class info for: {teacherInfo.UserId}");
+            var teacherInfoResponse = await Http.GetFromJsonAsync<TeacherClassInfo>($"api/teacher/info/{teacherInfo.UserId}");
+            
+            if (teacherInfoResponse != null)
+            {
+                Console.WriteLine($"DEBUG: Teacher info loaded - Grade: {teacherInfoResponse.GradeLevel}, Section: {teacherInfoResponse.Section}, School: {teacherInfoResponse.SchoolName}");
+                classInfo = teacherInfoResponse;
+            }
+            else
+            {
+                Console.WriteLine("DEBUG: Failed to load teacher class info");
+                errorMessage = "Failed to load teacher class information.";
+                return;
+            }
+            
+            // Load teacher dashboard data
+            var response = await Http.GetFromJsonAsync<TeacherDashboardData>($"api/teacher/dashboard/{teacherInfo.UserId}");
+            
+            Console.WriteLine($"DEBUG: API Response: {response != null}");
+            if (response != null)
+            {
+                Console.WriteLine($"DEBUG: Students count: {response.Students?.Count ?? 0}");
+                students = response.Students;
+                studentsAtRisk = response.StudentsAtRisk;
+                teacherInfo = response.TeacherInfo;
+                // Use the classInfo we loaded above instead of response.ClassInfo
+            }
+            else
+            {
+                Console.WriteLine("DEBUG: No response from API");
+                errorMessage = "Failed to load teacher dashboard data.";
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"DEBUG: API Error: {ex.Message}");
+            errorMessage = $"An error occurred: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void StartRefreshTimer()
+    {
+        // Refresh data every 30 seconds
+        refreshTimer = new Timer(async _ =>
+        {
+            await InvokeAsync(async () =>
+            {
+                await LoadTeacherData();
+            });
+        }, null, TimeSpan.Zero, TimeSpan.FromSeconds(30));
+    }
+
+    private async Task<int> GetStudentAbsencesAsync(string studentId)
+    {
+        try
+        {
+            var response = await Http.GetFromJsonAsync<dynamic>($"api/teacher/student-absences/{studentId}");
+            if (response != null && response.absences != null)
+            {
+                return (int)response.absences;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error getting absences for student {studentId}: {ex.Message}");
+        }
+        
+        return 0;
+    }
+
+    private int GetStudentAbsences(string studentId)
+    {
+        if (studentAbsences.ContainsKey(studentId))
+        {
+            return studentAbsences[studentId];
+        }
+        
+        // Return 0 as default, will be updated by API call
+        return 0;
+    }
+
+    private string GetStudentStatus(int absences)
+    {
+        return absences switch
+        {
+            >= 3 => "Flagged",
+            >= 1 => "At Risk",
+            _ => "Good"
+        };
+    }
+
+    private void ViewStudentDetails(string studentId)
+    {
+        // TODO: Implement student details view
+        Console.WriteLine($"Viewing details for student: {studentId}");
+    }
+
+    private async Task RefreshData()
+    {
+        await LoadTeacherData();
+    }
+
+
+
+    private void ExportReport()
+    {
+        // TODO: Implement export functionality
+        Console.WriteLine("Exporting report...");
+    }
+
+    private void GenerateAnalytics()
+    {
+        // TODO: Implement analytics generation
+        Console.WriteLine("Generating analytics...");
+    }
+
+    private void NavigateToDailyAttendance()
+    {
+        Navigation.NavigateTo("/daily-attendance");
+    }
+
+    public void Dispose()
+    {
+        refreshTimer?.Dispose();
+    }
+}
 
 <style>
     .text-pink {

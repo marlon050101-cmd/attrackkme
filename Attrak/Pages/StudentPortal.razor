@@ -138,6 +138,18 @@
 
                             <div class="row">
                                 <div class="col-md-6 mb-3">
+                                    <label for="reg-gender" class="form-label">Gender</label>
+                                    <InputSelect id="reg-gender" class="form-select" @bind-Value="studentRegisterRequest.Gender">
+                                        <option value="">Select Gender</option>
+                                        <option value="Male">Male</option>
+                                        <option value="Female">Female</option>
+                                    </InputSelect>
+                                    <ValidationMessage For="@(() => studentRegisterRequest.Gender)" class="text-danger" />
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
                                     <label for="reg-parentsnumber" class="form-label">Parent's Contact Number</label>
                                     <InputText id="reg-parentsnumber" class="form-control" @bind-Value="studentRegisterRequest.ParentsNumber" placeholder="Enter parent's contact number" />
                                     <ValidationMessage For="@(() => studentRegisterRequest.ParentsNumber)" class="text-danger" />
@@ -271,6 +283,10 @@
         [Phone]
         [MaxLength(20)]
         public string ParentsNumber { get; set; } = string.Empty;
+        
+        [Required]
+        [MaxLength(10)]
+        public string Gender { get; set; } = string.Empty;
     }
 
 

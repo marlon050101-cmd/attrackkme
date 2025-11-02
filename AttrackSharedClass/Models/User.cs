@@ -40,6 +40,7 @@ namespace AttrackSharedClass.Models
     {
         Admin = 1,
         Teacher = 2,
-        Student = 3
+        Student = 3,
+        GuidanceCounselor = 4
     }
 }

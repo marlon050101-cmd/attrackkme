@@ -85,6 +85,12 @@
                                         <button class="btn btn-outline-primary">My Schedule</button>
                                         <button class="btn btn-outline-primary">Profile</button>
                                     }
+                                    else if (currentUser.UserType == UserType.GuidanceCounselor)
+                                    {
+                                        <button class="btn btn-outline-primary" @onclick="NavigateToGuidance">Guidance Dashboard</button>
+                                        <button class="btn btn-outline-primary">Student Reports</button>
+                                        <button class="btn btn-outline-primary">Risk Assessment</button>
+                                    }
                                 </div>
                             </div>
                         </div>
@@ -120,6 +126,11 @@
         Navigation.NavigateTo("/login");
     }
 
+    private void NavigateToGuidance()
+    {
+        Navigation.NavigateTo("/guidance-dashboard");
+    }
+
     private string GetUserTypeText(UserType userType)
     {
         return userType switch
@@ -127,6 +138,7 @@
             UserType.Admin => "Administrator",
             UserType.Teacher => "Teacher",
             UserType.Student => "Student",
+            UserType.GuidanceCounselor => "Guidance Counselor",
             _ => "Unknown"
         };
     }

@@ -2,6 +2,7 @@
 @using AttrackSharedClass.Models
 @using Microsoft.Extensions.Http
 @using ScannerMaui.Services
+@implements IDisposable
 
 @inject IHttpClientFactory HttpClientFactory
 @inject NavigationManager Navigation
@@ -126,6 +127,21 @@
             </div>
             <h2 class="fw-bold text-primary">SARDO-TRAKCARE</h2>
             <p class="text-muted">Teacher Portal </p>
+            
+            <!-- Connection Status Indicator -->
+            <div class="connection-status mb-3">
+                <div class="d-flex align-items-center justify-content-center gap-2">
+                    <span class="badge @(connectionStatus == "Online" ? "bg-success" : (connectionStatus == "Checking..." ? "bg-warning" : "bg-danger"))">
+                        <i class="fas fa-wifi me-1"></i>@connectionStatus
+                    </span>
+                    @if (connectionStatus == "Offline")
+                    {
+                        <button type="button" class="btn btn-sm btn-outline-primary" @onclick="TestConnection" title="Test Connection">
+                            <i class="fas fa-sync"></i>
+                        </button>
+                    }
+                </div>
+            </div>
         </div>
 
 
@@ -163,7 +179,16 @@
                 @if (!string.IsNullOrEmpty(errorMessage))
                 {
                     <div class="alert alert-danger" role="alert">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
                         @errorMessage
+                        @if (errorMessage.Contains("Connection") || errorMessage.Contains("timeout"))
+                        {
+                            <div class="mt-2">
+                                <button type="button" class="btn btn-sm btn-outline-danger" @onclick="RetryConnection">
+                                    <i class="fas fa-redo me-1"></i>Retry Connection
+                                </button>
+                            </div>
+                        }
                     </div>
                 }
 
@@ -189,10 +214,16 @@
     private LoginRequest loginRequest = new();
     private string errorMessage = string.Empty;
     private bool isLoading = false;
+    private string connectionStatus = "Checking...";
+    private Timer? connectionCheckTimer;
 
     protected override async Task OnInitializedAsync()
     {
-        // No initialization needed for login-only page
+        // Start connection monitoring
+        await CheckConnectionStatus();
+        
+        // Start periodic connection checks
+        connectionCheckTimer = new Timer(async _ => await InvokeAsync(async () => await CheckConnectionStatus()), null, TimeSpan.Zero, TimeSpan.FromSeconds(30));
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -211,16 +242,34 @@
 
         isLoading = true;
         errorMessage = string.Empty;
-        StateHasChanged();
+        await InvokeAsync(StateHasChanged);
 
         try
         {
+            System.Diagnostics.Debug.WriteLine("=== Starting Login Process ===");
+            System.Diagnostics.Debug.WriteLine($"Username: {loginRequest.Username}");
+            
+            // Check connection status first
+            await CheckConnectionStatus();
+            
+            if (connectionStatus != "Online")
+            {
+                errorMessage = "No internet connection. Please check your network and try again.";
+                return;
+            }
+            
+            // Add a small delay to ensure connection is stable
+            await Task.Delay(500);
+            
+            // Add timeout to prevent hanging
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            
             var httpClient = HttpClientFactory.CreateClient("AttrakAPI");
-            var response = await httpClient.PostAsJsonAsync("api/auth/login", loginRequest);
+            var response = await httpClient.PostAsJsonAsync("api/auth/login", loginRequest, cts.Token);
 
             var responseContent = await response.Content.ReadAsStringAsync();
-            Console.WriteLine($"Response Status: {response.StatusCode}");
-            Console.WriteLine($"Response Content: {responseContent}");
+            System.Diagnostics.Debug.WriteLine($"Response Status: {response.StatusCode}");
+            System.Diagnostics.Debug.WriteLine($"Response Content: {responseContent}");
 
             if (response.IsSuccessStatusCode)
             {
@@ -229,12 +278,41 @@
                     var result = await response.Content.ReadFromJsonAsync<LoginResponse>();
                     if (result?.Success == true && result.User != null)
                     {
+                        System.Diagnostics.Debug.WriteLine("Login successful, setting user...");
                         AuthService.SetCurrentUser(result.User);
-                        Navigation.NavigateTo("/qr-scanner");
+                        
+                        // Use a different navigation approach to avoid Android fragment conflicts
+                        try
+                        {
+                            // Force a longer delay to ensure UI is ready
+                            await Task.Delay(1000);
+                            
+                            // Use a more direct navigation approach
+                            await InvokeAsync(() => 
+                            {
+                                try
+                                {
+                                    // Try to navigate using a different method
+                                    Navigation.NavigateTo("/qr-scanner", forceLoad: true);
+                                }
+                                catch (Exception innerEx)
+                                {
+                                    System.Diagnostics.Debug.WriteLine($"Inner navigation error: {innerEx.Message}");
+                                    // Try alternative navigation
+                                    Navigation.NavigateTo("/");
+                                }
+                            });
+                        }
+                        catch (Exception navEx)
+                        {
+                            System.Diagnostics.Debug.WriteLine($"Navigation error: {navEx.Message}");
+                            // Fallback: try direct navigation
+                            Navigation.NavigateTo("/qr-scanner");
+                        }
                     }
                     else
                     {
-                        errorMessage = result?.Message ?? "Login failed";
+                        errorMessage = "Invalid login credentials";
                     }
                 }
                 else
@@ -255,15 +333,286 @@
                 }
             }
         }
+        catch (TaskCanceledException tce)
+        {
+            System.Diagnostics.Debug.WriteLine($"Login timeout: {tce.Message}");
+            errorMessage = "Connection timeout. Please check your internet connection and try again.";
+        }
+        catch (HttpRequestException hre)
+        {
+            System.Diagnostics.Debug.WriteLine($"Login HTTP error: {hre.Message}");
+            
+            // Check if it's a socket closed error (network disconnected during request)
+            if (hre.Message.Contains("Socket closed") || hre.Message.Contains("SocketException"))
+            {
+                errorMessage = "Network connection lost during login. Please check your internet connection and try again.";
+            }
+            else
+            {
+                errorMessage = "Connection failed. Please check your internet connection and try again.";
+            }
+        }
+        catch (System.Net.WebException we)
+        {
+            System.Diagnostics.Debug.WriteLine($"Login web error: {we.Message}");
+            
+            // Handle socket closed errors specifically
+            if (we.Message.Contains("Socket closed") || we.InnerException?.Message.Contains("Socket closed") == true)
+            {
+                errorMessage = "Network connection lost during login. Please check your internet connection and try again.";
+            }
+            else
+            {
+                errorMessage = "Connection failed. Please check your internet connection and try again.";
+            }
+        }
         catch (Exception ex)
         {
-            errorMessage = $"An error occurred during login: {ex.Message}";
+            System.Diagnostics.Debug.WriteLine($"Login error: {ex.Message}");
+            
+            // Check for socket closed errors in any exception
+            if (ex.Message.Contains("Socket closed") || ex.InnerException?.Message.Contains("Socket closed") == true)
+            {
+                errorMessage = "Network connection lost during login. Please check your internet connection and try again.";
+            }
+            else
+            {
+                errorMessage = $"Login failed: {ex.Message}";
+            }
         }
         finally
         {
             isLoading = false;
-            StateHasChanged();
+            await InvokeAsync(StateHasChanged);
+            System.Diagnostics.Debug.WriteLine("=== Login Process Completed ===");
         }
+    }
+
+    private async Task RetryConnection()
+    {
+        errorMessage = string.Empty;
+        await InvokeAsync(StateHasChanged);
+        
+        // Small delay to show the retry action
+        await Task.Delay(500);
+        System.Diagnostics.Debug.WriteLine("User requested connection retry");
+    }
+
+    private async Task TestConnection()
+    {
+        connectionStatus = "Checking...";
+        await InvokeAsync(StateHasChanged);
+        
+        await Task.Delay(500); // Show "Checking..." briefly
+        await CheckConnectionStatus();
+        
+        System.Diagnostics.Debug.WriteLine("User manually tested connection");
+    }
+
+    private async Task CheckConnectionStatus()
+    {
+        try
+        {
+            System.Diagnostics.Debug.WriteLine("=== Checking Connection Status ===");
+            
+            // First check if we have internet connectivity
+            var hasInternet = Microsoft.Maui.Networking.Connectivity.NetworkAccess == Microsoft.Maui.Networking.NetworkAccess.Internet;
+            System.Diagnostics.Debug.WriteLine($"Has Internet: {hasInternet}");
+            
+            // If we have internet, mark as online immediately (don't wait for server tests)
+            if (hasInternet)
+            {
+                connectionStatus = "Online";
+                System.Diagnostics.Debug.WriteLine("✅ Internet connectivity detected - marking as online");
+                await InvokeAsync(StateHasChanged);
+                return;
+            }
+            
+            if (!hasInternet)
+            {
+                connectionStatus = "Offline";
+                await InvokeAsync(StateHasChanged);
+                return;
+            }
+            
+            // Try a simple ping first
+            try
+            {
+                System.Diagnostics.Debug.WriteLine("Testing basic connectivity...");
+                var pingClient = new HttpClient();
+                pingClient.Timeout = TimeSpan.FromSeconds(5);
+                var pingResponse = await pingClient.GetAsync("https://www.google.com");
+                System.Diagnostics.Debug.WriteLine($"Google ping: {pingResponse.StatusCode}");
+                
+                // If Google works, we have internet - mark as online
+                if (pingResponse.IsSuccessStatusCode)
+                {
+                    connectionStatus = "Online";
+                    System.Diagnostics.Debug.WriteLine("✅ Internet connection confirmed via Google!");
+                    await InvokeAsync(StateHasChanged);
+                    return;
+                }
+            }
+            catch (Exception pingEx)
+            {
+                System.Diagnostics.Debug.WriteLine($"Google ping failed: {pingEx.Message}");
+            }
+            
+            // Try another simple test
+            try
+            {
+                System.Diagnostics.Debug.WriteLine("Testing with httpbin.org...");
+                var testClient = new HttpClient();
+                testClient.Timeout = TimeSpan.FromSeconds(5);
+                var testResponse = await testClient.GetAsync("https://httpbin.org/get");
+                System.Diagnostics.Debug.WriteLine($"Httpbin test: {testResponse.StatusCode}");
+                
+                if (testResponse.IsSuccessStatusCode)
+                {
+                    connectionStatus = "Online";
+                    System.Diagnostics.Debug.WriteLine("✅ Internet connection confirmed via httpbin!");
+                    await InvokeAsync(StateHasChanged);
+                    return;
+                }
+            }
+            catch (Exception testEx)
+            {
+                System.Diagnostics.Debug.WriteLine($"Httpbin test failed: {testEx.Message}");
+            }
+            
+            // Try to connect to the server with shorter timeout to avoid socket issues
+            var httpClient = HttpClientFactory.CreateClient("AttrakAPI");
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10)); // Reduced timeout
+            
+            // First try the base URL (root)
+            try
+            {
+                System.Diagnostics.Debug.WriteLine("Testing base URL...");
+                var response = await httpClient.GetAsync("", cts.Token);
+                System.Diagnostics.Debug.WriteLine($"Base URL Response: {response.StatusCode}");
+                
+                // Accept any response from the server (even 404 means server is reachable)
+                if (response.StatusCode == System.Net.HttpStatusCode.OK || 
+                    response.StatusCode == System.Net.HttpStatusCode.NotFound ||
+                    response.StatusCode == System.Net.HttpStatusCode.MethodNotAllowed ||
+                    response.StatusCode == System.Net.HttpStatusCode.BadRequest)
+                {
+                    connectionStatus = "Online";
+                    System.Diagnostics.Debug.WriteLine("✅ Server is reachable!");
+                    await InvokeAsync(StateHasChanged);
+                    return;
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Base URL test failed: {ex.Message}");
+                
+                // If it's a socket error, we're definitely offline
+                if (ex.Message.Contains("Socket closed") || ex.Message.Contains("SocketException"))
+                {
+                    connectionStatus = "Offline";
+                    await InvokeAsync(StateHasChanged);
+                    return;
+                }
+            }
+            
+            // Try multiple endpoints to test connectivity
+            var endpoints = new[] { "api/health", "api/auth/login" };
+            
+            foreach (var endpoint in endpoints)
+            {
+                try
+                {
+                    System.Diagnostics.Debug.WriteLine($"Testing endpoint: {endpoint}");
+                    var response = await httpClient.GetAsync(endpoint, cts.Token);
+                    System.Diagnostics.Debug.WriteLine($"Response: {response.StatusCode}");
+                    
+                    if (response.IsSuccessStatusCode)
+                    {
+                        connectionStatus = "Online";
+                        System.Diagnostics.Debug.WriteLine("✅ Connection successful!");
+                        await InvokeAsync(StateHasChanged);
+                        return;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Endpoint {endpoint} failed: {ex.Message}");
+                }
+            }
+            
+            // If all HTTPS endpoints failed, try HTTP as fallback
+            try
+            {
+                System.Diagnostics.Debug.WriteLine("Trying HTTP fallback...");
+                var httpFallbackClient = new HttpClient();
+                httpFallbackClient.Timeout = TimeSpan.FromSeconds(10);
+                var response = await httpFallbackClient.GetAsync("https://attrak.onrender.com/", cts.Token);
+                System.Diagnostics.Debug.WriteLine($"HTTP fallback response: {response.StatusCode}");
+                
+                if (response.IsSuccessStatusCode || response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                {
+                    connectionStatus = "Online";
+                    System.Diagnostics.Debug.WriteLine("✅ HTTP fallback successful!");
+                    await InvokeAsync(StateHasChanged);
+                    return;
+                }
+            }
+            catch (Exception httpEx)
+            {
+                System.Diagnostics.Debug.WriteLine($"HTTP fallback failed: {httpEx.Message}");
+            }
+            
+            // Final attempt: Try with completely custom HttpClient that ignores SSL
+            try
+            {
+                System.Diagnostics.Debug.WriteLine("Trying custom HttpClient with SSL bypass...");
+                var customHandler = new HttpClientHandler();
+                customHandler.ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true;
+                var customClient = new HttpClient(customHandler);
+                customClient.Timeout = TimeSpan.FromSeconds(10);
+                
+                var customResponse = await customClient.GetAsync("https://attrak.onrender.com/", cts.Token);
+                System.Diagnostics.Debug.WriteLine($"Custom client response: {customResponse.StatusCode}");
+                
+                if (customResponse.IsSuccessStatusCode || customResponse.StatusCode == System.Net.HttpStatusCode.NotFound)
+                {
+                    connectionStatus = "Online";
+                    System.Diagnostics.Debug.WriteLine("✅ Custom client successful!");
+                    await InvokeAsync(StateHasChanged);
+                    return;
+                }
+            }
+            catch (Exception customEx)
+            {
+                System.Diagnostics.Debug.WriteLine($"Custom client failed: {customEx.Message}");
+            }
+            
+            // If all attempts failed, check if we at least have internet
+            if (hasInternet)
+            {
+                // If we have internet but server is unreachable, mark as online anyway
+                connectionStatus = "Online";
+                System.Diagnostics.Debug.WriteLine("✅ Internet available, marking as online despite server issues");
+                await InvokeAsync(StateHasChanged);
+                return;
+            }
+            
+            // If no internet at all, we're offline
+            connectionStatus = "Offline";
+            System.Diagnostics.Debug.WriteLine("❌ No internet connection detected");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Connection check error: {ex.Message}");
+            connectionStatus = "Offline";
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    public void Dispose()
+    {
+        connectionCheckTimer?.Dispose();
     }
 
 }

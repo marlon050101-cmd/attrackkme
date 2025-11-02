@@ -395,29 +395,59 @@ namespace ServerAtrrak.Controllers
                 using var connection = new MySqlConnection(_dbConnection.GetConnection());
                 await connection.OpenAsync();
 
+                // Get teacher's class information directly from teacher table
+                var teacherQuery = @"
+                    SELECT SchoolId, Gradelvl as GradeLevel, Section 
+                    FROM teacher 
+                    WHERE TeacherId = @teacherId";
+                
+                string? schoolId = null;
+                int gradeLevel = 0;
+                string? section = null;
+                
+                using (var teacherCommand = new MySqlCommand(teacherQuery, connection))
+                {
+                    teacherCommand.Parameters.AddWithValue("@teacherId", teacherId);
+                    using var teacherReader = await teacherCommand.ExecuteReaderAsync();
+                    if (await teacherReader.ReadAsync())
+                    {
+                        schoolId = teacherReader.IsDBNull("SchoolId") ? null : teacherReader.GetString("SchoolId");
+                        gradeLevel = teacherReader.IsDBNull("GradeLevel") ? 0 : teacherReader.GetInt32("GradeLevel");
+                        section = teacherReader.IsDBNull("Section") ? null : teacherReader.GetString("Section");
+                    }
+                }
+                
+                if (string.IsNullOrEmpty(schoolId) || string.IsNullOrEmpty(section))
+                {
+                    return Ok(new List<DailyAttendanceRecord>());
+                }
+
                 var query = @"
                     SELECT da.StudentId, s.FullName, da.Date, da.TimeIn, da.TimeOut, da.Status, da.Remarks
                     FROM daily_attendance da
                     INNER JOIN student s ON da.StudentId = s.StudentId
-                    WHERE da.Date = @Date
+                    WHERE da.Date = @Date 
                     ORDER BY da.Date DESC, da.TimeIn DESC";
 
                 using var command = new MySqlCommand(query, connection);
-                // Use today's date for the query
                 command.Parameters.AddWithValue("@Date", DateTime.Today);
 
                 using var reader = await command.ExecuteReaderAsync();
                 var records = new List<DailyAttendanceRecord>();
+
+                Console.WriteLine($"DEBUG: Query executed with parameters - Date: {DateTime.Today:yyyy-MM-dd}, SchoolId: {schoolId}, GradeLevel: {gradeLevel}, Section: {section}");
 
                 while (await reader.ReadAsync())
                 {
                     var studentId = reader.GetString(0);
                     var studentName = reader.GetString(1);
                     var attendanceDate = reader.GetDateTime(2);
-                    var timeIn = reader.IsDBNull(3) ? "" : reader.GetString(3);
-                    var timeOut = reader.IsDBNull(4) ? "" : reader.GetString(4);
+                    var timeIn = reader.IsDBNull(3) ? "" : reader.GetValue(3).ToString();
+                    var timeOut = reader.IsDBNull(4) ? "" : reader.GetValue(4).ToString();
                     var status = reader.GetString(5);
                     var remarks = reader.IsDBNull(6) ? "" : reader.GetString(6);
+
+                    Console.WriteLine($"DEBUG: Found record - StudentId: {studentId}, StudentName: {studentName}, TimeIn: {timeIn}, TimeOut: {timeOut}, Status: {status}, Remarks: {remarks}");
 
                     records.Add(new DailyAttendanceRecord
                     {
@@ -431,6 +461,7 @@ namespace ServerAtrrak.Controllers
                     });
                 }
 
+                Console.WriteLine($"DEBUG: Returning {records.Count} attendance records");
                 return Ok(records);
             }
             catch (Exception ex)
@@ -714,5 +745,116 @@ namespace ServerAtrrak.Controllers
                 });
             }
         }
+
+        [HttpPost("mark-absent")]
+        public async Task<IActionResult> MarkStudentAbsent([FromBody] MarkAbsentRequest request)
+        {
+            try
+            {
+                using var connection = new MySqlConnection(_dbConnection.GetConnection());
+                await connection.OpenAsync();
+
+                // Check if record already exists for today
+                var checkQuery = "SELECT AttendanceId FROM daily_attendance WHERE StudentId = @StudentId AND Date = @Date";
+                using var checkCommand = new MySqlCommand(checkQuery, connection);
+                checkCommand.Parameters.AddWithValue("@StudentId", request.StudentId);
+                checkCommand.Parameters.AddWithValue("@Date", request.Date.Date);
+
+                var existingId = await checkCommand.ExecuteScalarAsync();
+
+                if (existingId != null)
+                {
+                    // Update existing record
+                    var updateQuery = @"
+                        UPDATE daily_attendance 
+                        SET Status = @Status, Remarks = @Remarks, UpdatedAt = @UpdatedAt
+                        WHERE StudentId = @StudentId AND Date = @Date";
+
+                    using var updateCommand = new MySqlCommand(updateQuery, connection);
+                    updateCommand.Parameters.AddWithValue("@StudentId", request.StudentId);
+                    updateCommand.Parameters.AddWithValue("@Date", request.Date.Date);
+                    updateCommand.Parameters.AddWithValue("@Status", request.Status);
+                    updateCommand.Parameters.AddWithValue("@Remarks", request.Remarks);
+                    updateCommand.Parameters.AddWithValue("@UpdatedAt", DateTime.Now);
+
+                    await updateCommand.ExecuteNonQueryAsync();
+                }
+                else
+                {
+                    // Insert new record
+                    var insertQuery = @"
+                        INSERT INTO daily_attendance (AttendanceId, StudentId, Date, TimeIn, TimeOut, Status, Remarks, CreatedAt, UpdatedAt)
+                        VALUES (@AttendanceId, @StudentId, @Date, @TimeIn, @TimeOut, @Status, @Remarks, @CreatedAt, @UpdatedAt)";
+
+                    using var insertCommand = new MySqlCommand(insertQuery, connection);
+                    insertCommand.Parameters.AddWithValue("@AttendanceId", Guid.NewGuid().ToString());
+                    insertCommand.Parameters.AddWithValue("@StudentId", request.StudentId);
+                    insertCommand.Parameters.AddWithValue("@Date", request.Date.Date);
+                    insertCommand.Parameters.AddWithValue("@TimeIn", DBNull.Value);
+                    insertCommand.Parameters.AddWithValue("@TimeOut", DBNull.Value);
+                    insertCommand.Parameters.AddWithValue("@Status", request.Status);
+                    insertCommand.Parameters.AddWithValue("@Remarks", request.Remarks);
+                    insertCommand.Parameters.AddWithValue("@CreatedAt", DateTime.Now);
+                    insertCommand.Parameters.AddWithValue("@UpdatedAt", DateTime.Now);
+
+                    await insertCommand.ExecuteNonQueryAsync();
+                }
+
+                return Ok("Student marked as absent successfully");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error marking student as absent: {StudentId}", request.StudentId);
+                return StatusCode(500, "Error marking student as absent");
+            }
+        }
+
+        [HttpPost("cancel-absent")]
+        public async Task<IActionResult> CancelAbsent([FromBody] CancelAbsentRequest request)
+        {
+            try
+            {
+                using var connection = new MySqlConnection(_dbConnection.GetConnection());
+                await connection.OpenAsync();
+
+                // Delete the absent record for today
+                var deleteQuery = "DELETE FROM daily_attendance WHERE StudentId = @StudentId AND Date = @Date AND Status = 'Absent'";
+                using var deleteCommand = new MySqlCommand(deleteQuery, connection);
+                deleteCommand.Parameters.AddWithValue("@StudentId", request.StudentId);
+                deleteCommand.Parameters.AddWithValue("@Date", request.Date.Date);
+
+                var rowsAffected = await deleteCommand.ExecuteNonQueryAsync();
+
+                if (rowsAffected > 0)
+                {
+                    return Ok("Absent status cancelled successfully");
+                }
+                else
+                {
+                    return NotFound("No absent record found to cancel");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error cancelling absent status: {StudentId}", request.StudentId);
+                return StatusCode(500, "Error cancelling absent status");
+            }
+        }
+
     }
+
+    public class CancelAbsentRequest
+    {
+        public string StudentId { get; set; } = "";
+        public DateTime Date { get; set; }
+    }
+
+    public class MarkAbsentRequest
+    {
+        public string StudentId { get; set; } = "";
+        public DateTime Date { get; set; }
+        public string Status { get; set; } = "";
+        public string Remarks { get; set; } = "";
+    }
+
 }

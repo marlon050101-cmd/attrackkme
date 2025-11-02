@@ -1,360 +1,204 @@
 @page "/guidance-dashboard"
 @using AttrackSharedClass.Models
+@using Attrak.Services
+@inject IAuthService AuthService
+@inject HttpClient Http
 @layout Layoutall
 
 <PageTitle>Guidance Dashboard - Attrak</PageTitle>
 
 <div class="container-fluid">
     <!-- Header -->
-    <div class="row bg-warning text-dark p-4 mb-4">
+    <div class="row bg-gradient-primary text-white p-4 mb-4 rounded-3 shadow">
         <div class="col-12 text-center">
             <h2 class="mb-3 fw-bold">
-                <i class="fas fa-exclamation-triangle me-2"></i>Guidance Dashboard
+                <i class="fas fa-shield-alt me-2"></i>Guidance Dashboard
             </h2>
-            <h5 class="mb-0 opacity-75">Students at Risk - Attendance Monitoring</h5>
+            <h5 class="mb-0 opacity-90">Students at Risk - Attendance Monitoring</h5>
         </div>
     </div>
 
+    @if (isLoading)
+    {
+        <div class="row">
+            <div class="col-12 text-center">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="mt-2">Loading dashboard data...</p>
+            </div>
+        </div>
+    }
+    else if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="row">
+            <div class="col-12">
+                <div class="alert alert-danger" role="alert">
+                    <i class="fas fa-exclamation-triangle me-2"></i>@errorMessage
+                </div>
+            </div>
+        </div>
+    }
+    else
+    {
     <!-- Summary Cards -->
     <div class="row mb-4">
-        <div class="col-md-4">
-            <div class="card bg-danger text-white">
-                <div class="card-body text-center">
-                    <i class="fas fa-flag fa-2x mb-2"></i>
-                    <h3 class="mb-1">8</h3>
-                    <p class="mb-0">Total Flagged Students</p>
+            <div class="col-md-4 mb-3">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-body text-center bg-danger text-white rounded-3">
+                        <i class="fas fa-flag fa-2x mb-3"></i>
+                        <h2 class="mb-2 fw-bold">@(dashboardData?.FlaggedStudents ?? 0)</h2>
+                        <p class="mb-0 fw-semibold">Total Flagged Students</p>
                 </div>
             </div>
         </div>
-        <div class="col-md-4">
-            <div class="card bg-warning text-dark">
-                <div class="card-body text-center">
-                    <i class="fas fa-graduation-cap fa-2x mb-2"></i>
-                    <h3 class="mb-1">3</h3>
-                    <p class="mb-0">Grade Levels Affected</p>
+            <div class="col-md-4 mb-3">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-body text-center bg-warning text-dark rounded-3">
+                        <i class="fas fa-graduation-cap fa-2x mb-3"></i>
+                        <h2 class="mb-2 fw-bold">@(dashboardData?.GradeLevelsAffected ?? 0)</h2>
+                        <p class="mb-0 fw-semibold">Grade Levels Affected</p>
                 </div>
             </div>
         </div>
-        <div class="col-md-4">
-            <div class="card bg-info text-white">
-                <div class="card-body text-center">
-                    <i class="fas fa-users fa-2x mb-2"></i>
-                    <h3 class="mb-1">5</h3>
-                    <p class="mb-0">Sections Monitored</p>
+            <div class="col-md-4 mb-3">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-body text-center bg-info text-white rounded-3">
+                        <i class="fas fa-users fa-2x mb-3"></i>
+                        <h2 class="mb-2 fw-bold">@(dashboardData?.SectionsMonitored ?? 0)</h2>
+                        <p class="mb-0 fw-semibold">Sections Monitored</p>
+                </div>
                 </div>
             </div>
         </div>
-    </div>
 
-    <!-- Flagged Students Table -->
+
+    <!-- Students at Risk Table -->
     <div class="row">
         <div class="col-12">
-            <div class="card shadow">
-                <div class="card-header bg-danger text-white">
+            <div class="card border-0 shadow-lg">
+                <div class="card-header bg-gradient-danger text-white">
                     <div class="d-flex justify-content-between align-items-center">
-                        <h5 class="mb-0">
+                        <h5 class="mb-0 fw-bold">
                             <i class="fas fa-exclamation-triangle me-2"></i>Students at Risk (3+ Absences)
                         </h5>
-                        <span class="badge bg-light text-dark">
-                            <i class="fas fa-calendar me-1"></i>As of September
+                        <span class="badge bg-light text-dark fw-semibold" style="padding: 1.2rem 2rem; border-radius: 0; min-width: 180px; font-size: 1.2rem; display: inline-flex; align-items: center; justify-content: center; line-height: 1;">
+                            <i class="fas fa-calendar me-1"></i>@DateTime.Now.ToString("MMM dd, yyyy")
                         </span>
                     </div>
                 </div>
                 <div class="card-body p-0">
-                    <div class="table-responsive">
-                        <table class="table table-hover mb-0">
-                            <thead class="table-light">
+                    <div class="table-responsive" style="position: relative; overflow: hidden;">
+                        <table class="table mb-0" style="position: relative; z-index: 1;">
+                            <thead class="table-dark">
                                 <tr>
-                                    <th class="border-0">Grade Level</th>
-                                    <th class="border-0">Section</th>
-                                    <th class="border-0">Student Name</th>
-                                    <th class="border-0">Gender</th>
-                                    <th class="border-0 text-center">Absences</th>
-                                    <th class="border-0 text-center">Status</th>
-                                    <th class="border-0 text-center">Action</th>
+                                    <th class="text-center">Grade</th>
+                                    <th class="text-center">Section</th>
+                                    <th>Student Name</th>
+                                    <th class="text-center">Gender</th>
+                                    <th class="text-center">Absences</th>
+                                    <th class="text-center">Status</th>
+                                    <th class="text-center">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                <!-- Grade 11 Students -->
-                                <tr class="table-primary">
-                                    <td colspan="7" class="fw-bold text-primary">
-                                        <i class="fas fa-graduation-cap me-2"></i>Grade 11
-                                    </td>
-                                </tr>
-                                
-                                <!-- HUMSS 2 Section -->
-                                <tr class="table-info">
-                                    <td colspan="7" class="fw-bold text-info ps-4">
-                                        <i class="fas fa-users me-2"></i>HUMSS 2 Section
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td class="ps-5">Grade 11</td>
-                                    <td>HUMSS 2</td>
-                                    <td class="fw-semibold">Delacruz, Juan</td>
-                                    <td>
-                                        <i class="fas fa-male text-primary me-1"></i>Male
-                                    </td>
-                                    <td class="text-center">
-                                        <span class="badge bg-danger fs-6">3</span>
-                                    </td>
-                                    <td class="text-center">
-                                        <span class="badge bg-danger">
-                                            <i class="fas fa-flag me-1"></i>Flagged
-                                        </span>
-                                    </td>
-                                    <td class="text-center">
-                                        <div class="d-flex gap-1 justify-content-center">
-                                            <button class="btn btn-sm btn-outline-warning">
-                                                <i class="fas fa-eye me-1"></i>View Details
-                                            </button>
-                                            <button class="btn btn-sm btn-outline-info">
-                                                <i class="fas fa-clock me-1"></i>Pending
-                                            </button>
-                                            <button class="btn btn-sm btn-outline-success">
-                                                <i class="fas fa-check me-1"></i>Resolve
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td class="ps-5">Grade 11</td>
-                                    <td>HUMSS 2</td>
-                                    <td class="fw-semibold">Asuncion, Maria</td>
-                                    <td>
-                                        <i class="fas fa-female text-pink me-1"></i>Female
-                                    </td>
-                                    <td class="text-center">
-                                        <span class="badge bg-danger fs-6">3</span>
-                                    </td>
-                                    <td class="text-center">
-                                        <span class="badge bg-danger">
-                                            <i class="fas fa-flag me-1"></i>Flagged
-                                        </span>
-                                    </td>
-                                    <td class="text-center">
-                                        <div class="d-flex gap-1 justify-content-center">
-                                            <button class="btn btn-sm btn-outline-warning">
-                                                <i class="fas fa-eye me-1"></i>View Details
-                                            </button>
-                                            <button class="btn btn-sm btn-outline-info">
-                                                <i class="fas fa-clock me-1"></i>Pending
-                                            </button>
-                                            <button class="btn btn-sm btn-outline-success">
-                                                <i class="fas fa-check me-1"></i>Resolve
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
+                                @if (dashboardData?.StudentsAtRisk?.Any() == true)
+                                {
+                                    var groupedStudents = dashboardData.StudentsAtRisk
+                                        .OrderBy(s => s.GradeLevel)
+                                        .ThenBy(s => s.Section)
+                                        .ThenBy(s => s.FullName)
+                                        .GroupBy(s => new { s.GradeLevel, s.Section });
 
-                                <!-- STEM 1 Section -->
-                                <tr class="table-info">
-                                    <td colspan="7" class="fw-bold text-info ps-4">
-                                        <i class="fas fa-users me-2"></i>STEM 1 Section
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td class="ps-5">Grade 11</td>
-                                    <td>STEM 1</td>
-                                    <td class="fw-semibold">Santos, Pedro</td>
-                                    <td>
-                                        <i class="fas fa-male text-primary me-1"></i>Male
-                                    </td>
-                                    <td class="text-center">
-                                        <span class="badge bg-danger fs-6">4</span>
-                                    </td>
-                                    <td class="text-center">
-                                        <span class="badge bg-danger">
-                                            <i class="fas fa-flag me-1"></i>Flagged
-                                        </span>
-                                    </td>
-                                    <td class="text-center">
-                                        <div class="d-flex gap-1 justify-content-center">
-                                            <button class="btn btn-sm btn-outline-warning">
-                                                <i class="fas fa-eye me-1"></i>View Details
-                                            </button>
-                                            <button class="btn btn-sm btn-outline-info">
-                                                <i class="fas fa-clock me-1"></i>Pending
-                                            </button>
-                                            <button class="btn btn-sm btn-outline-success">
-                                                <i class="fas fa-check me-1"></i>Resolve
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
-
-                                <!-- Grade 10 Students -->
-                                <tr class="table-success">
-                                    <td colspan="7" class="fw-bold text-success">
-                                        <i class="fas fa-graduation-cap me-2"></i>Grade 10
-                                    </td>
-                                </tr>
-                                
-                                <!-- ABM 1 Section -->
-                                <tr class="table-info">
-                                    <td colspan="7" class="fw-bold text-info ps-4">
-                                        <i class="fas fa-users me-2"></i>ABM 1 Section
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td class="ps-5">Grade 10</td>
-                                    <td>ABM 1</td>
-                                    <td class="fw-semibold">Garcia, Ana</td>
-                                    <td>
-                                        <i class="fas fa-female text-pink me-1"></i>Female
-                                    </td>
-                                    <td class="text-center">
-                                        <span class="badge bg-danger fs-6">3</span>
-                                    </td>
-                                    <td class="text-center">
-                                        <span class="badge bg-danger">
-                                            <i class="fas fa-flag me-1"></i>Flagged
-                                        </span>
-                                    </td>
-                                    <td class="text-center">
-                                        <div class="d-flex gap-1 justify-content-center">
-                                            <button class="btn btn-sm btn-outline-warning">
-                                                <i class="fas fa-eye me-1"></i>View Details
-                                            </button>
-                                            <button class="btn btn-sm btn-outline-info">
-                                                <i class="fas fa-clock me-1"></i>Pending
-                                            </button>
-                                            <button class="btn btn-sm btn-outline-success">
-                                                <i class="fas fa-check me-1"></i>Resolve
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td class="ps-5">Grade 10</td>
-                                    <td>ABM 1</td>
-                                    <td class="fw-semibold">Reyes, Carlos</td>
-                                    <td>
-                                        <i class="fas fa-male text-primary me-1"></i>Male
-                                    </td>
-                                    <td class="text-center">
-                                        <span class="badge bg-danger fs-6">5</span>
-                                    </td>
-                                    <td class="text-center">
-                                        <span class="badge bg-danger">
-                                            <i class="fas fa-flag me-1"></i>Flagged
-                                        </span>
-                                    </td>
-                                    <td class="text-center">
-                                        <div class="d-flex gap-1 justify-content-center">
-                                            <button class="btn btn-sm btn-outline-warning">
-                                                <i class="fas fa-eye me-1"></i>View Details
-                                            </button>
-                                            <button class="btn btn-sm btn-outline-info">
-                                                <i class="fas fa-clock me-1"></i>Pending
-                                            </button>
-                                            <button class="btn btn-sm btn-outline-success">
-                                                <i class="fas fa-check me-1"></i>Resolve
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
-
-                                <!-- Grade 9 Students -->
-                                <tr class="table-warning">
-                                    <td colspan="7" class="fw-bold text-warning">
-                                        <i class="fas fa-graduation-cap me-2"></i>Grade 9
-                                    </td>
-                                </tr>
-                                
-                                <!-- Grade 9 - Section A -->
-                                <tr class="table-info">
-                                    <td colspan="7" class="fw-bold text-info ps-4">
-                                        <i class="fas fa-users me-2"></i>Grade 9 - Section A
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td class="ps-5">Grade 9</td>
-                                    <td>Section A</td>
-                                    <td class="fw-semibold">Lopez, Sofia</td>
-                                    <td>
-                                        <i class="fas fa-female text-pink me-1"></i>Female
-                                    </td>
-                                    <td class="text-center">
-                                        <span class="badge bg-danger fs-6">3</span>
-                                    </td>
-                                    <td class="text-center">
-                                        <span class="badge bg-danger">
-                                            <i class="fas fa-flag me-1"></i>Flagged
-                                        </span>
-                                    </td>
-                                    <td class="text-center">
-                                        <div class="d-flex gap-1 justify-content-center">
-                                            <button class="btn btn-sm btn-outline-warning">
-                                                <i class="fas fa-eye me-1"></i>View Details
-                                            </button>
-                                            <button class="btn btn-sm btn-outline-info">
-                                                <i class="fas fa-clock me-1"></i>Pending
-                                            </button>
-                                            <button class="btn btn-sm btn-outline-success">
-                                                <i class="fas fa-check me-1"></i>Resolve
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td class="ps-5">Grade 9</td>
-                                    <td>Section A</td>
-                                    <td class="fw-semibold">Mendoza, Luis</td>
-                                    <td>
-                                        <i class="fas fa-male text-primary me-1"></i>Male
-                                    </td>
-                                    <td class="text-center">
-                                        <span class="badge bg-danger fs-6">4</span>
-                                    </td>
-                                    <td class="text-center">
-                                        <span class="badge bg-danger">
-                                            <i class="fas fa-flag me-1"></i>Flagged
-                                        </span>
-                                    </td>
-                                    <td class="text-center">
-                                        <div class="d-flex gap-1 justify-content-center">
-                                            <button class="btn btn-sm btn-outline-warning">
-                                                <i class="fas fa-eye me-1"></i>View Details
-                                            </button>
-                                            <button class="btn btn-sm btn-outline-info">
-                                                <i class="fas fa-clock me-1"></i>Pending
-                                            </button>
-                                            <button class="btn btn-sm btn-outline-success">
-                                                <i class="fas fa-check me-1"></i>Resolve
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td class="ps-5">Grade 9</td>
-                                    <td>Section A</td>
-                                    <td class="fw-semibold">Torres, Elena</td>
-                                    <td>
-                                        <i class="fas fa-female text-pink me-1"></i>Female
-                                    </td>
-                                    <td class="text-center">
-                                        <span class="badge bg-danger fs-6">3</span>
-                                    </td>
-                                    <td class="text-center">
-                                        <span class="badge bg-danger">
-                                            <i class="fas fa-flag me-1"></i>Flagged
-                                        </span>
-                                    </td>
-                                    <td class="text-center">
-                                        <div class="d-flex gap-1 justify-content-center">
-                                            <button class="btn btn-sm btn-outline-warning">
-                                                <i class="fas fa-eye me-1"></i>View Details
-                                            </button>
-                                            <button class="btn btn-sm btn-outline-info">
-                                                <i class="fas fa-clock me-1"></i>Pending
-                                            </button>
-                                            <button class="btn btn-sm btn-outline-success">
-                                                <i class="fas fa-check me-1"></i>Resolve
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
+                                    @foreach (var group in groupedStudents)
+                                    {
+                                        <!-- Grade Level Header Row -->
+                                        <tr class="table-info">
+                                            <td colspan="7" class="fw-bold py-3">
+                                                <i class="fas fa-graduation-cap me-2 text-primary"></i>
+                                                Grade @group.Key.GradeLevel
+                                            </td>
+                                        </tr>
+                                        
+                                        <!-- Section Header Row -->
+                                        <tr class="table-light">
+                                            <td colspan="7" class="fw-semibold py-2">
+                                                <i class="fas fa-users me-2 text-info"></i>
+                                                @group.Key.Section Section
+                                            </td>
+                                        </tr>
+                                        
+                                        <!-- Student Rows -->
+                                        @foreach (var student in group)
+                                        {
+                                            <tr>
+                                                <td class="text-center">
+                                                    <span class="badge bg-primary">@student.GradeLevel</span>
+                                                </td>
+                                                <td class="text-center">
+                                                    <span class="badge bg-info">@(student.Section ?? "N/A")</span>
+                                                </td>
+                                                <td class="fw-bold">@(student.FullName ?? "Unknown")</td>
+                                                <td class="text-center">
+                                                    <i class="fas fa-@(student.Gender?.ToLower() == "male" ? "male" : "female") text-@(student.Gender?.ToLower() == "male" ? "primary" : "pink") me-1"></i>@(student.Gender ?? "Unknown")
+                                                </td>
+                                                <td class="text-center">
+                                                    <span class="badge bg-danger">@student.AbsentDays</span>
+                                                    @if (!string.IsNullOrEmpty(student.AbsentDates))
+                                                    {
+                                                        <br>
+                                                        <small class="text-muted">
+                                                            <i class="fas fa-calendar-alt me-1"></i>
+                                                            @student.AbsentDates
+                                                        </small>
+                                                    }
+                                                </td>
+                                                <td class="text-center">
+                                                    @if (student.AbsentDays >= 3)
+                                                    {
+                                                        <span class="badge bg-danger text-white">
+                                                            <i class="fas fa-exclamation-triangle me-1"></i>Critical
+                                                        </span>
+                                                    }
+                                                    else if (student.AbsentDays == 2)
+                                                    {
+                                                        <span class="badge bg-warning text-dark">
+                                                            <i class="fas fa-exclamation-circle me-1"></i>Warning
+                                                        </span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="badge bg-info text-white">
+                                                            <i class="fas fa-info-circle me-1"></i>Monitor
+                                                        </span>
+                                                    }
+                                                </td>
+                                                <td class="text-center">
+                                                    <button class="btn btn-sm btn-outline-warning me-1" @onclick="() => ViewStudentDetails(student.StudentId)" title="View Details">
+                                                        <i class="fas fa-eye"></i>
+                                                    </button>
+                                                    <button class="btn btn-sm btn-outline-info me-1" @onclick="() => MarkAsPending(student.StudentId)" title="Mark as Pending">
+                                                        <i class="fas fa-clock"></i>
+                                                    </button>
+                                                    <button class="btn btn-sm btn-outline-success" @onclick="() => ResolveStudent(student.StudentId)" title="Resolve Issue">
+                                                        <i class="fas fa-check"></i>
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        }
+                                    }
+                                }
+                                else
+                                {
+                                    <tr>
+                                        <td colspan="7" class="text-center py-4">
+                                            <div class="text-muted">
+                                                <i class="fas fa-check-circle fa-2x mb-2 text-success"></i>
+                                                <p class="mb-0">No students at risk found. Great job!</p>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                }
                             </tbody>
                         </table>
                     </div>
@@ -366,14 +210,113 @@
     <!-- Action Buttons -->
     <div class="row mt-4">
         <div class="col-12">
-            <div class="d-flex justify-content-center gap-3">
-                <button class="btn btn-info btn-lg">
+                <div class="d-flex justify-content-center gap-3 flex-wrap">
+                    <button class="btn btn-info btn-lg px-4 py-3 rounded-pill shadow-sm" @onclick="GenerateRiskReport">
                     <i class="fas fa-chart-bar me-2"></i>Generate Risk Report
                 </button>
+                    <button class="btn btn-success btn-lg px-4 py-3 rounded-pill shadow-sm" @onclick="RefreshData">
+                        <i class="fas fa-sync-alt me-2"></i>Refresh Data
+                    </button>
+                    <button class="btn btn-outline-primary btn-lg px-4 py-3 rounded-pill shadow-sm" @onclick="ExportData">
+                        <i class="fas fa-download me-2"></i>Export Data
+                    </button>
             </div>
         </div>
     </div>
+    }
 </div>
+
+@code {
+    private GuidanceDashboardData? dashboardData;
+    private bool isLoading = true;
+    private string errorMessage = string.Empty;
+    private UserInfo? currentUser;
+
+    protected override async Task OnInitializedAsync()
+    {
+        currentUser = await AuthService.GetCurrentUserAsync();
+        
+        if (currentUser == null)
+        {
+            // Redirect to login if not authenticated
+            return;
+        }
+
+        if (currentUser.UserType != UserType.GuidanceCounselor)
+        {
+            errorMessage = "Access denied. This dashboard is only for guidance counselors.";
+            isLoading = false;
+            return;
+        }
+
+        await LoadDashboardData();
+    }
+
+    private async Task LoadDashboardData()
+    {
+        try
+        {
+            isLoading = true;
+            errorMessage = string.Empty;
+            StateHasChanged();
+
+            var response = await Http.GetFromJsonAsync<GuidanceDashboardData>($"api/guidance/dashboard/{currentUser.UserId}");
+            
+            if (response != null)
+            {
+                dashboardData = response;
+            }
+            else
+            {
+                errorMessage = "Failed to load dashboard data.";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"An error occurred while loading dashboard data: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task RefreshData()
+    {
+        await LoadDashboardData();
+    }
+
+    private void ViewStudentDetails(string studentId)
+    {
+        // TODO: Implement student details view
+        Console.WriteLine($"Viewing details for student: {studentId}");
+    }
+
+    private void MarkAsPending(string studentId)
+    {
+        // TODO: Implement mark as pending functionality
+        Console.WriteLine($"Marking student as pending: {studentId}");
+    }
+
+    private void ResolveStudent(string studentId)
+    {
+        // TODO: Implement resolve student functionality
+        Console.WriteLine($"Resolving student: {studentId}");
+    }
+
+    private void GenerateRiskReport()
+    {
+        // TODO: Implement risk report generation
+        Console.WriteLine("Generating risk report...");
+    }
+
+    private void ExportData()
+    {
+        // TODO: Implement data export functionality
+        Console.WriteLine("Exporting data...");
+    }
+}
 
 <style>
     .text-pink {
@@ -442,10 +385,229 @@
     
     .table td {
         vertical-align: middle;
+        padding: 0.75rem;
+    }
+    
+    .table th {
+        font-weight: 600;
+        text-transform: uppercase;
+        font-size: 0.875rem;
+        letter-spacing: 0.5px;
+        padding: 0.75rem;
+        background-color: #343a40;
+        color: white;
+    }
+    
+    .table tbody tr:hover {
+        background-color: rgba(0,123,255,0.05);
+    }
+    
+    /* Grouped Table Styling */
+    .table-info {
+        background-color: rgba(13, 202, 240, 0.15) !important;
+        border-left: 4px solid #0dcaf0;
+    }
+    
+    .table-light {
+        background-color: rgba(248, 249, 250, 0.8) !important;
+        border-left: 4px solid #6c757d;
+    }
+    
+    .table tbody tr:nth-of-type(even) {
+        background-color: rgba(0,0,0,0.02);
+    }
+    
+    .table tbody tr:nth-of-type(odd) {
+        background-color: rgba(0,0,0,0.01);
+    }
+    
+    /* Fix table layout issues */
+    .table {
+        table-layout: fixed;
+        width: 100%;
+    }
+    
+    .table td, .table th {
+        display: table-cell !important;
+        visibility: visible !important;
+        position: relative;
+        overflow: hidden;
+        white-space: nowrap;
+    }
+    
+    .table td {
+        vertical-align: middle;
+        padding: 0.75rem;
+        border: 1px solid #dee2e6;
+    }
+    
+    .table th {
+        vertical-align: middle;
+        padding: 0.75rem;
+        border: 1px solid #dee2e6;
+    }
+    
+    /* Fix table responsiveness */
+    .table-responsive {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        position: relative;
+    }
+    
+    /* Prevent content from floating out of cells */
+    .table td * {
+        position: relative;
+        z-index: 1;
+    }
+    
+    /* Fix badge positioning in table cells */
+    .table td .badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        z-index: 1;
+        margin: 0;
+        border-radius: 0;
+        padding: 1rem 1.5rem;
+        min-width: 70px;
+        text-align: center;
+        font-size: 1.1rem;
+        font-weight: 600;
+        line-height: 1;
+    }
+    
+    /* Ensure table cells contain their content */
+    .table td {
+        contain: layout style;
+    }
+    
+    /* Ensure Absences column is visible */
+    .table td:nth-child(5) {
+        display: table-cell !important;
+        visibility: visible !important;
+    }
+    
+    .table th:nth-child(5) {
+        display: table-cell !important;
+        visibility: visible !important;
+    }
+    
+    .badge {
+        font-size: 1.1rem;
+        padding: 1rem 1.5rem;
+        border-radius: 0;
+        font-weight: 600;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 80px;
+        text-align: center;
+        line-height: 1;
+    }
+    
+    .btn-sm {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.875rem;
+        border-radius: 4px;
     }
     
     .fs-6 {
         font-size: 1rem !important;
+    }
+    
+    .fs-5 {
+        font-size: 1.1rem !important;
+    }
+    
+    /* Gradient Backgrounds */
+    .bg-gradient-primary {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    }
+    
+    .bg-gradient-danger {
+        background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%) !important;
+    }
+    
+    /* Enhanced Card Styling */
+    .card {
+        transition: transform 0.2s ease-in-out;
+    }
+    
+    .card:hover {
+        transform: translateY(-2px);
+    }
+    
+    /* Enhanced Button Styling */
+    .btn {
+        transition: all 0.3s ease;
+    }
+    
+    .btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    }
+    
+    /* Enhanced Table Styling */
+    .table-hover tbody tr:hover {
+        background-color: rgba(0,0,0,0.05);
+    }
+    
+    .table th {
+        border-bottom: 2px solid #dee2e6;
+    }
+    
+    .table td {
+        padding: 1rem 0.75rem;
+    }
+    
+    /* Enhanced Badge Styling */
+    .badge {
+        border-radius: 8px;
+    }
+    
+    /* Loading Animation */
+    .spinner-border {
+        width: 3rem;
+        height: 3rem;
+    }
+    
+    /* Shadow Effects */
+    .shadow-sm {
+        box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075) !important;
+    }
+    
+    .shadow-lg {
+        box-shadow: 0 1rem 3rem rgba(0, 0, 0, 0.175) !important;
+    }
+    
+    /* Fix for text glitches */
+    .card-header h5 {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    
+    /* Hide notification badge - but keep table badges */
+    .header-actions .badge.bg-danger {
+        display: none !important;
+    }
+    
+    /* Increase welcome text font size */
+    .navbar-brand, .navbar-text {
+        font-size: 1.4rem !important;
+        font-weight: 700 !important;
+    }
+    
+    /* Target specific welcome text elements */
+    h1, h2, h3, h4, h5, h6 {
+        font-size: 1.3rem !important;
+    }
+    
+    /* Welcome text in navigation */
+    .navbar .navbar-brand {
+        font-size: 1.5rem !important;
+        font-weight: 700 !important;
     }
     
     /* Mobile Responsive */
@@ -458,18 +620,22 @@
             padding: 1rem;
         }
         
+        .table-responsive {
+            font-size: 0.875rem;
+        }
+        
+        .btn-sm {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.75rem;
+        }
+        
         .btn-lg {
-            padding: 0.75rem 1rem;
-            font-size: 1rem;
+            padding: 0.5rem 1rem;
+            font-size: 0.9rem;
         }
         
-        .d-flex.gap-3 {
-            flex-direction: column;
+        .d-flex.gap-2 {
             gap: 0.5rem !important;
-        }
-        
-        .d-flex.gap-3 .btn {
-            width: 100%;
         }
     }
 </style>

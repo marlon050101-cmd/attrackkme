@@ -39,6 +39,12 @@ namespace ServerAtrrak
             
             // Register QR validation services
             builder.Services.AddScoped<QRValidationService>();
+            
+            // Register guidance services
+            builder.Services.AddScoped<IGuidanceService, GuidanceServiceNoDateFilter>();
+            
+            // Register teacher services
+            builder.Services.AddScoped<TeacherService>();
   
             builder.Services.AddCors(options =>
             {

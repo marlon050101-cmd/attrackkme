@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Data;
 using System.Net.Http.Json;
 using System.Threading.Tasks;
+using AttrackSharedClass.Models;
 
 namespace ScannerMaui.Services
 {
@@ -338,25 +339,25 @@ namespace ScannerMaui.Services
                     
                     // Create a new record for this TimeIn/TimeOut scan
                     // This ensures both TimeIn and TimeOut appear separately in pending list
-                    var attendanceId = Guid.NewGuid().ToString();
-                    
+                        var attendanceId = Guid.NewGuid().ToString();
+                        
                     System.Diagnostics.Debug.WriteLine($"Creating new {attendanceType} record for student {studentId} on {today}. Record ID: {attendanceId}");
-                    
-                    var insertCommand = new SqliteCommand(
-                        "INSERT INTO offline_daily_attendance (attendance_id, student_id, date, time_in, time_out, status, device_id, is_synced, attendance_type) VALUES (@attendanceId, @studentId, @date, @timeIn, @timeOut, @status, @deviceId, @isSynced, @attendanceType)",
-                        connection);
-                    
-                    insertCommand.Parameters.AddWithValue("@attendanceId", attendanceId);
-                    insertCommand.Parameters.AddWithValue("@studentId", studentId);
-                    insertCommand.Parameters.AddWithValue("@date", today);
-                    insertCommand.Parameters.AddWithValue("@timeIn", attendanceType == "TimeIn" ? timeValue : (object)DBNull.Value);
-                    insertCommand.Parameters.AddWithValue("@timeOut", attendanceType == "TimeOut" ? timeValue : (object)DBNull.Value);
-                    insertCommand.Parameters.AddWithValue("@status", "Present");
-                    insertCommand.Parameters.AddWithValue("@deviceId", deviceIdValue);
-                    insertCommand.Parameters.AddWithValue("@isSynced", 0);
-                    insertCommand.Parameters.AddWithValue("@attendanceType", attendanceType);
-                    
-                    var insertResult = await insertCommand.ExecuteNonQueryAsync();
+                        
+                        var insertCommand = new SqliteCommand(
+                            "INSERT INTO offline_daily_attendance (attendance_id, student_id, date, time_in, time_out, status, device_id, is_synced, attendance_type) VALUES (@attendanceId, @studentId, @date, @timeIn, @timeOut, @status, @deviceId, @isSynced, @attendanceType)",
+                            connection);
+                        
+                        insertCommand.Parameters.AddWithValue("@attendanceId", attendanceId);
+                        insertCommand.Parameters.AddWithValue("@studentId", studentId);
+                        insertCommand.Parameters.AddWithValue("@date", today);
+                        insertCommand.Parameters.AddWithValue("@timeIn", attendanceType == "TimeIn" ? timeValue : (object)DBNull.Value);
+                        insertCommand.Parameters.AddWithValue("@timeOut", attendanceType == "TimeOut" ? timeValue : (object)DBNull.Value);
+                        insertCommand.Parameters.AddWithValue("@status", "Present");
+                        insertCommand.Parameters.AddWithValue("@deviceId", deviceIdValue);
+                        insertCommand.Parameters.AddWithValue("@isSynced", 0);
+                        insertCommand.Parameters.AddWithValue("@attendanceType", attendanceType);
+                        
+                        var insertResult = await insertCommand.ExecuteNonQueryAsync();
                     System.Diagnostics.Debug.WriteLine($"Created new {attendanceType} record. Rows affected: {insertResult}");
                 }
                 else
@@ -1554,21 +1555,23 @@ namespace ScannerMaui.Services
                         
                         if (record.AttendanceType == "TimeIn")
                         {
-                            var request = new
+                            var request = new DailyTimeInRequest
                             {
                                 StudentId = record.StudentId,
                                 Date = record.ScanTime.Date,
-                                TimeIn = record.ScanTime.TimeOfDay
+                                TimeIn = record.ScanTime.TimeOfDay,
+                                TeacherId = record.TeacherId
                             };
                             response = await httpClient.PostAsJsonAsync("api/dailyattendance/daily-timein", request);
                         }
                         else
                         {
-                            var request = new
+                            var request = new DailyTimeOutRequest
                             {
                                 StudentId = record.StudentId,
                                 Date = record.ScanTime.Date,
-                                TimeOut = record.ScanTime.TimeOfDay
+                                TimeOut = record.ScanTime.TimeOfDay,
+                                TeacherId = record.TeacherId
                             };
                             response = await httpClient.PostAsJsonAsync("api/dailyattendance/daily-timeout", request);
                         }
@@ -2157,6 +2160,7 @@ namespace ScannerMaui.Services
         public string DeviceId { get; set; } = string.Empty;
         public bool IsSynced { get; set; }
         public DateTime CreatedAt { get; set; }
+        public string TeacherId { get; set; } = string.Empty;
     }
 
 

@@ -7,7 +7,8 @@
 @inject HttpClient Http
 @inject IJSRuntime JSRuntime
 @inject IAuthService AuthService
-
+@implements IDisposable
+@layout Layoutall
 <PageTitle>Student Daily Attendance Management</PageTitle>
 
 <div class="container-fluid">
@@ -32,10 +33,10 @@
                                     Current Teacher
                                 </h5>
                                 <p class="mb-0">
-                                    <strong>Alimpuangon, Lornilo S.</strong>
+                                    <strong>@currentTeacherName</strong>
                                     <br>
-                                    <small class="text-muted"> L
-                                        Section: <strong>HUMSS 2</strong> | School: <strong>Koronadal National Comprehensive High School</strong>
+                                    <small class="text-muted">
+                                        Section: <strong>@currentTeacherSection</strong> | School: <strong>@currentTeacherSchool</strong>
                                     </small>
                                     <br>
                                     <small class="text-muted">Managing student daily attendance</small>
@@ -52,7 +53,7 @@
                                 <div class="card bg-success text-white">
                                     <div class="card-body text-center">
                                         <i class="fas fa-check-circle fa-2x mb-2"></i>
-                                        <h3 class="mb-1">3</h3>
+                                        <h3 class="mb-1">@presentCount</h3>
                                         <p class="mb-0">Present Today</p>
                                     </div>
                                 </div>
@@ -61,7 +62,7 @@
                                 <div class="card bg-warning text-white">
                                     <div class="card-body text-center">
                                         <i class="fas fa-exclamation-triangle fa-2x mb-2"></i>
-                                        <h3 class="mb-1">1</h3>
+                                        <h3 class="mb-1">@lateCount</h3>
                                         <p class="mb-0">Late Today</p>
                                     </div>
                                 </div>
@@ -70,16 +71,16 @@
                                 <div class="card bg-danger text-white">
                                     <div class="card-body text-center">
                                         <i class="fas fa-clock fa-2x mb-2"></i>
-                                        <h3 class="mb-1">2</h3>
+                                        <h3 class="mb-1">@timeInOnlyCount</h3>
                                         <p class="mb-0">Time In Only</p>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
                             <div class="col-md-3">
                                 <div class="card bg-info text-white">
                                     <div class="card-body text-center">
                                         <i class="fas fa-user-check fa-2x mb-2"></i>
-                                        <h3 class="mb-1">1</h3>
+                                        <h3 class="mb-1">@completeCount</h3>
                                         <p class="mb-0">Complete</p>
                                     </div>
                                 </div>
@@ -95,9 +96,18 @@
                                             <h5 class="mb-0">
                                                 <i class="fas fa-calendar-day me-2"></i>Today's Attendance Records
                                             </h5>
-                                            <span class="badge bg-light text-dark">
-                                                <i class="fas fa-calendar me-1"></i>@DateTime.Today.ToString("MMMM dd, yyyy")
-                                            </span>
+                                            <div class="d-flex align-items-center gap-2">
+                                                <button class="btn btn-sm btn-outline-light" @onclick="RefreshData">
+                                                    <i class="fas fa-sync-alt me-1"></i>
+                                                    Refresh
+                                                </button>
+                                                <span class="badge bg-light text-dark">
+                                                    <i class="fas fa-calendar me-1"></i>@DateTime.Today.ToString("MMMM dd, yyyy")
+                                                </span>
+                                                <small class="text-muted">
+                                                    <i class="fas fa-clock me-1"></i>Last: @_lastRefreshTime.ToString("HH:mm:ss")
+                                                </small>
+                                            </div>
                                         </div>
                                     </div>
                                     <div class="card-body p-0">
@@ -110,90 +120,101 @@
                                                         <th class="border-0 text-center">Time Out</th>
                                                         <th class="border-0 text-center">Status</th>
                                                         <th class="border-0 text-center">Remarks</th>
+                                                        <th class="border-0 text-center">Action</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
-                                                    <!-- Present Students -->
-                                                    <tr class="table-success">
-                                                        <td colspan="5" class="fw-bold text-success">
-                                                            <i class="fas fa-check-circle me-2"></i>Present Students
-                                                        </td>
-                                                    </tr>
-                                                    <tr>
-                                                        <td class="ps-4 fw-semibold">Delacruz, Juan Miguel</td>
-                                                        <td class="text-center">
-                                                            <span class="badge bg-success fs-6">07:25 AM</span>
-                                                        </td>
-                                                        <td class="text-center">
-                                                            <span class="badge bg-danger fs-6">04:30 PM</span>
-                                                        </td>
-                                                        <td class="text-center">
-                                                            <span class="badge bg-success">
-                                                                <i class="fas fa-check me-1"></i>Present
-                                                            </span>
-                                                        </td>
-                                                        <td class="text-center">
-                                                            <span class="badge bg-info">Whole Day</span>
-                                                        </td>
-                                                    </tr>
-                                                    <tr>
-                                                        <td class="ps-4 fw-semibold">Jose, Maria Santos</td>
-                                                        <td class="text-center">
-                                                            <span class="badge bg-success fs-6">07:20 AM</span>
-                                                        </td>
-                                                        <td class="text-center">
-                                                            <span class="text-muted">-</span>
-                                                        </td>
-                                                        <td class="text-center">
-                                                            <span class="badge bg-success">
-                                                                <i class="fas fa-check me-1"></i>Present
-                                                            </span>
-                                                        </td>
-                                                        <td class="text-center">
-                                                            <span class="text-muted">-</span>
-                                                        </td>
-                                                    </tr>
-                                                    <tr>
-                                                        <td class="ps-4 fw-semibold">Asuncion, Pedro Cruz</td>
-                                                        <td class="text-center">
-                                                            <span class="badge bg-success fs-6">07:15 AM</span>
-                                                        </td>
-                                                        <td class="text-center">
-                                                            <span class="text-muted">-</span>
-                                                        </td>
-                                                        <td class="text-center">
-                                                            <span class="badge bg-success">
-                                                                <i class="fas fa-check me-1"></i>Present
-                                                            </span>
-                                                        </td>
-                                                        <td class="text-center">
-                                                            <span class="text-muted">-</span>
-                                                        </td>
-                                                    </tr>
-
-                                                    <!-- Late Students -->
-                                                    <tr class="table-warning">
-                                                        <td colspan="5" class="fw-bold text-warning">
-                                                            <i class="fas fa-exclamation-triangle me-2"></i>Late Students
-                                                        </td>
-                                                    </tr>
-                                                    <tr>
-                                                        <td class="ps-4 fw-semibold">De Ana, Ana Marie</td>
-                                                        <td class="text-center">
-                                                            <span class="badge bg-warning fs-6">07:45 AM</span>
-                                                        </td>
-                                                        <td class="text-center">
-                                                            <span class="text-muted">-</span>
-                                                        </td>
-                                                        <td class="text-center">
-                                                            <span class="badge bg-warning">
-                                                                <i class="fas fa-exclamation me-1"></i>Late
-                                                            </span>
-                                                        </td>
-                                                        <td class="text-center">
-                                                            <span class="text-muted">-</span>
-                                                        </td>
-                                                    </tr>
+                                                    @if (students.Any())
+                                                    {
+                                                        @foreach (var student in students.OrderBy(s => s.FullName))
+                                                        {
+                                                            var attendanceRecord = todayAttendanceRecords.FirstOrDefault(r => r.StudentId == student.StudentId);
+                                                            var status = attendanceRecord?.Status ?? "";
+                                                            var timeIn = attendanceRecord?.TimeIn ?? "";
+                                                            var timeOut = attendanceRecord?.TimeOut ?? "";
+                                                            var remarks = attendanceRecord?.Remarks ?? "";
+                                                            
+                                                            <tr class="@GetRowClass(status)">
+                                                                <td class="ps-4 fw-semibold">@student.FullName</td>
+                                                                <td class="text-center">
+                                                                    @if (!string.IsNullOrEmpty(timeIn))
+                                                                    {
+                                                                        <span class="badge @GetTimeBadgeClass(status) fs-6">@timeIn</span>
+                                                                    }
+                                                                    else
+                                                                    {
+                                                                        <span class="text-muted">-</span>
+                                                                    }
+                                                                </td>
+                                                                <td class="text-center">
+                                                                    @if (!string.IsNullOrEmpty(timeOut))
+                                                                    {
+                                                                        <span class="badge bg-danger fs-6">@timeOut</span>
+                                                                    }
+                                                                    else
+                                                                    {
+                                                                        <span class="text-muted">-</span>
+                                                                    }
+                                                                </td>
+                                                                <td class="text-center">
+                                                                    <span class="badge @GetStatusBadgeClass(status)">
+                                                                        <i class="fas fa-@GetStatusIcon(status) me-1"></i>@status
+                                                                    </span>
+                                                                </td>
+                                                                <td class="text-center">
+                                                                    @if (!string.IsNullOrEmpty(remarks))
+                                                                    {
+                                                                        <span class="badge bg-info">@remarks</span>
+                                                                    }
+                                                                    else if (status == "Present" && !string.IsNullOrEmpty(timeOut))
+                                                                    {
+                                                                        <span class="badge bg-success">Complete</span>
+                                                                    }
+                                                                    else if (status == "Present")
+                                                                    {
+                                                                        <span class="badge bg-warning">Time In Only</span>
+                                                                    }
+                                                                    else
+                                                                    {
+                                                                        <span class="text-muted">-</span>
+                                                                    }
+                                                                </td>
+                                                                <td class="text-center">
+                                                                    @{
+                                                                        // Debug logging
+                                                                        Console.WriteLine($"DEBUG: Student {student.FullName} - Status: {status}, HasRecord: {attendanceRecord != null}, RecordStatus: {attendanceRecord?.Status ?? "null"}");
+                                                                    }
+                                                                    @if (status == "Absent")
+                                                                    {
+                                                                        <button class="btn btn-sm btn-success" @onclick="() => CancelAbsent(student.StudentId, student.FullName)">
+                                                                            <i class="fas fa-undo me-1"></i>Cancel Absent
+                                                                        </button>
+                                                                    }
+                                                                    else if (string.IsNullOrEmpty(status))
+                                                                    {
+                                                                        <button class="btn btn-sm btn-danger" @onclick="() => ShowAbsentModal(student.StudentId, student.FullName)">
+                                                                            <i class="fas fa-times me-1"></i>Mark Absent
+                                                                        </button>
+                                                                    }
+                                                                    else
+                                                                    {
+                                                                        <span class="text-muted">-</span>
+                                                                    }
+                                                                </td>
+                                                            </tr>
+                                                        }
+                                                    }
+                                                    else
+                                                    {
+                                                        <tr>
+                                                            <td colspan="5" class="text-center py-4">
+                                                                <div class="text-muted">
+                                                                    <i class="fas fa-calendar-day fa-2x mb-2"></i>
+                                                                    <p class="mb-0">No students found for this teacher's class.</p>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    }
                                                 </tbody>
                                             </table>
                                         </div>
@@ -208,11 +229,75 @@
     </div>
 </div>
 
+<!-- Absent Reason Modal -->
+@if (showAbsentModal)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title">
+                        <i class="fas fa-times me-2"></i>Mark Student as Absent
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="CloseAbsentModal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label"><strong>Student:</strong> @selectedAbsentStudentName</label>
+                    </div>
+                    <div class="mb-3">
+                        <label for="absentReason" class="form-label">Reason for Absence:</label>
+                        <textarea class="form-control" id="absentReason" rows="3" @bind="absentReason" placeholder="Enter reason for absence..."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CloseAbsentModal">Cancel</button>
+                    <button type="button" class="btn btn-danger" @onclick="MarkStudentAbsent" disabled="@isProcessingAbsent">
+                        @if (isProcessingAbsent)
+                        {
+                            <span class="spinner-border spinner-border-sm me-2"></span>
+                        }
+                        <i class="fas fa-times me-1"></i>Mark as Absent
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Real-time Notification Toast -->
+@if (!string.IsNullOrEmpty(successMessage))
+{
+    <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 1055;">
+        <div class="toast show" role="alert" aria-live="assertive" aria-atomic="true">
+            <div class="toast-header bg-success text-white">
+                <i class="fas fa-check-circle me-2"></i>
+                <strong class="me-auto">New Attendance Record</strong>
+                <button type="button" class="btn-close btn-close-white" @onclick="() => successMessage = string.Empty"></button>
+            </div>
+            <div class="toast-body">
+                @successMessage
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     // Data
     private List<Student> students = new();
     private List<DailyAttendanceRecord> attendanceHistory = new();
     private List<DailyAttendanceRecord> todayAttendanceRecords = new();
+    
+    // Summary counts
+    private int presentCount = 0;
+    private int lateCount = 0;
+    private int timeInOnlyCount = 0;
+    private int completeCount = 0;
+    
+    // Real-time refresh
+    private System.Threading.Timer? _refreshTimer;
+    private bool _isRefreshing = false;
+    private DateTime _lastRefreshTime = DateTime.Now;
 
     // UI State
     private string selectedStudentId = "";
@@ -226,19 +311,30 @@
     private DateTime selectedDate = DateTime.Today;
     private string attendanceStatus = "Not Marked";
     private string timeInTime = "";
-    private bool isLoadingHistory = false;
-    private bool isLoadingTodayRecords = false;
     private bool isProcessing = false;
 
     // Messages
     private string successMessage = "";
     private string errorMessage = "";
+    
+    // Absent modal
+    private bool showAbsentModal = false;
+    private string selectedAbsentStudentId = "";
+    private string selectedAbsentStudentName = "";
+    private string absentReason = "";
+    private bool isProcessingAbsent = false;
 
     protected override async Task OnInitializedAsync()
     {
         await LoadCurrentTeacher();
         await LoadStudents();
         await LoadTodayAttendanceRecords();
+        
+        // Calculate summary counts after loading both students and attendance records
+        CalculateSummaryCounts();
+        
+        // Start real-time refresh timer (every 10 seconds)
+        StartRefreshTimer();
     }
 
     private async Task LoadStudents()
@@ -246,14 +342,23 @@
         try
         {
             // Load students filtered by teacher's section and school
-            var response = await Http.GetFromJsonAsync<List<Student>>($"api/register/students?teacherId={currentTeacherId}");
-            if (response != null)
+            try
             {
-                students = response;
+                var response = await Http.GetFromJsonAsync<List<Student>>($"{ApiConfig.BaseUrl}/api/register/students?teacherId={currentTeacherId}");
+                if (response != null)
+                {
+                    students = response;
+                }
+            }
+            catch (Exception apiEx)
+            {
+                Console.WriteLine($"Error loading students: {apiEx.Message}");
+                throw;
             }
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            Console.WriteLine($"DEBUG: Error loading students: {ex.Message}");
             errorMessage = "Error loading students list";
         }
     }
@@ -262,23 +367,92 @@
     {
         if (string.IsNullOrEmpty(currentTeacherId)) return;
 
-        isLoadingTodayRecords = true;
-        StateHasChanged();
-
         try
         {
-            var response = await Http.GetFromJsonAsync<List<DailyAttendanceRecord>>($"api/dailyattendance/today/{currentTeacherId}");
+            var response = await Http.GetFromJsonAsync<List<DailyAttendanceRecord>>($"{ApiConfig.BaseUrl}/api/dailyattendance/today/{currentTeacherId}");
             todayAttendanceRecords = response ?? new List<DailyAttendanceRecord>();
+            
+            // Calculate summary counts
+            CalculateSummaryCounts();
         }
         catch (Exception)
         {
             todayAttendanceRecords = new List<DailyAttendanceRecord>();
         }
-        finally
+    }
+    
+    private void CalculateSummaryCounts()
+    {
+        presentCount = 0;
+        lateCount = 0;
+        timeInOnlyCount = 0;
+        completeCount = 0;
+        
+        foreach (var student in students)
         {
-            isLoadingTodayRecords = false;
-            StateHasChanged();
+            var attendanceRecord = todayAttendanceRecords.FirstOrDefault(r => r.StudentId == student.StudentId);
+            var status = attendanceRecord?.Status ?? "Absent";
+            
+            if (status == "Present")
+            {
+                presentCount++;
+                if (string.IsNullOrEmpty(attendanceRecord?.TimeOut))
+                {
+                    timeInOnlyCount++;
+                }
+                else
+                {
+                    completeCount++;
+                }
+            }
+            else if (status == "Late")
+            {
+                lateCount++;
+            }
         }
+    }
+    
+    private string GetRowClass(string status)
+    {
+        return status switch
+        {
+            "Present" => "table-success",
+            "Late" => "table-warning",
+            "Absent" => "table-danger",
+            _ => ""
+        };
+    }
+    
+    private string GetTimeBadgeClass(string status)
+    {
+        return status switch
+        {
+            "Present" => "bg-success",
+            "Late" => "bg-warning",
+            _ => "bg-secondary"
+        };
+    }
+    
+    private string GetStatusBadgeClass(string status)
+    {
+        return status switch
+        {
+            "Present" => "bg-success",
+            "Late" => "bg-warning",
+            "Absent" => "bg-danger",
+            _ => "bg-secondary"
+        };
+    }
+    
+    private string GetStatusIcon(string status)
+    {
+        return status switch
+        {
+            "Present" => "check",
+            "Late" => "exclamation",
+            "Absent" => "times",
+            _ => "question"
+        };
     }
 
     private async Task LoadCurrentTeacher()
@@ -286,13 +460,12 @@
         try
         {
             var currentUser = await AuthService.GetCurrentUserAsync();
-            
             if (currentUser != null && currentUser.UserType == UserType.Teacher)
             {
                 currentTeacherName = currentUser.Username;
                 
                 // Get detailed teacher information including section and school
-                var teacherResponse = await Http.GetFromJsonAsync<TeacherInfo>($"api/register/teacher-by-user/{currentUser.UserId}");
+                var teacherResponse = await Http.GetFromJsonAsync<TeacherInfo>($"{ApiConfig.BaseUrl}/api/register/teacher-by-user/{currentUser.UserId}");
                 if (teacherResponse != null)
                 {
                     currentTeacherId = teacherResponse.TeacherId;
@@ -312,8 +485,9 @@
                 errorMessage = "Please login as a teacher to access this page";
             }
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            Console.WriteLine($"DEBUG: Error loading teacher: {ex.Message}");
             errorMessage = "Error loading current teacher information";
         }
     }
@@ -383,9 +557,6 @@
     {
         if (string.IsNullOrEmpty(selectedStudentId)) return;
 
-        isLoadingHistory = true;
-        StateHasChanged();
-
         try
         {
             var response = await Http.GetFromJsonAsync<List<DailyAttendanceRecord>>($"api/attendance/daily-history/{selectedStudentId}?days=30");
@@ -394,11 +565,6 @@
         catch (Exception)
         {
             attendanceHistory = new List<DailyAttendanceRecord>();
-        }
-        finally
-        {
-            isLoadingHistory = false;
-            StateHasChanged();
         }
     }
 
@@ -472,6 +638,186 @@
             StateHasChanged();
         }
     }
+    
+    private void StartRefreshTimer()
+    {
+        // Create a timer that calls RefreshData every 10 seconds
+        _refreshTimer = new System.Threading.Timer(async _ => await RefreshData(), null, TimeSpan.Zero, TimeSpan.FromSeconds(10));
+    }
+    
+    private async Task RefreshData()
+    {
+        if (_isRefreshing) return;
+        
+        _isRefreshing = true;
+        try
+        {
+            // Auto-absent functionality temporarily disabled
+            // var now = DateTime.Now;
+            // if (now.Hour == 18 && now.Minute == 0) // 6:00 PM exactly
+            // {
+            //     await AutoMarkAbsentStudents();
+            // }
+            
+            // Store previous count to detect new records
+            var previousCount = todayAttendanceRecords.Count;
+            
+            await LoadTodayAttendanceRecords();
+            _lastRefreshTime = DateTime.Now;
+            
+            // Check if new records were added
+            var newCount = todayAttendanceRecords.Count;
+            if (newCount > previousCount)
+            {
+                var newRecords = newCount - previousCount;
+                successMessage = $"🔄 {newRecords} new attendance record(s) detected!";
+                
+                // Auto-hide notification after 5 seconds
+                _ = Task.Delay(5000).ContinueWith(_ => {
+                    successMessage = string.Empty;
+                    InvokeAsync(StateHasChanged);
+                });
+            }
+            
+            // Trigger UI update
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error refreshing data: {ex.Message}");
+        }
+        finally
+        {
+            _isRefreshing = false;
+        }
+    }
+    
+    private void ShowAbsentModal(string studentId, string studentName)
+    {
+        selectedAbsentStudentId = studentId;
+        selectedAbsentStudentName = studentName;
+        absentReason = "";
+        showAbsentModal = true;
+    }
+    
+    private void CloseAbsentModal()
+    {
+        showAbsentModal = false;
+        selectedAbsentStudentId = "";
+        selectedAbsentStudentName = "";
+        absentReason = "";
+    }
+    
+    private async Task MarkStudentAbsent()
+    {
+        if (string.IsNullOrEmpty(selectedAbsentStudentId) || string.IsNullOrEmpty(absentReason))
+        {
+            errorMessage = "Please provide a reason for absence";
+            return;
+        }
+        
+        isProcessingAbsent = true;
+        StateHasChanged();
+        
+        try
+        {
+            var request = new
+            {
+                StudentId = selectedAbsentStudentId,
+                Date = DateTime.Today,
+                Status = "Absent",
+                Remarks = absentReason
+            };
+            
+            var response = await Http.PostAsJsonAsync($"{ApiConfig.BaseUrl}/api/dailyattendance/mark-absent", request);
+            
+            if (response.IsSuccessStatusCode)
+            {
+                successMessage = $"Student {selectedAbsentStudentName} marked as absent successfully!";
+                errorMessage = "";
+                
+                // Refresh attendance records
+                await LoadTodayAttendanceRecords();
+                CalculateSummaryCounts();
+                
+                // Close modal
+                CloseAbsentModal();
+                
+                // Auto-hide success message
+                _ = Task.Delay(3000).ContinueWith(_ => {
+                    successMessage = "";
+                    InvokeAsync(StateHasChanged);
+                });
+            }
+            else
+            {
+                var errorResponse = await response.Content.ReadAsStringAsync();
+                errorMessage = $"Error marking student as absent: {errorResponse}";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error marking student as absent: {ex.Message}";
+        }
+        finally
+        {
+            isProcessingAbsent = false;
+            StateHasChanged();
+        }
+    }
+    
+    private async Task CancelAbsent(string studentId, string studentName)
+    {
+        isProcessingAbsent = true;
+        StateHasChanged();
+        
+        try
+        {
+            var response = await Http.PostAsJsonAsync($"{ApiConfig.BaseUrl}/api/dailyattendance/cancel-absent", new { StudentId = studentId, Date = DateTime.Today });
+            
+            if (response.IsSuccessStatusCode)
+            {
+                successMessage = $"Absent status cancelled for {studentName}!";
+                errorMessage = "";
+                
+                // Refresh attendance records
+                await LoadTodayAttendanceRecords();
+                CalculateSummaryCounts();
+                
+                // Debug: Check the status after refresh
+                var studentRecord = todayAttendanceRecords.FirstOrDefault(r => r.StudentId == studentId);
+                Console.WriteLine($"DEBUG: After cancel - StudentId: {studentId}, Status: {studentRecord?.Status ?? "No record"}");
+                
+                // Force UI update
+                await InvokeAsync(StateHasChanged);
+                
+                // Auto-hide success message
+                _ = Task.Delay(3000).ContinueWith(_ => {
+                    successMessage = "";
+                    InvokeAsync(StateHasChanged);
+                });
+            }
+            else
+            {
+                var errorResponse = await response.Content.ReadAsStringAsync();
+                errorMessage = $"Error cancelling absent status: {errorResponse}";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error cancelling absent status: {ex.Message}";
+        }
+        finally
+        {
+            isProcessingAbsent = false;
+            StateHasChanged();
+        }
+    }
+    
+    public void Dispose()
+    {
+        _refreshTimer?.Dispose();
+    }
 }
 
 <style>
@@ -535,6 +881,30 @@
         background-color: rgba(255, 193, 7, 0.1) !important;
     }
     
+    /* Real-time refresh styles */
+    .fa-spin {
+        animation: fa-spin 1s infinite linear;
+    }
+    
+    .toast {
+        min-width: 300px;
+    }
+    
+    .toast-header {
+        border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    
+    /* Real-time indicator */
+    .real-time-indicator {
+        animation: pulse 2s infinite;
+    }
+    
+    @@keyframes pulse {
+        0% { opacity: 1; }
+        50% { opacity: 0.5; }
+        100% { opacity: 1; }
+    }
+    
     /* Mobile Responsive */
     @@media (max-width: 768px) {
         .container-fluid {
@@ -558,5 +928,17 @@
         .d-flex.gap-3 .btn {
             width: 100%;
         }
+        
+        .toast-container {
+            position: fixed !important;
+            top: 1rem !important;
+            right: 1rem !important;
+            left: 1rem !important;
+        }
+        
+        .toast {
+            min-width: auto;
+        }
     }
 </style>
+

@@ -8,7 +8,25 @@ namespace ScannerMaui
         {
             InitializeComponent();
 
-            MainPage = new NavigationPage(new MainPage());
+            // Create MainPage with proper error handling and NavigationPage wrapper
+            try
+            {
+                MainPage = new NavigationPage(new MainPage());
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error creating MainPage: {ex.Message}");
+                // Create a fallback page if MainPage fails
+                MainPage = new ContentPage
+                {
+                    Content = new Label
+                    {
+                        Text = "App initialization error. Please restart the app.",
+                        HorizontalOptions = LayoutOptions.Center,
+                        VerticalOptions = LayoutOptions.Center
+                    }
+                };
+            }
             
             // Auto-setup permissions on app startup
             _ = Task.Run(async () => await SetupPermissionsOnStartup());

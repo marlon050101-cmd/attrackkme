@@ -63,6 +63,7 @@ namespace ScannerMaui.Services
             try
             {
 #if ANDROID
+
                 // Generate a simple tone using Android's ToneGenerator
                 var toneGenerator = new ToneGenerator(Android.Media.Stream.System, 100);
                 

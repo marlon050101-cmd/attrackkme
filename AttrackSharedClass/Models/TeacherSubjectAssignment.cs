@@ -115,6 +115,7 @@ namespace AttrackSharedClass.Models
         public string Section { get; set; } = string.Empty;
         public string? Strand { get; set; }
         public string ParentsNumber { get; set; } = string.Empty;
+        public string Gender { get; set; } = string.Empty;
         public string SchoolName { get; set; } = string.Empty;
         public string? QRCodeData { get; set; }
         public bool IsValid { get; set; }

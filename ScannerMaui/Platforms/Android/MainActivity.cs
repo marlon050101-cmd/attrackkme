@@ -27,6 +27,36 @@ namespace ScannerMaui
             
             // Also request permissions when activity resumes
             RequestPermissionsOnResume();
+            
+            // Add error handling for navigation fragment issues
+            try
+            {
+                // Ensure proper fragment management
+                if (savedInstanceState != null)
+                {
+                    // Handle fragment restoration properly
+                    System.Diagnostics.Debug.WriteLine("Restoring fragments from savedInstanceState");
+                }
+                
+                // Fix for navigation fragment view ID issues
+                // Ensure the activity is properly initialized before any fragment operations
+                if (SupportFragmentManager != null)
+                {
+                    // Clear any existing fragments that might be causing issues
+                    var fragments = SupportFragmentManager.Fragments;
+                    if (fragments != null && fragments.Count > 0)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Found {fragments.Count} existing fragments");
+                        // Don't clear fragments here as it might cause other issues
+                        // Just ensure they're properly managed
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error in OnCreate: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"Stack trace: {ex.StackTrace}");
+            }
         }
         
         protected override void OnResume()
@@ -201,6 +231,45 @@ namespace ScannerMaui
                 {
                     System.Diagnostics.Debug.WriteLine("⚠️ Some permissions were denied. App may not function properly.");
                 }
+            }
+        }
+        
+        // Override to handle fragment lifecycle issues
+        protected override void OnDestroy()
+        {
+            try
+            {
+                // Clean up any fragments that might be causing issues
+                if (SupportFragmentManager != null)
+                {
+                    var fragments = SupportFragmentManager.Fragments;
+                    if (fragments != null)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Cleaning up {fragments.Count} fragments on destroy");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error during OnDestroy: {ex.Message}");
+            }
+            finally
+            {
+                base.OnDestroy();
+            }
+        }
+        
+        // Handle configuration changes that might cause fragment issues
+        public override void OnConfigurationChanged(Android.Content.Res.Configuration newConfig)
+        {
+            try
+            {
+                base.OnConfigurationChanged(newConfig);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error during configuration change: {ex.Message}");
+                // Continue execution even if there's an error
             }
         }
     }

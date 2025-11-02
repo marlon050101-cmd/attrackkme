@@ -20,12 +20,12 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <EnableDefaultCssItems>false</EnableDefaultCssItems>
         <Nullable>enable</Nullable>
-
+		<AndroidPackageFormat>apk</AndroidPackageFormat>
         <!-- Display name -->
         <ApplicationTitle>ScannerMaui</ApplicationTitle>
 
         <!-- App Identifier -->
-        <ApplicationId>com.companyname.scannermaui</ApplicationId>
+        <ApplicationId>scannermaui</ApplicationId>
 
         <!-- Versions -->
         <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>

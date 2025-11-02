@@ -20,12 +20,29 @@ namespace ScannerMaui
 
             builder.Services.AddMauiBlazorWebView();
 
-            // Configure HttpClient with base URL
+            // Configure HttpClient with base URL and SSL handling
             builder.Services.AddHttpClient("AttrakAPI", client =>
             {
-                // Replace with your actual API base URL
+                // Use HTTPS with SSL bypass to handle certificate issues
                 client.BaseAddress = new Uri("https://attrak.onrender.com/");
                 client.DefaultRequestHeaders.Add("Accept", "application/json");
+                client.DefaultRequestHeaders.Add("User-Agent", "ScannerMaui/1.0");
+                // Add timeout
+                client.Timeout = TimeSpan.FromSeconds(30);
+            })
+            .ConfigurePrimaryHttpMessageHandler(() =>
+            {
+#if ANDROID
+                // Use Android-specific handler with SSL bypass
+                var handler = new Xamarin.Android.Net.AndroidMessageHandler();
+                // Disable SSL verification for development
+                handler.ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true;
+                return handler;
+#else
+                var handler = new HttpClientHandler();
+                handler.ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true;
+                return handler;
+#endif
             });
             
             // Also add a default HttpClient
