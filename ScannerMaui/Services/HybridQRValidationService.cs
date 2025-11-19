@@ -381,21 +381,19 @@ namespace ScannerMaui.Services
                     // If already recorded, return warning message
                     if (isAlreadyRecorded)
                     {
-                        string message;
-                        if (!string.IsNullOrEmpty(existingTime))
+                        // Always show "Already Time In" message - time is optional
+                        string message = attendanceType == "TimeIn" 
+                            ? "⚠️ Already Time In" 
+                            : "⚠️ Already Time Out";
+                        
+                        // Add time if available (but don't show N/A)
+                        if (!string.IsNullOrEmpty(existingTime) && existingTime != "N/A" && existingTime != "00:00:00")
                         {
                             // Format time nicely (remove seconds if present)
                             var timeDisplay = existingTime.Length > 5 ? existingTime.Substring(0, 5) : existingTime;
                             message = attendanceType == "TimeIn" 
                                 ? $"⚠️ Already Time In ({timeDisplay})" 
                                 : $"⚠️ Already Time Out ({timeDisplay})";
-                        }
-                        else
-                        {
-                            // Show message without time if we can't extract it
-                            message = attendanceType == "TimeIn" 
-                                ? $"⚠️ Already Time In" 
-                                : $"⚠️ Already Time Out";
                         }
                         
                         System.Diagnostics.Debug.WriteLine($"Returning already recorded message: {message}");
@@ -436,6 +434,25 @@ namespace ScannerMaui.Services
                     System.Diagnostics.Debug.WriteLine($"Server error: {errorContent}");
                     System.Diagnostics.Debug.WriteLine($"Error status: {response.StatusCode}");
                     System.Diagnostics.Debug.WriteLine($"Error reason: {response.ReasonPhrase}");
+
+                    // IMPORTANT: Check if error response contains "already recorded" message FIRST
+                    // Sometimes server returns error but message says "already recorded"
+                    if (errorContent.Contains("already recorded", StringComparison.OrdinalIgnoreCase) ||
+                        errorContent.Contains("already marked", StringComparison.OrdinalIgnoreCase) ||
+                        errorContent.Contains("Time In already", StringComparison.OrdinalIgnoreCase) ||
+                        errorContent.Contains("Time Out already", StringComparison.OrdinalIgnoreCase))
+                    {
+                        System.Diagnostics.Debug.WriteLine($"✅ Already recorded detected in error response");
+                        var message = attendanceType == "TimeIn" 
+                            ? "⚠️ Already Time In" 
+                            : "⚠️ Already Time Out";
+                        return new QRValidationResult
+                        {
+                            IsValid = false,
+                            Message = message,
+                            StudentData = studentData
+                        };
+                    }
 
                     // Check if this is a "No Time In found" error for TimeOut
                     if (attendanceType == "TimeOut" && response.StatusCode == System.Net.HttpStatusCode.BadRequest)
@@ -620,6 +637,25 @@ namespace ScannerMaui.Services
                     System.Diagnostics.Debug.WriteLine($"Server error: {errorContent}");
                     System.Diagnostics.Debug.WriteLine($"Error status: {response.StatusCode}");
                     System.Diagnostics.Debug.WriteLine($"Error reason: {response.ReasonPhrase}");
+
+                    // IMPORTANT: Check if error response contains "already recorded" message FIRST
+                    // Sometimes server returns error but message says "already recorded"
+                    if (errorContent.Contains("already recorded", StringComparison.OrdinalIgnoreCase) ||
+                        errorContent.Contains("already marked", StringComparison.OrdinalIgnoreCase) ||
+                        errorContent.Contains("Time In already", StringComparison.OrdinalIgnoreCase) ||
+                        errorContent.Contains("Time Out already", StringComparison.OrdinalIgnoreCase))
+                    {
+                        System.Diagnostics.Debug.WriteLine($"✅ Already recorded detected in error response");
+                        var message = attendanceType == "TimeIn" 
+                            ? "⚠️ Already Time In" 
+                            : "⚠️ Already Time Out";
+                        return new QRValidationResult
+                        {
+                            IsValid = false,
+                            Message = message,
+                            StudentData = studentData
+                        };
+                    }
 
                     // Check if this is a "No Time In found" error for TimeOut
                     if (attendanceType == "TimeOut" && response.StatusCode == System.Net.HttpStatusCode.BadRequest)

@@ -146,9 +146,25 @@ namespace ServerAtrrak.Controllers
                 if (await reader.ReadAsync())
                 {
                     existingId = reader.GetString("AttendanceId");
-                    // Read TimeIn as TimeSpan (same as TimeOut) to ensure proper formatting
-                    existingTimeIn = reader.IsDBNull("TimeIn") ? "" : ((TimeSpan)reader.GetValue("TimeIn")).ToString(@"hh\:mm\:ss");
-                    existingTimeOut = reader.IsDBNull("TimeOut") ? "" : ((TimeSpan)reader.GetValue("TimeOut")).ToString(@"hh\:mm\:ss");
+                    // Read TimeIn - try TimeSpan first, fallback to string if it fails
+                    try
+                    {
+                        existingTimeIn = reader.IsDBNull("TimeIn") ? "" : ((TimeSpan)reader.GetValue("TimeIn")).ToString(@"hh\:mm\:ss");
+                    }
+                    catch
+                    {
+                        // Fallback: read as string if TimeSpan conversion fails
+                        existingTimeIn = reader.IsDBNull("TimeIn") ? "" : reader.GetString("TimeIn");
+                    }
+                    
+                    try
+                    {
+                        existingTimeOut = reader.IsDBNull("TimeOut") ? "" : ((TimeSpan)reader.GetValue("TimeOut")).ToString(@"hh\:mm\:ss");
+                    }
+                    catch
+                    {
+                        existingTimeOut = reader.IsDBNull("TimeOut") ? "" : reader.GetString("TimeOut");
+                    }
                     
                     // Check if there are multiple records (duplicates)
                     if (await reader.ReadAsync())

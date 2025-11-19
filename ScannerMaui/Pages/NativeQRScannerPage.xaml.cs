@@ -21,7 +21,7 @@ namespace ScannerMaui.Pages
         private readonly string _serverBaseUrl = "https://attrak-8gku.onrender.com/";
 
         public event EventHandler<string>? QRCodeScanned;
-        public event EventHandler<string>? AttendanceTypeSelected;
+        public event EventHandler<string>? AttendanceTypeSelected;  
 
         public NativeQRScannerPage()
         {
