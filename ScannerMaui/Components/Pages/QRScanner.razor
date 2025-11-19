@@ -77,7 +77,7 @@
                             <div class="mt-2">
                                 <small class="text-muted">
                                     <i class="fas fa-info-circle me-1"></i>
-                                    Select Time In or Time Out above, then scan QR code | 7:30-12:00 = Half Day | 12:00-4:30 = Half Day | 7:30-4:30 = Whole Day | Late after 7:31 AM
+                                    Select Time In or Time Out above, then scan QR code | Time In: 5:50 AM-8:30 AM (Morning) or 11:30 AM-12:00 PM (Half Day) | Time Out: 11:30 AM-12:00 PM (Half Day) or 12:20 PM-6:40 PM (PM) | Late after 7:31 AM
                                 </small>
                             </div>
                         </div>
@@ -100,15 +100,37 @@
                                 <!-- Time In / Time Out Buttons -->
                                 <div class="row mb-4">
                                     <div class="col-6">
-                                        <button class="btn btn-primary btn-lg w-100 py-3" @onclick="@(() => SetAttendanceTypeAndStartScanning("TimeIn"))">
+                                        @{
+                                            var timeInAllowed = IsTimeInAllowed();
+                                            var timeInDisabled = !timeInAllowed;
+                                        }
+                                        <button class="btn btn-primary btn-lg w-100 py-3 @(timeInDisabled ? "disabled opacity-50" : "")" 
+                                                disabled="@timeInDisabled"
+                                                @onclick="@(() => SetAttendanceTypeAndStartScanning("TimeIn"))"
+                                                title="@(timeInDisabled ? "Time In only allowed from 5:50 AM-8:30 AM (Morning) or 11:30 AM-12:00 PM (Half Day)" : "Click to scan Time In")">
                                             <i class="fas fa-sign-in-alt fa-2x mb-2"></i><br/>
                                             <strong>Time In</strong>
+                                            @if (timeInDisabled)
+                                            {
+                                                <br/><small class="text-white-50">Not Available</small>
+                                            }
                                         </button>
                                     </div>
                                     <div class="col-6">
-                                        <button class="btn btn-warning btn-lg w-100 py-3" @onclick="@(() => SetAttendanceTypeAndStartScanning("TimeOut"))">
+                                        @{
+                                            var timeOutAllowed = IsTimeOutAllowed();
+                                            var timeOutDisabled = !timeOutAllowed;
+                                        }
+                                        <button class="btn btn-warning btn-lg w-100 py-3 @(timeOutDisabled ? "disabled opacity-50" : "")" 
+                                                disabled="@timeOutDisabled"
+                                                @onclick="@(() => SetAttendanceTypeAndStartScanning("TimeOut"))"
+                                                title="@(timeOutDisabled ? "Time Out only allowed from 11:30 AM-12:00 PM or 12:20 PM-6:40 PM" : "Click to scan Time Out")">
                                             <i class="fas fa-sign-out-alt fa-2x mb-2"></i><br/>
                                             <strong>Time Out</strong>
+                                            @if (timeOutDisabled)
+                                            {
+                                                <br/><small class="text-white-50">Not Available</small>
+                                            }
                                         </button>
                                     </div>
                                 </div>
@@ -180,11 +202,37 @@
                                             <td>@attendance.StudentId</td>
                                             <td>@attendance.StudentName</td>
                                             <td>
-                                                <span class="badge @(attendance.AttendanceType == "TimeIn" ? "bg-primary" : "bg-warning")">
-                                                    @(attendance.AttendanceType == "TimeIn" ? "Time In" : "Time Out")
-                                                </span>
+                                                <div class="d-flex flex-wrap gap-1">
+                                                    @if (attendance.TimeIn.HasValue)
+                                                    {
+                                                        <span class="badge bg-primary">Time In</span>
+                                                    }
+                                                    @if (attendance.TimeOut.HasValue)
+                                                    {
+                                                        <span class="badge bg-warning">Time Out</span>
+                                                    }
+                                                    @if (!attendance.TimeIn.HasValue && !attendance.TimeOut.HasValue)
+                                                    {
+                                                        <span class="badge bg-secondary">No Record</span>
+                                                    }
+                                                </div>
                                             </td>
-                                            <td>@attendance.Timestamp.ToString("HH:mm:ss")</td>
+                                            <td>
+                                                <div class="d-flex flex-column">
+                                                    @if (attendance.TimeIn.HasValue)
+                                                    {
+                                                        <small><strong>In:</strong> @attendance.TimeIn.Value.ToString("HH:mm:ss")</small>
+                                                    }
+                                                    @if (attendance.TimeOut.HasValue)
+                                                    {
+                                                        <small><strong>Out:</strong> @attendance.TimeOut.Value.ToString("HH:mm:ss")</small>
+                                                    }
+                                                    @if (!attendance.TimeIn.HasValue && !attendance.TimeOut.HasValue)
+                                                    {
+                                                        <small class="text-muted">-</small>
+                                                    }
+                                                </div>
+                                            </td>
                                             <td>
                                                 @if (attendance.IsValid)
                                                 {
@@ -602,8 +650,12 @@
         // Check connection status on startup
         await ConnectionStatusService.CheckConnectionAsync();
         
-        // Start timer to update current time display every 30 seconds (reduced frequency)
-        timeUpdateTimer = new Timer(_ => _currentTime = DateTime.Now, null, TimeSpan.Zero, TimeSpan.FromSeconds(30));
+        // Start timer to update current time display every second (for real-time button availability)
+        timeUpdateTimer = new Timer(async _ => 
+        {
+            _currentTime = DateTime.Now;
+            await InvokeAsync(StateHasChanged); // Update UI to reflect button availability changes
+        }, null, TimeSpan.Zero, TimeSpan.FromSeconds(1));
         
         // Start real-time connection monitoring (no delays, instant updates)
         ConnectionStatusService.StartConnectionMonitoring();
@@ -730,47 +782,60 @@
             
             if (response != null)
             {
-                // Convert DailyAttendanceRecord to AttendanceRecord for compatibility
-                attendanceList = response.SelectMany(record => 
-                {
-                    var records = new List<AttendanceRecord>();
-                    
-                    // Add Time In record if exists
-                    if (!string.IsNullOrEmpty(record.TimeIn))
-                    {
-                        records.Add(new AttendanceRecord
-                        {
-                            StudentId = record.StudentId,
-                            StudentName = record.StudentName,
-                            Timestamp = record.Date.Date.Add(TimeSpan.Parse(record.TimeIn)),
-                            IsValid = true,
-                            Status = record.Status,
-                            AttendanceType = "TimeIn",
-                            Message = "Time In recorded",
-                            Remarks = record.Remarks
-                        });
-                    }
-                    
-                    // Add Time Out record if exists
-                    if (!string.IsNullOrEmpty(record.TimeOut))
-                    {
-                        records.Add(new AttendanceRecord
-                        {
-                            StudentId = record.StudentId,
-                            StudentName = record.StudentName,
-                            Timestamp = record.Date.Date.Add(TimeSpan.Parse(record.TimeOut)),
-                            IsValid = true,
-                            Status = record.Status,
-                            AttendanceType = "TimeOut",
-                            Message = "Time Out recorded",
-                            Remarks = record.Remarks
-                        });
-                    }
-                    
-                    return records;
-                }).ToList();
+                var today = DateTime.Today;
                 
-                System.Diagnostics.Debug.WriteLine($"LoadTodayAttendance: Loaded {response.Count} daily records, converted to {attendanceList.Count} attendance records for teacher {currentTeacher.TeacherId}");
+                // Filter to only include records from today and convert to AttendanceRecord - one record per student
+                attendanceList = response
+                    .Where(record => record.Date.Date == today) // Ensure only today's records
+                    .Select(record => 
+                    {
+                        DateTime? timeIn = null;
+                        DateTime? timeOut = null;
+                        DateTime latestTimestamp = record.Date.Date;
+                        string attendanceType = "TimeIn";
+                        
+                        // Parse Time In if exists
+                        if (!string.IsNullOrEmpty(record.TimeIn))
+                        {
+                            timeIn = record.Date.Date.Add(TimeSpan.Parse(record.TimeIn));
+                            latestTimestamp = timeIn.Value;
+                            attendanceType = "TimeIn";
+                        }
+                        
+                        // Parse Time Out if exists
+                        if (!string.IsNullOrEmpty(record.TimeOut))
+                        {
+                            timeOut = record.Date.Date.Add(TimeSpan.Parse(record.TimeOut));
+                            // Use the latest timestamp (TimeOut if both exist)
+                            if (timeIn.HasValue)
+                            {
+                                latestTimestamp = timeOut.Value;
+                                attendanceType = "Both";
+                            }
+                            else
+                            {
+                                latestTimestamp = timeOut.Value;
+                                attendanceType = "TimeOut";
+                            }
+                        }
+                        
+                        return new AttendanceRecord
+                        {
+                            StudentId = record.StudentId,
+                            StudentName = record.StudentName,
+                            Timestamp = latestTimestamp,
+                            IsValid = true,
+                            Status = record.Status,
+                            AttendanceType = attendanceType,
+                            Message = timeIn.HasValue && timeOut.HasValue ? "Time In and Time Out recorded" : 
+                                     (timeIn.HasValue ? "Time In recorded" : "Time Out recorded"),
+                            Remarks = record.Remarks,
+                            TimeIn = timeIn,
+                            TimeOut = timeOut
+                        };
+                    }).ToList();
+                
+                System.Diagnostics.Debug.WriteLine($"LoadTodayAttendance: Loaded {response.Count} daily records, filtered to {attendanceList.Count} today's attendance records for teacher {currentTeacher.TeacherId}");
         }
         else
         {
@@ -791,6 +856,50 @@
 
     // Sound is now handled in native QR scanner
 
+    private bool IsTimeInAllowed()
+    {
+        var currentTime = DateTime.Now.TimeOfDay;
+        var currentDay = DateTime.Now.DayOfWeek;
+        
+        // No scanning on weekends
+        if (currentDay == DayOfWeek.Saturday || currentDay == DayOfWeek.Sunday)
+        {
+            return false;
+        }
+        
+        // Time In allowed: 5:50 AM - 8:30 AM (Morning) OR 11:30 AM-12:00 PM (Half Day)
+        var morningInStart = new TimeSpan(5, 50, 0);  // 5:50 AM
+        var morningInEnd   = new TimeSpan(8, 30, 0);  // 8:30 AM
+        
+        var halfDayStart   = new TimeSpan(11, 30, 0); // 11:30 AM
+        var halfDayEnd     = new TimeSpan(12, 0, 0);  // 12:00 PM
+        
+        return (currentTime >= morningInStart && currentTime <= morningInEnd) ||
+               (currentTime >= halfDayStart   && currentTime <= halfDayEnd);
+    }
+
+    private bool IsTimeOutAllowed()
+    {
+        var currentTime = DateTime.Now.TimeOfDay;
+        var currentDay = DateTime.Now.DayOfWeek;
+        
+        // No scanning on weekends
+        if (currentDay == DayOfWeek.Saturday || currentDay == DayOfWeek.Sunday)
+        {
+            return false;
+        }
+        
+        // Time Out allowed: 11:30 AM-12:00 PM (Half Day) OR 12:20 PM-6:40 PM (PM)
+        var halfDayStart   = new TimeSpan(11, 30, 0); // 11:30 AM
+        var halfDayEnd     = new TimeSpan(12, 0, 0);  // 12:00 PM
+        
+        var pmStart        = new TimeSpan(12, 20, 0); // 12:20 PM
+        var pmEnd          = new TimeSpan(18, 40, 0); // 6:40 PM
+        
+        return (currentTime >= halfDayStart && currentTime <= halfDayEnd) ||
+               (currentTime >= pmStart      && currentTime <= pmEnd);
+    }
+
     private bool IsScanningAllowed()
     {
         var currentTime = DateTime.Now.TimeOfDay;
@@ -802,33 +911,39 @@
             return false;
         }
         
-        // Define school hours
-        var schoolStart = new TimeSpan(6, 0, 0);   // 6:00 AM
-        var schoolEnd = new TimeSpan(18, 0, 0);    // 6:00 PM
+        // Defined windows (24-hour times)
+        var morningInStart = new TimeSpan(5, 50, 0);  // 5:50 AM
+        var morningInEnd   = new TimeSpan(8, 30, 0);  // 8:30 AM
         
-        // Allow scanning only during school hours
-        if (currentTime >= schoolStart && currentTime <= schoolEnd)
+        var halfDayStart   = new TimeSpan(11, 30, 0); // 11:30 AM
+        var halfDayEnd     = new TimeSpan(12, 0, 0);  // 12:00 PM
+        
+        var pmStart        = new TimeSpan(12, 20, 0); // 12:20 PM
+        var pmEnd          = new TimeSpan(18, 40, 0); // 6:40 PM
+        
+        // If attendanceType is set, validate precisely
+        if (!string.IsNullOrEmpty(attendanceType))
         {
-            // Additional validation for Time In and Time Out
-            if (!string.IsNullOrEmpty(attendanceType))
+            if (attendanceType == "TimeIn")
             {
-                if (attendanceType == "TimeIn")
-                {
-                    // Time In should be in the morning (6 AM - 12 PM)
-                    var morningEnd = new TimeSpan(12, 0, 0);
-                    return currentTime <= morningEnd;
-                }
-                else if (attendanceType == "TimeOut")
-                {
-                    // Time Out should be in the afternoon (12 PM - 6 PM)
-                    var afternoonStart = new TimeSpan(12, 0, 0);
-                    return currentTime >= afternoonStart;
-                }
+                // Time In allowed: 5:50 AM - 8:30 AM (Morning) OR 11:30 AM-12:00 PM (Half Day)
+                return (currentTime >= morningInStart && currentTime <= morningInEnd) ||
+                       (currentTime >= halfDayStart   && currentTime <= halfDayEnd);
             }
-        return true;
+            else if (attendanceType == "TimeOut")
+            {
+                // Time Out allowed: 11:30–12:00 (half-day), 12:20–18:40
+                return (currentTime >= halfDayStart && currentTime <= halfDayEnd) ||
+                       (currentTime >= pmStart      && currentTime <= pmEnd);
+            }
         }
         
-        return false; // Outside school hours
+        // If no specific type, allow scanning in any active window
+        var anyAllowedWindow =
+            (currentTime >= morningInStart && currentTime <= morningInEnd) ||
+            (currentTime >= halfDayStart   && currentTime <= halfDayEnd)   ||
+            (currentTime >= pmStart        && currentTime <= pmEnd);
+        return anyAllowedWindow;
     }
 
     private string GetScanningStatusMessage()
@@ -836,50 +951,83 @@
         var currentTime = DateTime.Now.TimeOfDay;
         var currentDay = DateTime.Now.DayOfWeek;
         
-        // Check if it's weekend
+        // Windows
+        var morningInStart = new TimeSpan(5, 50, 0);
+        var morningInEnd   = new TimeSpan(8, 30, 0);
+        
+        var halfDayStart   = new TimeSpan(11, 30, 0);
+        var halfDayEnd     = new TimeSpan(12, 0, 0);
+        
+        var pmStart        = new TimeSpan(12, 20, 0);
+        var pmEnd          = new TimeSpan(18, 40, 0);
+        
+        // Weekend
         if (currentDay == DayOfWeek.Saturday || currentDay == DayOfWeek.Sunday)
         {
-            return "Scanning not allowed: Weekends";
+            return "Scanning not allowed: Weekend";
         }
         
-        // Check if outside school hours
-        var schoolStart = new TimeSpan(6, 0, 0);   // 6:00 AM
-        var schoolEnd = new TimeSpan(18, 0, 0);    // 6:00 PM
+        bool inMorningWindow = currentTime >= morningInStart && currentTime <= morningInEnd;
+        bool inHalfDayWindow = currentTime >= halfDayStart && currentTime <= halfDayEnd;
+        bool inPmWindow      = currentTime >= pmStart && currentTime <= pmEnd;
         
-        if (currentTime < schoolStart)
+        if (!inMorningWindow && !inHalfDayWindow && !inPmWindow)
         {
-            return $"Scanning not allowed: Too early (before 6:00 AM)";
-        }
-        else if (currentTime > schoolEnd)
-        {
-            return $"Scanning not allowed: Too late (after 6:00 PM)";
-        }
-        else
-        {
-            // Check Time In/Time Out specific restrictions
-            if (!string.IsNullOrEmpty(attendanceType))
+            // Outside all windows
+            if (currentTime < morningInStart)
             {
-                if (attendanceType == "TimeIn")
-                {
-                    var morningEnd = new TimeSpan(12, 0, 0);
-                    if (currentTime > morningEnd)
-                    {
-                        return "Time In not allowed: After 12:00 PM (use Time Out instead)";
-                    }
-                    return "Time In allowed: Morning hours (6:00 AM - 12:00 PM)";
-                }
-                else if (attendanceType == "TimeOut")
-                {
-                    var afternoonStart = new TimeSpan(12, 0, 0);
-                    if (currentTime < afternoonStart)
-                    {
-                        return "Time Out not allowed: Before 12:00 PM (use Time In instead)";
-                    }
-                    return "Time Out allowed: Afternoon hours (12:00 PM - 6:00 PM)";
-                }
+                return "Scanning not allowed: Too early (before 5:50 AM)";
             }
-            return "Scanning allowed: School hours (6:00 AM - 6:00 PM)";
+            if (currentTime > pmEnd)
+            {
+                return "Scanning not allowed: Too late (after 6:40 PM)";
+            }
+            // Between windows
+            if (currentTime > halfDayEnd && currentTime < pmStart)
+            {
+                return "Scanning paused: Break (12:00 PM–12:20 PM)";
+            }
+            if (currentTime > morningInEnd && currentTime < halfDayStart)
+            {
+                return "Scanning paused: Outside allowed window";
+            }
+            return "Scanning not allowed at this time";
         }
+        
+        // Type-specific messaging
+        if (!string.IsNullOrEmpty(attendanceType))
+        {
+            if (attendanceType == "TimeIn")
+            {
+                if (inMorningWindow)
+                {
+                    return "Time In allowed: 5:50 AM–8:30 AM";
+                }
+                if (inHalfDayWindow)
+                {
+                    return "Time In allowed (Half-day): 11:30 AM–12:00 PM";
+                }
+                if (inPmWindow)
+                {
+                    return "Time In allowed (PM half-day): 12:20 PM–6:40 PM";
+                }
+                return "Time In not allowed now";
+            }
+            else if (attendanceType == "TimeOut")
+            {
+                if (inHalfDayWindow)
+                {
+                    return "Time Out allowed (Half-day): 11:30 AM–12:00 PM";
+                }
+                if (inPmWindow)
+                {
+                    return "Time Out allowed: 12:20 PM–6:40 PM";
+                }
+                return "Time Out not allowed now";
+            }
+        }
+        
+        return "Scanning allowed: Active window";
     }
 
     private string DetermineRemarks(DateTime currentTime)
@@ -1031,9 +1179,9 @@
 
     private List<AttendanceRecord> GetUniqueAttendanceRecords()
     {
-        // Group by StudentId and AttendanceType, then take the latest record for each combination
+        // Group by StudentId only (since we now have one record per student with both TimeIn and TimeOut)
         var uniqueRecords = attendanceList
-            .GroupBy(a => new { a.StudentId, a.AttendanceType })
+            .GroupBy(a => a.StudentId)
             .Select(g => g.OrderByDescending(a => a.Timestamp).First())
             .ToList();
         
@@ -1071,6 +1219,20 @@
 
     private async Task SetAttendanceTypeAndStartScanning(string type)
     {
+        // Check if the attendance type is allowed at current time
+        bool isAllowed = type == "TimeIn" ? IsTimeInAllowed() : IsTimeOutAllowed();
+        
+        if (!isAllowed)
+        {
+            var statusMessage = type == "TimeIn" 
+                ? "Time In is only allowed from 5:50 AM-8:30 AM (Morning) or 11:30 AM-12:00 PM (Half Day)"
+                : "Time Out is only allowed from 11:30 AM-12:00 PM (Half Day) or 12:20 PM-6:40 PM (PM)";
+            message = statusMessage;
+            isSuccess = false;
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+        
         attendanceType = type;
         await InvokeAsync(StateHasChanged);
         
@@ -1121,6 +1283,26 @@
         try
         {
             if (currentTeacher == null || string.IsNullOrEmpty(attendanceType)) return;
+            
+            // Enforce time window before processing
+            if (!IsScanningAllowed())
+            {
+                var statusMessage = GetScanningStatusMessage();
+                lastScanResult = new AttendanceRecord
+                {
+                    StudentId = studentId,
+                    StudentName = "Unknown",
+                    Timestamp = DateTime.Now,
+                    IsValid = false,
+                    Status = "Error",
+                    AttendanceType = attendanceType,
+                    Message = statusMessage
+                };
+                message = statusMessage;
+                isSuccess = false;
+                await InvokeAsync(StateHasChanged);
+                return;
+            }
 
             // Set current student ID for remarks calculation
             currentStudentId = studentId;
@@ -1223,7 +1405,7 @@
             
             // Check if student has Time In for today
             var timeInResponse = await httpClient.GetFromJsonAsync<DailyAttendanceStatus>($"api/dailyattendance/daily-status/{studentId}?date={today:yyyy-MM-dd}");
-            var hasTimeIn = timeInResponse?.TimeIn != null;
+            var hasTimeIn = timeInResponse?.TimeIn != null && !string.IsNullOrEmpty(timeInResponse.TimeIn);
             
             // Check if student has Time Out for today by getting the full record
             var todayResponse = await httpClient.GetFromJsonAsync<List<DailyAttendanceRecord>>($"api/dailyattendance/today/{currentTeacher.TeacherId}");
@@ -1269,6 +1451,30 @@
             var remarks = DetermineRemarksAuto(currentTime, autoAttendanceType);
             
             System.Diagnostics.Debug.WriteLine($"Auto-detected {autoAttendanceType} for student {studentId} at {currentTime:yyyy-MM-dd HH:mm:ss}");
+            
+            // Enforce time window for auto-detected type
+            var previousType = attendanceType;
+            attendanceType = autoAttendanceType;
+            var allowedNow = IsScanningAllowed();
+            attendanceType = previousType;
+            if (!allowedNow)
+            {
+                var statusMessage = $"Not allowed now for {autoAttendanceType}. {GetScanningStatusMessage()}";
+                lastScanResult = new AttendanceRecord
+                {
+                    StudentId = studentId,
+                    StudentName = "Unknown",
+                    Timestamp = DateTime.Now,
+                    IsValid = false,
+                    Status = "Error",
+                    AttendanceType = autoAttendanceType,
+                    Message = statusMessage
+                };
+                message = statusMessage;
+                isSuccess = false;
+                await InvokeAsync(StateHasChanged);
+                return;
+            }
             
             HttpResponseMessage response;
             

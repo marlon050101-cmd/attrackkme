@@ -31,6 +31,39 @@
         <a class="dismiss">🗙</a>
     </div>
     <script src="_framework/blazor.webassembly.js"></script>
+    <script>
+        // Function to download file from base64 content
+        window.downloadFile = function (filename, base64Content) {
+            try {
+                // Convert base64 to blob
+                const byteCharacters = atob(base64Content);
+                const byteNumbers = new Array(byteCharacters.length);
+                for (let i = 0; i < byteCharacters.length; i++) {
+                    byteNumbers[i] = byteCharacters.charCodeAt(i);
+                }
+                const byteArray = new Uint8Array(byteNumbers);
+                const blob = new Blob([byteArray], { type: 'text/csv;charset=utf-8;' });
+                
+                // Create download link and trigger download
+                const link = document.createElement('a');
+                const url = URL.createObjectURL(blob);
+                link.setAttribute('href', url);
+                link.setAttribute('download', filename);
+                link.style.visibility = 'hidden';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                
+                // Clean up the URL object
+                setTimeout(() => URL.revokeObjectURL(url), 100);
+                
+                console.log('File downloaded successfully: ' + filename);
+            } catch (error) {
+                console.error('Error downloading file:', error);
+                alert('Error downloading file: ' + error.message);
+            }
+        };
+    </script>
 </body>
 
 </html>

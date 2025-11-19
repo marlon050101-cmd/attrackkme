@@ -3,6 +3,7 @@
 @using Attrak.Services
 @inject IAuthService AuthService
 @inject HttpClient Http
+@inject NavigationManager Navigation
 @layout Layoutall
 
 <PageTitle>Guidance Dashboard - Attrak</PageTitle>
@@ -10,11 +11,20 @@
 <div class="container-fluid">
     <!-- Header -->
     <div class="row bg-gradient-primary text-white p-4 mb-4 rounded-3 shadow">
-        <div class="col-12 text-center">
-            <h2 class="mb-3 fw-bold">
-                <i class="fas fa-shield-alt me-2"></i>Guidance Dashboard
-            </h2>
-            <h5 class="mb-0 opacity-90">Students at Risk - Attendance Monitoring</h5>
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <div class="text-center flex-grow-1">
+                    <h2 class="mb-3 fw-bold">
+                        <i class="fas fa-shield-alt me-2"></i>Guidance Dashboard
+                    </h2>
+                    <h5 class="mb-0 opacity-90">Students at Risk - Attendance Monitoring</h5>
+                </div>
+                <div>
+                    <button class="btn btn-outline-light btn-lg" @onclick="Logout">
+                        <i class="fas fa-sign-out-alt me-2"></i> Logout
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -315,6 +325,12 @@
     {
         // TODO: Implement data export functionality
         Console.WriteLine("Exporting data...");
+    }
+
+    private async Task Logout()
+    {
+        await AuthService.LogoutAsync();
+        Navigation.NavigateTo("/login");
     }
 }
 

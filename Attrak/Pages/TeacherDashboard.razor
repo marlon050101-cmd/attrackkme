@@ -15,23 +15,24 @@
     <!-- Header -->
     <div class="row bg-primary text-white p-3 mb-4">
         <div class="col-12">
-            <h4 class="mb-2">
-                <i class="fas fa-chalkboard-teacher me-2"></i>Teacher Dashboard
-            </h4>
-            <p class="mb-0 opacity-75">Student Attendance Monitoring System</p>
+            <div class="d-flex justify-content-between align-items-start">
+                <div class="flex-grow-1">
+                    <h4 class="mb-2">
+                        <i class="fas fa-chalkboard-teacher me-2"></i>Teacher Dashboard
+                    </h4>
+                    <p class="mb-0 opacity-75">Student Attendance Monitoring System</p>
+                </div>
+                <div>
+                    <button class="btn btn-outline-light btn-lg" @onclick="Logout">
+                        <i class="fas fa-sign-out-alt me-2"></i> Logout
+                    </button>
+                </div>
+            </div>
             @if (isLoading)
             {
                 <div class="mt-2">
                     <span class="spinner-border spinner-border-sm me-2" role="status"></span>
                     <span>Loading data...</span>
-                </div>
-            }
-            else
-            {
-                <div class="mt-2">
-                    <span class="badge bg-success">DEBUG: Page loaded successfully</span>
-                    <span class="badge bg-info ms-2">Students: @(students?.Count ?? 0)</span>
-                    <span class="badge bg-warning ms-2">At Risk: @(studentsAtRisk?.Count ?? 0)</span>
                 </div>
             }
         </div>
@@ -44,19 +45,6 @@
             <div class="col-12">
                 <div class="alert alert-danger" role="alert">
                     <i class="fas fa-exclamation-triangle me-2"></i>@errorMessage
-                </div>
-            </div>
-        </div>
-    }
-    else if (students?.Any() == true)
-    {
-        <div class="row mb-3">
-            <div class="col-12">
-                <div class="alert alert-success" role="alert">
-                    <i class="fas fa-check-circle me-2"></i>Showing real student data from database
-                    <small class="d-block mt-1">
-                        <i class="fas fa-users me-1"></i>@students.Count students loaded, @studentsAtRisk.Count at risk
-                    </small>
                 </div>
             </div>
         </div>
@@ -261,7 +249,7 @@
     <div class="row mt-4">
         <div class="col-12">
             <div class="d-flex justify-content-center gap-3">
-                <button class="btn btn-primary btn-lg" @onclick="ExportReport">
+                <button class="btn btn-primary btn-lg" @onclick="async () => await ExportReport()">
                     <i class="fas fa-download me-2"></i>Export Report
                 </button>
                 <button class="btn btn-info btn-lg" @onclick="GenerateAnalytics">
@@ -438,10 +426,77 @@
         Console.WriteLine($"Viewing details for student: {studentId}");
     }
 
-    private void ExportReport()
+    private async Task ExportReport()
     {
-        // TODO: Implement export functionality
-        Console.WriteLine("Exporting report...");
+        try
+        {
+            if (students == null || !students.Any())
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "No student data available to export.");
+                return;
+            }
+
+            // Create CSV content
+            var csv = new System.Text.StringBuilder();
+            
+            // Add header with class information
+            csv.AppendLine($"Attendance Report - {classInfo?.SchoolName ?? "N/A"}");
+            csv.AppendLine($"Grade Level: {classInfo?.GradeLevel ?? 0} | Section: {classInfo?.Section ?? "N/A"}");
+            csv.AppendLine($"Adviser: {classInfo?.FullName ?? "N/A"}");
+            csv.AppendLine($"Report Date: {DateTime.Now:MMMM dd, yyyy}");
+            csv.AppendLine();
+            
+            // Add column headers
+            csv.AppendLine("Gender,Full Name,Number of Absences,Status");
+            
+            // Add male students
+            var maleStudents = students.Where(s => s.Gender?.ToLower() == "male").OrderBy(s => s.FullName).ToList();
+            if (maleStudents.Any())
+            {
+                csv.AppendLine();
+                csv.AppendLine("MALE STUDENTS");
+                foreach (var student in maleStudents)
+                {
+                    var absences = student.AbsenceCount;
+                    var status = student.Status;
+                    csv.AppendLine($"Male,\"{student.FullName}\",{absences},{status}");
+                }
+            }
+            
+            // Add female students
+            var femaleStudents = students.Where(s => s.Gender?.ToLower() == "female").OrderBy(s => s.FullName).ToList();
+            if (femaleStudents.Any())
+            {
+                csv.AppendLine();
+                csv.AppendLine("FEMALE STUDENTS");
+                foreach (var student in femaleStudents)
+                {
+                    var absences = student.AbsenceCount;
+                    var status = student.Status;
+                    csv.AppendLine($"Female,\"{student.FullName}\",{absences},{status}");
+                }
+            }
+            
+            // Add summary
+            csv.AppendLine();
+            csv.AppendLine("SUMMARY");
+            csv.AppendLine($"Total Students,{students.Count}");
+            csv.AppendLine($"Students at Risk (3+ absences),{studentsAtRisk?.Count ?? 0}");
+            
+            // Generate filename
+            var fileName = $"AttendanceReport_Grade{classInfo?.GradeLevel}_{classInfo?.Section}_{DateTime.Now:yyyyMMdd}.csv";
+            
+            // Download file using JavaScript
+            var csvBytes = System.Text.Encoding.UTF8.GetBytes(csv.ToString());
+            var base64 = Convert.ToBase64String(csvBytes);
+            
+            await JSRuntime.InvokeVoidAsync("downloadFile", fileName, base64);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error exporting report: {ex.Message}");
+            await JSRuntime.InvokeVoidAsync("alert", $"Error exporting report: {ex.Message}");
+        }
     }
 
     private void GenerateAnalytics()
@@ -453,6 +508,12 @@
     private void NavigateToDailyAttendance()
     {
         Navigation.NavigateTo("/daily-attendance");
+    }
+
+    private async Task Logout()
+    {
+        await AuthService.LogoutAsync();
+        Navigation.NavigateTo("/login");
     }
 
     public void Dispose()

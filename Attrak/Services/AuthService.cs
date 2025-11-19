@@ -28,9 +28,9 @@ namespace Attrak.Services
             try
             {
                 Console.WriteLine($"Attempting login for user: {request.Username}");
-                Console.WriteLine($"API URL: {_httpClient.BaseAddress}api/auth/login");
+                Console.WriteLine($"API URL: {ApiConfig.BaseUrl}api/auth/login");
                 
-                var response = await _httpClient.PostAsJsonAsync("api/auth/login", request);
+                var response = await _httpClient.PostAsJsonAsync($"{ApiConfig.BaseUrl}api/auth/login", request);
                 
                 Console.WriteLine($"Response Status: {response.StatusCode}");
                 

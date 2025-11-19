@@ -47,6 +47,8 @@ namespace AttrackSharedClass.Models
         public string AttendanceType { get; set; } = "TimeIn";
         public string Message { get; set; } = string.Empty;
         public string? Remarks { get; set; }
+        public DateTime? TimeIn { get; set; }
+        public DateTime? TimeOut { get; set; }
     }
 
 }

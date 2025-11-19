@@ -6,23 +6,16 @@
             <div class="header-center">
                 <div class="welcome-section">
                     <div class="welcome-text">Welcome to SARDO-TRACKER</div>
-                    <div class="datetime-info">
-                        <span class="current-date" id="currentDate"></span>
-                        <span class="datetime-separator">•</span>
-                        <span class="current-time" id="currentTime"></span>
-                    </div>
                 </div>
             </div>
             
-           <!-- <div class="header-actions">
-                <button class="action-btn profile-btn">
-                    <span class="icon">👤</span>
-                    <span class="text">Admin</span>
-                </button>
-                <button class="action-btn logout-btn">
-                    <span class="icon">🚪</span>
-                </button>
-            </div> -->
+            <div class="header-right">
+                <div class="datetime-info">
+                    <span class="current-date" id="currentDate"></span>
+                    <span class="datetime-separator">•</span>
+                    <span class="current-time" id="currentTime"></span>
+                </div>
+            </div>
         </div>
     </header>
     
@@ -97,9 +90,15 @@
     }
 
     .header-center {
-        flex: 1;
         display: flex;
         justify-content: center;
+        align-items: center;
+    }
+
+    .header-right {
+        position: absolute;
+        right: 2rem;
+        display: flex;
         align-items: center;
     }
 
@@ -111,11 +110,11 @@
     }
 
     .welcome-text {
-        font-size: 1rem;
-        font-weight: 600;
+        font-size: 1.5rem;
+        font-weight: 700;
         color: #ffffff;
         text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
-        letter-spacing: 0.5px;
+        letter-spacing: 1px;
     }
 
     .datetime-info {

@@ -146,7 +146,8 @@ namespace ServerAtrrak.Controllers
                 if (await reader.ReadAsync())
                 {
                     existingId = reader.GetString("AttendanceId");
-                    existingTimeIn = reader.IsDBNull("TimeIn") ? "" : reader.GetString("TimeIn");
+                    // Read TimeIn as TimeSpan (same as TimeOut) to ensure proper formatting
+                    existingTimeIn = reader.IsDBNull("TimeIn") ? "" : ((TimeSpan)reader.GetValue("TimeIn")).ToString(@"hh\:mm\:ss");
                     existingTimeOut = reader.IsDBNull("TimeOut") ? "" : ((TimeSpan)reader.GetValue("TimeOut")).ToString(@"hh\:mm\:ss");
                     
                     // Check if there are multiple records (duplicates)

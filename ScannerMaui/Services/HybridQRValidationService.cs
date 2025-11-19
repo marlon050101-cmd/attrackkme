@@ -19,8 +19,8 @@ namespace ScannerMaui.Services
             _offlineDataService = offlineDataService;
             _httpClient = httpClient;
 
-            // Set timeout for HTTP client
-            _httpClient.Timeout = TimeSpan.FromSeconds(10);
+            // Set timeout for HTTP client (reduced to 5 seconds for faster response)
+            _httpClient.Timeout = TimeSpan.FromSeconds(5);
 
             // Get server URL from configuration or use default
             _serverBaseUrl = "https://attrak-8gku.onrender.com/"; // Production server URL
@@ -217,56 +217,15 @@ namespace ScannerMaui.Services
         {
             try
             {
-                System.Diagnostics.Debug.WriteLine($"=== ONLINE MODE: Validating QR Code First ===");
+                System.Diagnostics.Debug.WriteLine($"=== ONLINE MODE: Saving Attendance (Optimized - Single Call) ===");
                 System.Diagnostics.Debug.WriteLine($"Student ID: {studentData.StudentId}");
                 System.Diagnostics.Debug.WriteLine($"Teacher ID: {teacher.TeacherId}");
                 System.Diagnostics.Debug.WriteLine($"Attendance Type: {attendanceType}");
                 System.Diagnostics.Debug.WriteLine($"Server Base URL: {_serverBaseUrl}");
 
-                // FIRST: Validate QR code with server (this includes section validation)
-                System.Diagnostics.Debug.WriteLine("=== STEP 1: Server QR Validation ===");
-                var validationRequest = new
-                {
-                    QRCodeData = studentData.StudentId,
-                    TeacherId = teacher.TeacherId
-                };
-
-                var validationUrl = _serverBaseUrl.EndsWith("/") ? $"{_serverBaseUrl}api/qrvalidation/validate" : $"{_serverBaseUrl}/api/qrvalidation/validate";
-                System.Diagnostics.Debug.WriteLine($"Validation URL: {validationUrl}");
-
-                var validationResponse = await _httpClient.PostAsJsonAsync(validationUrl, validationRequest);
-                var validationContent = await validationResponse.Content.ReadAsStringAsync();
-                System.Diagnostics.Debug.WriteLine($"Server validation response: {validationResponse.StatusCode}");
-                System.Diagnostics.Debug.WriteLine($"Server validation content: {validationContent}");
-
-                if (!validationResponse.IsSuccessStatusCode)
-                {
-                    System.Diagnostics.Debug.WriteLine($"Server validation failed: {validationResponse.StatusCode}");
-                    return new QRValidationResult
-                    {
-                        IsValid = false,
-                        Message = "Server validation failed. Please try again.",
-                        ErrorType = QRValidationErrorType.ValidationError
-                    };
-                }
-
-                // Parse validation response
-                var validationResult = System.Text.Json.JsonSerializer.Deserialize<ServerQRValidationResult>(validationContent);
-                if (validationResult == null || !validationResult.IsValid)
-                {
-                    System.Diagnostics.Debug.WriteLine($"QR validation failed: {validationResult?.Message}");
-                    return new QRValidationResult
-                    {
-                        IsValid = false,
-                        Message = validationResult?.Message ?? "QR code validation failed",
-                        ErrorType = QRValidationErrorType.ValidationError
-                    };
-                }
-
-                System.Diagnostics.Debug.WriteLine($"✅ Server validation passed: {validationResult.Message}");
-
-                // SECOND: Save attendance to server
-                System.Diagnostics.Debug.WriteLine("=== STEP 2: Saving Attendance ===");
+                // OPTIMIZATION: Skip separate QR validation - attendance endpoint validates automatically
+                // This reduces validation time by ~50% (one HTTP call instead of two)
+                System.Diagnostics.Debug.WriteLine("=== OPTIMIZED: Direct attendance save (validation included) ===");
                 var currentTime = DateTime.Now;
                 System.Diagnostics.Debug.WriteLine($"Current time: {currentTime}");
 
@@ -311,15 +270,139 @@ namespace ScannerMaui.Services
                     var responseContent = await response.Content.ReadAsStringAsync();
                     System.Diagnostics.Debug.WriteLine($"Server response content: {responseContent}");
 
-                    // Check if this is an "already recorded" response
-                    if (responseContent.Contains("already recorded") || responseContent.Contains("already marked"))
+                    var displayType = attendanceType == "TimeIn" ? "Time In" : "Time Out";
+
+                    // IMPORTANT: Check for "already recorded" message FIRST before treating as success
+                    // The server returns Success=true even when already recorded, so we must check the message
+                    var isAlreadyRecorded = false;
+                    string? existingTime = null;
+                    
+                    try
                     {
-                        System.Diagnostics.Debug.WriteLine($"Already recorded response detected - not saving to SQLite backup");
-                        var alreadyRecordedType = attendanceType == "TimeIn" ? "Time In" : "Time Out";
+                        if (attendanceType == "TimeIn")
+                        {
+                            var timeInResponse = System.Text.Json.JsonSerializer.Deserialize<DailyTimeInResponse>(responseContent);
+                            if (timeInResponse != null)
+                            {
+                                var message = timeInResponse.Message ?? "";
+                                System.Diagnostics.Debug.WriteLine($"TimeIn Response - Success: {timeInResponse.Success}, Message: '{message}', TimeIn: '{timeInResponse.TimeIn}'");
+                                
+                                // Check for various "already recorded" patterns - MUST check message content
+                                if (message.Contains("already recorded", StringComparison.OrdinalIgnoreCase) || 
+                                    message.Contains("already marked", StringComparison.OrdinalIgnoreCase) ||
+                                    message.Contains("Time In already", StringComparison.OrdinalIgnoreCase) ||
+                                    message.Contains("SUCCESS: Time In already", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    System.Diagnostics.Debug.WriteLine($"✅ Already recorded response detected - Time In already exists");
+                                    isAlreadyRecorded = true;
+                                    
+                                    // Try to get time from response, or extract from message, or use current time as fallback
+                                    if (!string.IsNullOrEmpty(timeInResponse.TimeIn) && timeInResponse.TimeIn != "00:00:00")
+                                    {
+                                        existingTime = timeInResponse.TimeIn;
+                                    }
+                                    else
+                                    {
+                                        // Try to extract time from message (e.g., "Time In already recorded at 07:30")
+                                        var timeMatch = System.Text.RegularExpressions.Regex.Match(message, @"(\d{1,2}:\d{2}(?::\d{2})?)");
+                                        if (timeMatch.Success)
+                                        {
+                                            existingTime = timeMatch.Groups[1].Value;
+                                        }
+                                        else
+                                        {
+                                            // If we can't find time, just show "Already Time In" without time
+                                            existingTime = null; // Will show without time
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        else if (attendanceType == "TimeOut")
+                        {
+                            var timeOutResponse = System.Text.Json.JsonSerializer.Deserialize<DailyTimeOutResponse>(responseContent);
+                            if (timeOutResponse != null)
+                            {
+                                var message = timeOutResponse.Message ?? "";
+                                System.Diagnostics.Debug.WriteLine($"TimeOut Response - Success: {timeOutResponse.Success}, Message: '{message}', TimeOut: '{timeOutResponse.TimeOut}'");
+                                
+                                // Check for various "already recorded" patterns
+                                if (message.Contains("already recorded", StringComparison.OrdinalIgnoreCase) || 
+                                    message.Contains("already marked", StringComparison.OrdinalIgnoreCase) ||
+                                    message.Contains("Time Out already", StringComparison.OrdinalIgnoreCase) ||
+                                    message.Contains("SUCCESS: Time Out already", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    System.Diagnostics.Debug.WriteLine($"✅ Already recorded response detected - Time Out already exists");
+                                    isAlreadyRecorded = true;
+                                    
+                                    // Try to get time from response, or extract from message
+                                    if (!string.IsNullOrEmpty(timeOutResponse.TimeOut) && timeOutResponse.TimeOut != "00:00:00")
+                                    {
+                                        existingTime = timeOutResponse.TimeOut;
+                                    }
+                                    else
+                                    {
+                                        // Try to extract time from message
+                                        var timeMatch = System.Text.RegularExpressions.Regex.Match(message, @"(\d{1,2}:\d{2}(?::\d{2})?)");
+                                        if (timeMatch.Success)
+                                        {
+                                            existingTime = timeMatch.Groups[1].Value;
+                                        }
+                                        else
+                                        {
+                                            existingTime = null; // Will show without time
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception parseEx)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Error parsing response: {parseEx.Message}");
+                        System.Diagnostics.Debug.WriteLine($"Response content: {responseContent}");
+                    }
+                    
+                    // Fallback: Also check raw response content if JSON parsing failed or didn't catch it
+                    if (!isAlreadyRecorded)
+                    {
+                        if (responseContent.Contains("already recorded", StringComparison.OrdinalIgnoreCase) || 
+                            responseContent.Contains("already marked", StringComparison.OrdinalIgnoreCase) ||
+                            responseContent.Contains("Time In already", StringComparison.OrdinalIgnoreCase) ||
+                            responseContent.Contains("Time Out already", StringComparison.OrdinalIgnoreCase) ||
+                            responseContent.Contains("SUCCESS: Time In already", StringComparison.OrdinalIgnoreCase) ||
+                            responseContent.Contains("SUCCESS: Time Out already", StringComparison.OrdinalIgnoreCase))
+                        {
+                            System.Diagnostics.Debug.WriteLine($"✅ Already recorded detected via raw string check");
+                            isAlreadyRecorded = true;
+                        }
+                    }
+                    
+                    // If already recorded, return warning message
+                    if (isAlreadyRecorded)
+                    {
+                        string message;
+                        if (!string.IsNullOrEmpty(existingTime))
+                        {
+                            // Format time nicely (remove seconds if present)
+                            var timeDisplay = existingTime.Length > 5 ? existingTime.Substring(0, 5) : existingTime;
+                            message = attendanceType == "TimeIn" 
+                                ? $"⚠️ Already Time In ({timeDisplay})" 
+                                : $"⚠️ Already Time Out ({timeDisplay})";
+                        }
+                        else
+                        {
+                            // Show message without time if we can't extract it
+                            message = attendanceType == "TimeIn" 
+                                ? $"⚠️ Already Time In" 
+                                : $"⚠️ Already Time Out";
+                        }
+                        
+                        System.Diagnostics.Debug.WriteLine($"Returning already recorded message: {message}");
                         return new QRValidationResult
                         {
-                            IsValid = true,
-                            Message = $"✓ {alreadyRecordedType} already recorded for today",
+                            IsValid = false, // Set to false to show as warning/error
+                            Message = message,
                             StudentData = studentData
                         };
                     }
@@ -340,11 +423,10 @@ namespace ScannerMaui.Services
                         System.Diagnostics.Debug.WriteLine($"SQLite backup saved and marked as synced");
                     }
 
-                    var displayType = attendanceType == "TimeIn" ? "Time In" : "Time Out";
                     return new QRValidationResult
                     {
                         IsValid = true,
-                        Message = $"✓ {displayType} saved to server + backup",
+                        Message = $"✓ Success - {displayType}",
                         StudentData = studentData
                     };
                 }
@@ -528,7 +610,7 @@ namespace ScannerMaui.Services
                     return new QRValidationResult
                     {
                         IsValid = true,
-                        Message = $"✓ {displayType} saved successfully to server",
+                        Message = $"✓ Success - {displayType}",
                         StudentData = studentData
                     };
                 }
@@ -623,7 +705,46 @@ namespace ScannerMaui.Services
                 System.Diagnostics.Debug.WriteLine($"Teacher ID: {teacher.TeacherId}");
                 System.Diagnostics.Debug.WriteLine($"Attendance Type: {attendanceType}");
 
-                // Save to SQLite database
+                // FIRST: Check if attendance already exists (same as online mode)
+                var existingAttendance = await CheckOfflineAttendanceStatusAsync(studentData.StudentId, attendanceType);
+                
+                System.Diagnostics.Debug.WriteLine($"Offline check result - HasTimeIn: {existingAttendance.HasTimeIn} ({existingAttendance.TimeIn}), HasTimeOut: {existingAttendance.HasTimeOut} ({existingAttendance.TimeOut})");
+                
+                if (attendanceType == "TimeIn" && existingAttendance.HasTimeIn)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Time In already exists in offline mode: {existingAttendance.TimeIn}");
+                    return new QRValidationResult
+                    {
+                        IsValid = false, // Set to false to show as warning
+                        Message = $"⚠️ Already Time In ({existingAttendance.TimeIn})",
+                        StudentData = studentData
+                    };
+                }
+                
+                if (attendanceType == "TimeOut" && existingAttendance.HasTimeOut)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Time Out already exists in offline mode: {existingAttendance.TimeOut}");
+                    return new QRValidationResult
+                    {
+                        IsValid = false, // Set to false to show as warning
+                        Message = $"⚠️ Already Time Out ({existingAttendance.TimeOut})",
+                        StudentData = studentData
+                    };
+                }
+                
+                // Check if Time In exists before allowing Time Out
+                if (attendanceType == "TimeOut" && !existingAttendance.HasTimeIn)
+                {
+                    System.Diagnostics.Debug.WriteLine("Time Out requested but no Time In found in offline mode");
+                    return new QRValidationResult
+                    {
+                        IsValid = false,
+                        Message = "❌ No Time In found for today. Please mark Time In first.",
+                        StudentData = studentData
+                    };
+                }
+
+                // SECOND: Save to SQLite database if no duplicate
                 var success = await _offlineDataService.SaveOfflineAttendanceAsync(
                     studentData.StudentId,
                     attendanceType, // Use the provided attendance type
@@ -639,7 +760,7 @@ namespace ScannerMaui.Services
                     return new QRValidationResult
                     {
                         IsValid = true,
-                        Message = $"✓ {displayType} saved offline (will sync when online)",
+                        Message = $"✓ Success - {displayType}",
                         StudentData = studentData
                     };
                 }
@@ -663,6 +784,58 @@ namespace ScannerMaui.Services
                     ErrorType = QRValidationErrorType.ValidationError
                 };
             }
+        }
+        
+        private async Task<OfflineAttendanceStatus> CheckOfflineAttendanceStatusAsync(string studentId, string attendanceType)
+        {
+            var status = new OfflineAttendanceStatus { HasTimeIn = false, HasTimeOut = false, TimeIn = "", TimeOut = "" };
+            
+            try
+            {
+                var today = DateTime.Today;
+                
+                // Get existing records from offline database
+                // Check unsynced records to see if student was already marked today
+                var unsyncedRecords = await _offlineDataService.GetUnsyncedDailyAttendanceAsync();
+                
+                // Check for TimeIn record
+                var timeInRecord = unsyncedRecords
+                    .FirstOrDefault(r => r.StudentId == studentId && 
+                                       r.Date.Date == today && 
+                                       r.AttendanceType == "TimeIn");
+                if (timeInRecord != null)
+                {
+                    status.HasTimeIn = true;
+                    status.TimeIn = timeInRecord.TimeIn ?? "";
+                }
+                
+                // Check for TimeOut record
+                var timeOutRecord = unsyncedRecords
+                    .FirstOrDefault(r => r.StudentId == studentId && 
+                                       r.Date.Date == today && 
+                                       r.AttendanceType == "TimeOut");
+                if (timeOutRecord != null)
+                {
+                    status.HasTimeOut = true;
+                    status.TimeOut = timeOutRecord.TimeOut ?? "";
+                }
+                
+                System.Diagnostics.Debug.WriteLine($"Offline attendance status for {studentId}: TimeIn={status.HasTimeIn} ({status.TimeIn}), TimeOut={status.HasTimeOut} ({status.TimeOut})");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error checking offline attendance status: {ex.Message}");
+            }
+            
+            return status;
+        }
+        
+        private class OfflineAttendanceStatus
+        {
+            public bool HasTimeIn { get; set; }
+            public bool HasTimeOut { get; set; }
+            public string TimeIn { get; set; } = "";
+            public string TimeOut { get; set; } = "";
         }
 
         private async Task<string> DetermineAttendanceTypeAsync(string studentId, string teacherId)

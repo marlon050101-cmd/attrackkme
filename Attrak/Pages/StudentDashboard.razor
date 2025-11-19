@@ -302,9 +302,10 @@
     }
 
 
-    private void Logout()
+    private async Task Logout()
     {
-        // Clear authentication and redirect to login
+        // Clear authentication and redirect to student portal
+        await AuthService.LogoutAsync();
         Navigation.NavigateTo("/student-portal");
     }
 }
