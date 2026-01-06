@@ -4,6 +4,7 @@
 @inject IAuthService AuthService
 @inject HttpClient Http
 @inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
 @layout Layoutall
 
 <PageTitle>Guidance Dashboard - Attrak</PageTitle>
@@ -321,10 +322,52 @@
         Console.WriteLine("Generating risk report...");
     }
 
-    private void ExportData()
+    private async Task ExportData()
     {
-        // TODO: Implement data export functionality
-        Console.WriteLine("Exporting data...");
+        try
+        {
+            if (dashboardData?.StudentsAtRisk == null || !dashboardData.StudentsAtRisk.Any())
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "No student data available to export.");
+                return;
+            }
+
+            // Prepare data for PDF export
+            var reportData = new
+            {
+                reportDate = DateTime.Now.ToString("MMMM dd, yyyy"),
+                reportTime = DateTime.Now.ToString("hh:mm tt"),
+                flaggedStudents = dashboardData.FlaggedStudents,
+                gradeLevelsAffected = dashboardData.GradeLevelsAffected,
+                sectionsMonitored = dashboardData.SectionsMonitored,
+                studentsAtRisk = dashboardData.StudentsAtRisk
+                    .OrderBy(s => s.GradeLevel)
+                    .ThenBy(s => s.Section)
+                    .ThenBy(s => s.FullName)
+                    .Select(s => new
+                    {
+                        gradeLevel = s.GradeLevel,
+                        section = s.Section ?? "N/A",
+                        fullName = s.FullName ?? "Unknown",
+                        gender = s.Gender ?? "Unknown",
+                        absentDays = s.AbsentDays,
+                        absentDates = string.IsNullOrEmpty(s.AbsentDates) ? "N/A" : s.AbsentDates
+                    })
+                    .ToList()
+            };
+
+            // Generate filename with timestamp
+            var fileName = $"StudentsAtRisk_Report_{DateTime.Now:yyyyMMdd_HHmmss}.pdf";
+            
+            // Serialize to JSON and export to PDF using JavaScript
+            var jsonData = System.Text.Json.JsonSerializer.Serialize(reportData);
+            await JSRuntime.InvokeVoidAsync("exportGuidanceReportToPDF", jsonData, fileName);
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error exporting data: {ex.Message}");
+            Console.WriteLine($"Error exporting data: {ex.Message}");
+        }
     }
 
     private async Task Logout()

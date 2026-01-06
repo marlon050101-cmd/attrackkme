@@ -31,6 +31,7 @@ namespace ServerAtrrak.Services
                 
                 UserInfo? teacherInfo = null;
                 string? actualTeacherId = null;
+                string? teacherFullName = null;
             using (var command = new MySqlCommand(teacherQuery, connection))
             {
                 command.Parameters.AddWithValue("@teacherId", teacherId);
@@ -48,8 +49,10 @@ namespace ServerAtrrak.Services
                         };
                         
                         actualTeacherId = reader.IsDBNull("TeacherId") ? null : reader.GetString("TeacherId");
-                        Console.WriteLine($"DEBUG: Found TeacherId: {actualTeacherId}");
+                        teacherFullName = reader.IsDBNull("FullName") ? null : reader.GetString("FullName");
+                        Console.WriteLine($"DEBUG: Found TeacherId: {actualTeacherId}, FullName: {teacherFullName}");
                         Console.WriteLine($"DEBUG: UserId: {teacherId}, TeacherId: {actualTeacherId}");
+                        Console.WriteLine($"DEBUG: FullName from database: '{teacherFullName}' (IsNull: {reader.IsDBNull("FullName")})");
                         
                         teacherInfo = new UserInfo
                         {
@@ -292,6 +295,31 @@ namespace ServerAtrrak.Services
 
                 Console.WriteLine($"DEBUG: Total students found: {students.Count}");
                 
+                // If FullName is null or empty, query it directly from teacher table using actualTeacherId
+                if (string.IsNullOrEmpty(teacherFullName) && !string.IsNullOrEmpty(actualTeacherId))
+                {
+                    var fullNameQuery = @"
+                        SELECT FullName 
+                        FROM teacher 
+                        WHERE TeacherId = @actualTeacherId 
+                        LIMIT 1";
+                    
+                    using (var fullNameCommand = new MySqlCommand(fullNameQuery, connection))
+                    {
+                        fullNameCommand.Parameters.AddWithValue("@actualTeacherId", actualTeacherId);
+                        using var fullNameReader = await fullNameCommand.ExecuteReaderAsync();
+                        if (await fullNameReader.ReadAsync())
+                        {
+                            teacherFullName = fullNameReader.IsDBNull("FullName") ? null : fullNameReader.GetString("FullName");
+                            Console.WriteLine($"DEBUG: Re-queried FullName from teacher table: '{teacherFullName}'");
+                        }
+                    }
+                }
+                
+                // Use FullName from teacher table, only fallback to username if still null/empty
+                var finalFullName = !string.IsNullOrEmpty(teacherFullName) ? teacherFullName : teacherInfo.Username;
+                Console.WriteLine($"DEBUG: Setting ClassInfo.FullName to: '{finalFullName}' (from teacherFullName: '{teacherFullName}', fallback to username: '{teacherInfo.Username}')");
+                
                 return new TeacherDashboardData
                 {
                     TeacherInfo = teacherInfo,
@@ -307,7 +335,7 @@ namespace ServerAtrrak.Services
                         Section = section ?? "",
                         Strand = strand,
                         SchoolName = schoolName ?? "",
-                        FullName = teacherInfo.Username // Use username as fallback
+                        FullName = finalFullName // Use actual FullName from teacher table, fallback to username if not available
                     }
                 };
             }
@@ -475,6 +503,7 @@ namespace ServerAtrrak.Services
                     {
                         actualTeacherId = reader.IsDBNull("TeacherId") ? null : reader.GetString("TeacherId");
                         fullName = reader.IsDBNull("FullName") ? "" : reader.GetString("FullName");
+                        Console.WriteLine($"DEBUG: GetTeacherClassInfoAsync - Found FullName: '{fullName}', TeacherId: '{actualTeacherId}'");
                     }
                 }
 
@@ -540,6 +569,60 @@ namespace ServerAtrrak.Services
             {
                 Console.WriteLine($"Error in GetStudentAbsenceCountAsync: {ex.Message}");
                 return 0;
+            }
+        }
+
+        public async Task<bool> UpdateTeacherFullNameAsync(string teacherId, string fullName)
+        {
+            try
+            {
+                using var connection = await _dbConnection.GetConnectionAsync();
+                
+                // First get the actual TeacherId from user table
+                var userQuery = @"
+                    SELECT TeacherId 
+                    FROM user 
+                    WHERE UserId = @userId AND UserType = 'Teacher'";
+                
+                string? actualTeacherId = null;
+                using (var userCommand = new MySqlCommand(userQuery, connection))
+                {
+                    userCommand.Parameters.AddWithValue("@userId", teacherId);
+                    using var userReader = await userCommand.ExecuteReaderAsync();
+                    if (await userReader.ReadAsync())
+                    {
+                        actualTeacherId = userReader.IsDBNull("TeacherId") ? null : userReader.GetString("TeacherId");
+                    }
+                }
+                
+                if (string.IsNullOrEmpty(actualTeacherId))
+                {
+                    Console.WriteLine($"DEBUG: Teacher not found for UserId: {teacherId}");
+                    return false;
+                }
+                
+                // Update the FullName in teacher table
+                var updateQuery = @"
+                    UPDATE teacher 
+                    SET FullName = @fullName, UpdatedAt = @updatedAt
+                    WHERE TeacherId = @teacherId";
+                
+                using (var command = new MySqlCommand(updateQuery, connection))
+                {
+                    command.Parameters.AddWithValue("@fullName", fullName);
+                    command.Parameters.AddWithValue("@updatedAt", DateTime.Now);
+                    command.Parameters.AddWithValue("@teacherId", actualTeacherId);
+                    
+                    var rowsAffected = await command.ExecuteNonQueryAsync();
+                    Console.WriteLine($"DEBUG: Updated teacher FullName. Rows affected: {rowsAffected}, TeacherId: {actualTeacherId}, New FullName: {fullName}");
+                    
+                    return rowsAffected > 0;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error in UpdateTeacherFullNameAsync: {ex.Message}");
+                return false;
             }
         }
 

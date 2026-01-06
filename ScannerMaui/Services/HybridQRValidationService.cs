@@ -331,7 +331,7 @@ namespace ScannerMaui.Services
                                     message.Contains("already marked", StringComparison.OrdinalIgnoreCase) ||
                                     message.Contains("Time Out already", StringComparison.OrdinalIgnoreCase) ||
                                     message.Contains("SUCCESS: Time Out already", StringComparison.OrdinalIgnoreCase))
-                                {
+                    {
                                     System.Diagnostics.Debug.WriteLine($"✅ Already recorded response detected - Time Out already exists");
                                     isAlreadyRecorded = true;
                                     

@@ -162,6 +162,34 @@ namespace ServerAtrrak.Controllers
             }
         }
 
+        [HttpPut("update-fullname/{teacherId}")]
+        public async Task<ActionResult> UpdateTeacherFullName(string teacherId, [FromBody] UpdateFullNameRequest request)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(request.FullName))
+                {
+                    return BadRequest(new { message = "FullName cannot be empty" });
+                }
+
+                var result = await _teacherService.UpdateTeacherFullNameAsync(teacherId, request.FullName);
+                
+                if (result)
+                {
+                    return Ok(new { message = "Teacher FullName updated successfully", fullName = request.FullName });
+                }
+                else
+                {
+                    return NotFound(new { message = "Teacher not found" });
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"DEBUG: Error updating teacher FullName: {ex.Message}");
+                return StatusCode(500, new { message = "Internal server error", error = ex.Message });
+            }
+        }
+
         [HttpGet("test")]
         public ActionResult TestEndpoint()
         {
@@ -175,5 +203,10 @@ namespace ServerAtrrak.Controllers
                 }
             });
         }
+    }
+
+    public class UpdateFullNameRequest
+    {
+        public string FullName { get; set; } = string.Empty;
     }
 }

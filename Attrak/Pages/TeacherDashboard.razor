@@ -22,7 +22,10 @@
                     </h4>
                     <p class="mb-0 opacity-75">Student Attendance Monitoring System</p>
                 </div>
-                <div>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-outline-light btn-sm" @onclick="RefreshData" title="Refresh Data">
+                        <i class="fas fa-sync-alt me-2"></i> Refresh
+                    </button>
                     <button class="btn btn-outline-light btn-lg" @onclick="Logout">
                         <i class="fas fa-sign-out-alt me-2"></i> Logout
                     </button>
@@ -299,79 +302,73 @@
             errorMessage = string.Empty;
             StateHasChanged();
 
-            Console.WriteLine($"DEBUG: Loading data for teacher: {teacherInfo.UserId}");
-            
             // Test if server is running
             try
             {
-                Console.WriteLine("DEBUG: Testing server connection...");
                 var healthResponse = await Http.GetAsync($"{ApiConfig.BaseUrl}api/health");
-                Console.WriteLine($"DEBUG: Server health check: {healthResponse.StatusCode}");
             }
             catch (Exception healthEx)
             {
-                Console.WriteLine($"DEBUG: Server not accessible: {healthEx.Message}");
                 errorMessage = "Server is not running. Please start the server first.";
                 return;
             }
             
             // Load teacher class information first (try to load, but don't fail completely if this fails)
-            Console.WriteLine($"DEBUG: Loading teacher class info for: {teacherInfo.UserId}");
+            // Add timestamp to prevent caching
+            var cacheBuster = DateTime.Now.Ticks;
             try
             {
-                var teacherInfoResponse = await Http.GetFromJsonAsync<TeacherClassInfo>($"{ApiConfig.BaseUrl}api/teacher/info/{teacherInfo.UserId}");
+                var teacherInfoResponse = await Http.GetFromJsonAsync<TeacherClassInfo>($"{ApiConfig.BaseUrl}api/teacher/info/{teacherInfo.UserId}?t={cacheBuster}");
                 
                 if (teacherInfoResponse != null)
                 {
-                    Console.WriteLine($"DEBUG: Teacher info loaded - Grade: {teacherInfoResponse.GradeLevel}, Section: {teacherInfoResponse.Section}, School: {teacherInfoResponse.SchoolName}");
                     classInfo = teacherInfoResponse;
+                    Console.WriteLine($"DEBUG: Loaded teacher info - FullName: {classInfo.FullName}");
                 }
             }
             catch (Exception teacherInfoEx)
             {
-                Console.WriteLine($"DEBUG: Failed to load teacher class info: {teacherInfoEx.Message}");
+                Console.WriteLine($"DEBUG: Error loading teacher info: {teacherInfoEx.Message}");
                 // Don't return early - continue to try loading dashboard data
             }
             
             // Load teacher dashboard data (this is the main data we need)
-            Console.WriteLine($"DEBUG: Loading teacher dashboard data for: {teacherInfo.UserId}");
-            var response = await Http.GetFromJsonAsync<TeacherDashboardData>($"{ApiConfig.BaseUrl}api/teacher/dashboard/{teacherInfo.UserId}");
-            Console.WriteLine($"DEBUG: Dashboard API call completed");
-            Console.WriteLine($"DEBUG: API Response: {response != null}");
+            // Add timestamp to prevent caching
+            var response = await Http.GetFromJsonAsync<TeacherDashboardData>($"{ApiConfig.BaseUrl}api/teacher/dashboard/{teacherInfo.UserId}?t={cacheBuster}");
             if (response != null)
             {
-                Console.WriteLine($"DEBUG: Students count: {response.Students?.Count ?? 0}");
                 students = response.Students ?? new List<Student>();
                 studentsAtRisk = response.StudentsAtRisk ?? new List<Student>();
                 teacherInfo = response.TeacherInfo ?? teacherInfo;
                 
-                // If we got dashboard data with class info, use it
+                // If we got dashboard data with class info, use it BUT preserve the correct FullName from teacherInfoResponse
                 if (response.ClassInfo != null)
                 {
+                    // Use the classInfo from dashboard but keep the correct FullName from the first API call
+                    var correctFullName = classInfo?.FullName ?? response.ClassInfo.FullName;
                     classInfo = response.ClassInfo;
+                    // Override with the correct FullName if we got it from the first API call
+                    if (!string.IsNullOrEmpty(correctFullName) && correctFullName != "tech2" && correctFullName != response.ClassInfo.FullName)
+                    {
+                        classInfo.FullName = correctFullName;
+                        Console.WriteLine($"DEBUG: Fixed FullName from '{response.ClassInfo.FullName}' to '{correctFullName}'");
+                    }
+                    Console.WriteLine($"DEBUG: Updated classInfo from dashboard - FullName: {classInfo.FullName}");
                 }
                 
-                // Show success message if we have students
+                // Clear any previous errors
                 if (students.Count > 0)
                 {
-                    errorMessage = string.Empty; // Clear any previous errors
-                    Console.WriteLine($"DEBUG: Successfully loaded {students.Count} students");
-                }
-                else
-                {
-                    Console.WriteLine("DEBUG: No students found for this class.");
-                    // Don't set error message - this is a valid state (empty class)
+                    errorMessage = string.Empty;
                 }
             }
             else
             {
-                Console.WriteLine("DEBUG: No response from API");
                 errorMessage = "Failed to load teacher dashboard data. Please check if students are assigned to your class.";
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"DEBUG: API Error: {ex.Message}");
             errorMessage = $"An error occurred: {ex.Message}";
         }
         finally
@@ -436,65 +433,36 @@
                 return;
             }
 
-            // Create CSV content
-            var csv = new System.Text.StringBuilder();
-            
-            // Add header with class information
-            csv.AppendLine($"Attendance Report - {classInfo?.SchoolName ?? "N/A"}");
-            csv.AppendLine($"Grade Level: {classInfo?.GradeLevel ?? 0} | Section: {classInfo?.Section ?? "N/A"}");
-            csv.AppendLine($"Adviser: {classInfo?.FullName ?? "N/A"}");
-            csv.AppendLine($"Report Date: {DateTime.Now:MMMM dd, yyyy}");
-            csv.AppendLine();
-            
-            // Add column headers
-            csv.AppendLine("Gender,Full Name,Number of Absences,Status");
-            
-            // Add male students
-            var maleStudents = students.Where(s => s.Gender?.ToLower() == "male").OrderBy(s => s.FullName).ToList();
-            if (maleStudents.Any())
+            // Prepare data for PDF export
+            var reportData = new
             {
-                csv.AppendLine();
-                csv.AppendLine("MALE STUDENTS");
-                foreach (var student in maleStudents)
-                {
-                    var absences = student.AbsenceCount;
-                    var status = student.Status;
-                    csv.AppendLine($"Male,\"{student.FullName}\",{absences},{status}");
-                }
-            }
-            
-            // Add female students
-            var femaleStudents = students.Where(s => s.Gender?.ToLower() == "female").OrderBy(s => s.FullName).ToList();
-            if (femaleStudents.Any())
-            {
-                csv.AppendLine();
-                csv.AppendLine("FEMALE STUDENTS");
-                foreach (var student in femaleStudents)
-                {
-                    var absences = student.AbsenceCount;
-                    var status = student.Status;
-                    csv.AppendLine($"Female,\"{student.FullName}\",{absences},{status}");
-                }
-            }
-            
-            // Add summary
-            csv.AppendLine();
-            csv.AppendLine("SUMMARY");
-            csv.AppendLine($"Total Students,{students.Count}");
-            csv.AppendLine($"Students at Risk (3+ absences),{studentsAtRisk?.Count ?? 0}");
-            
+                schoolName = classInfo?.SchoolName ?? "N/A",
+                gradeLevel = classInfo?.GradeLevel ?? 0,
+                section = classInfo?.Section ?? "N/A",
+                adviserName = classInfo?.FullName ?? "N/A",
+                reportDate = DateTime.Now.ToString("MMMM dd, yyyy"),
+                reportTime = DateTime.Now.ToString("hh:mm tt"),
+                totalStudents = students.Count,
+                studentsAtRisk = studentsAtRisk?.Count ?? 0,
+                maleStudents = students.Where(s => s.Gender?.ToLower() == "male")
+                    .OrderBy(s => s.FullName)
+                    .Select(s => new { fullName = s.FullName, absences = s.AbsenceCount, status = s.Status })
+                    .ToList(),
+                femaleStudents = students.Where(s => s.Gender?.ToLower() == "female")
+                    .OrderBy(s => s.FullName)
+                    .Select(s => new { fullName = s.FullName, absences = s.AbsenceCount, status = s.Status })
+                    .ToList()
+            };
+
             // Generate filename
-            var fileName = $"AttendanceReport_Grade{classInfo?.GradeLevel}_{classInfo?.Section}_{DateTime.Now:yyyyMMdd}.csv";
+            var fileName = $"AttendanceReport_Grade{classInfo?.GradeLevel}_{classInfo?.Section}_{DateTime.Now:yyyyMMdd}.pdf";
             
-            // Download file using JavaScript
-            var csvBytes = System.Text.Encoding.UTF8.GetBytes(csv.ToString());
-            var base64 = Convert.ToBase64String(csvBytes);
-            
-            await JSRuntime.InvokeVoidAsync("downloadFile", fileName, base64);
+            // Serialize to JSON and export to PDF using JavaScript
+            var jsonData = System.Text.Json.JsonSerializer.Serialize(reportData);
+            await JSRuntime.InvokeVoidAsync("exportToPDF", jsonData, fileName);
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error exporting report: {ex.Message}");
             await JSRuntime.InvokeVoidAsync("alert", $"Error exporting report: {ex.Message}");
         }
     }
@@ -503,6 +471,11 @@
     {
         // TODO: Implement analytics generation
         Console.WriteLine("Generating analytics...");
+    }
+
+    private async Task RefreshData()
+    {
+        await LoadTeacherData();
     }
 
     private void NavigateToDailyAttendance()

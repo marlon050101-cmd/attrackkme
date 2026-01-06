@@ -14,6 +14,9 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
     <!-- Bootstrap Icons -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" />
+    <!-- jsPDF Library for PDF Generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 </head>
 
 <body>
@@ -61,6 +64,480 @@
             } catch (error) {
                 console.error('Error downloading file:', error);
                 alert('Error downloading file: ' + error.message);
+            }
+        };
+
+        // Function to export attendance report to PDF with beautiful layout
+        window.exportToPDF = function (jsonData, filename) {
+            try {
+                // Parse JSON data
+                const reportData = JSON.parse(jsonData);
+                
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF('p', 'mm', 'a4');
+                
+                // Colors
+                const primaryColor = [36, 7, 80]; // Dark purple
+                const secondaryColor = [52, 76, 100]; // Dark blue
+                const accentColor = [25, 135, 84]; // Green
+                const warningColor = [255, 193, 7]; // Yellow
+                
+                let yPos = 20;
+                
+                // Header with gradient effect
+                doc.setFillColor(...primaryColor);
+                doc.rect(0, 0, 210, 50, 'F');
+                
+                // School Name - Large and Bold
+                doc.setTextColor(255, 255, 255);
+                doc.setFontSize(20);
+                doc.setFont('helvetica', 'bold');
+                doc.text(reportData.schoolName || 'N/A', 105, 20, { align: 'center' });
+                
+                // Report Title
+                doc.setFontSize(16);
+                doc.setFont('helvetica', 'normal');
+                doc.text('STUDENT ATTENDANCE REPORT', 105, 30, { align: 'center' });
+                
+                // Report Date and Time
+                doc.setFontSize(10);
+                doc.text(`Generated: ${reportData.reportDate} at ${reportData.reportTime}`, 105, 40, { align: 'center' });
+                
+                yPos = 60;
+                
+                // Class Information Box
+                doc.setFillColor(240, 240, 240);
+                doc.roundedRect(10, yPos, 190, 30, 3, 3, 'F');
+                
+                doc.setTextColor(0, 0, 0);
+                doc.setFontSize(12);
+                doc.setFont('helvetica', 'bold');
+                doc.text('CLASS INFORMATION', 15, yPos + 8);
+                
+                doc.setFontSize(10);
+                doc.setFont('helvetica', 'normal');
+                doc.text(`Grade Level: Grade ${reportData.gradeLevel}`, 15, yPos + 16);
+                doc.text(`Section: ${reportData.section}`, 15, yPos + 22);
+                doc.text(`Adviser: ${reportData.adviserName}`, 110, yPos + 16);
+                doc.text(`Total Students: ${reportData.totalStudents}`, 110, yPos + 22);
+                
+                yPos = 100;
+                
+                // Summary Statistics
+                doc.setFillColor(...accentColor);
+                doc.roundedRect(10, yPos, 90, 25, 3, 3, 'F');
+                doc.setTextColor(255, 255, 255);
+                doc.setFontSize(14);
+                doc.setFont('helvetica', 'bold');
+                doc.text('TOTAL STUDENTS', 55, yPos + 10, { align: 'center' });
+                doc.setFontSize(20);
+                doc.text(reportData.totalStudents.toString(), 55, yPos + 20, { align: 'center' });
+                
+                doc.setFillColor(...warningColor);
+                doc.roundedRect(110, yPos, 90, 25, 3, 3, 'F');
+                doc.text('AT RISK', 155, yPos + 10, { align: 'center' });
+                doc.setFontSize(20);
+                doc.text(reportData.studentsAtRisk.toString(), 155, yPos + 20, { align: 'center' });
+                
+                yPos = 135;
+                
+                // Male Students Table
+                if (reportData.maleStudents && reportData.maleStudents.length > 0) {
+                    doc.setTextColor(0, 0, 0);
+                    doc.setFontSize(12);
+                    doc.setFont('helvetica', 'bold');
+                    doc.text('MALE STUDENTS', 15, yPos);
+                    yPos += 5;
+                    
+                    const maleTableData = reportData.maleStudents.map((s, idx) => [
+                        (idx + 1).toString(),
+                        s.fullName || 'N/A',
+                        s.absences?.toString() || '0',
+                        s.status || 'Good'
+                    ]);
+                    
+                    doc.autoTable({
+                        startY: yPos,
+                        head: [['#', 'Full Name', 'Absences', 'Status']],
+                        body: maleTableData,
+                        theme: 'striped',
+                        headStyles: { 
+                            fillColor: secondaryColor,
+                            textColor: [255, 255, 255],
+                            fontStyle: 'bold'
+                        },
+                        alternateRowStyles: { fillColor: [245, 245, 245] },
+                        styles: { fontSize: 9, cellPadding: 3 },
+                        columnStyles: {
+                            0: { cellWidth: 15 },
+                            1: { cellWidth: 100 },
+                            2: { cellWidth: 30, halign: 'center' },
+                            3: { cellWidth: 45, halign: 'center' }
+                        }
+                    });
+                    
+                    yPos = doc.lastAutoTable.finalY + 10;
+                }
+                
+                // Female Students Table
+                if (reportData.femaleStudents && reportData.femaleStudents.length > 0) {
+                    // Check if we need a new page
+                    if (yPos > 250) {
+                        doc.addPage();
+                        yPos = 20;
+                    }
+                    
+                    doc.setTextColor(0, 0, 0);
+                    doc.setFontSize(12);
+                    doc.setFont('helvetica', 'bold');
+                    doc.text('FEMALE STUDENTS', 15, yPos);
+                    yPos += 5;
+                    
+                    const femaleTableData = reportData.femaleStudents.map((s, idx) => [
+                        (idx + 1).toString(),
+                        s.fullName || 'N/A',
+                        s.absences?.toString() || '0',
+                        s.status || 'Good'
+                    ]);
+                    
+                    doc.autoTable({
+                        startY: yPos,
+                        head: [['#', 'Full Name', 'Absences', 'Status']],
+                        body: femaleTableData,
+                        theme: 'striped',
+                        headStyles: { 
+                            fillColor: [232, 30, 99], // Pink for female
+                            textColor: [255, 255, 255],
+                            fontStyle: 'bold'
+                        },
+                        alternateRowStyles: { fillColor: [255, 245, 250] },
+                        styles: { fontSize: 9, cellPadding: 3 },
+                        columnStyles: {
+                            0: { cellWidth: 15 },
+                            1: { cellWidth: 100 },
+                            2: { cellWidth: 30, halign: 'center' },
+                            3: { cellWidth: 45, halign: 'center' }
+                        }
+                    });
+                    
+                    yPos = doc.lastAutoTable.finalY + 10;
+                }
+                
+                // Footer
+                const pageCount = doc.internal.getNumberOfPages();
+                for (let i = 1; i <= pageCount; i++) {
+                    doc.setPage(i);
+                    doc.setFontSize(8);
+                    doc.setTextColor(128, 128, 128);
+                    doc.text(
+                        `Page ${i} of ${pageCount} | SARDO-TRACKER Attendance Monitoring System`,
+                        105,
+                        287,
+                        { align: 'center' }
+                    );
+                }
+                
+                // Save PDF
+                doc.save(filename);
+            } catch (error) {
+                console.error('Error generating PDF:', error);
+                alert('Error generating PDF: ' + error.message);
+            }
+        };
+
+        // Function to export guidance dashboard report to PDF with beautiful layout
+        window.exportGuidanceReportToPDF = function (jsonData, filename) {
+            try {
+                // Parse JSON data
+                const reportData = JSON.parse(jsonData);
+                
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF('p', 'mm', 'a4');
+                
+                // Enhanced Colors - More vibrant and professional
+                const primaryColor = [102, 126, 234]; // Purple gradient
+                const primaryDark = [76, 94, 200]; // Darker purple
+                const dangerColor = [220, 53, 69]; // Professional red
+                const dangerLight = [248, 215, 218]; // Light red
+                const warningColor = [255, 193, 7]; // Gold yellow
+                const warningLight = [255, 243, 205]; // Light yellow
+                const infoColor = [13, 202, 240]; // Cyan
+                const infoLight = [209, 236, 241]; // Light cyan
+                const secondaryColor = [52, 58, 64]; // Dark gray
+                const successColor = [40, 167, 69]; // Green
+                const lightGray = [248, 249, 250];
+                const borderGray = [222, 226, 230];
+                
+                let yPos = 15;
+                
+                // Enhanced Header with gradient effect and border
+                doc.setFillColor(...primaryColor);
+                doc.rect(0, 0, 210, 55, 'F');
+                
+                // Add subtle border
+                doc.setDrawColor(...primaryDark);
+                doc.setLineWidth(0.5);
+                doc.rect(0, 0, 210, 55);
+                
+                // Title - Large and Bold with shadow effect
+                doc.setTextColor(255, 255, 255);
+                doc.setFontSize(24);
+                doc.setFont('helvetica', 'bold');
+                doc.text('SARDO-TRACKER', 105, 25, { align: 'center' });
+                
+                // Report Title with underline effect
+                doc.setFontSize(18);
+                doc.setFont('helvetica', 'bold');
+                doc.text('STUDENTS AT RISK REPORT', 105, 35, { align: 'center' });
+                
+                // Decorative line under title
+                doc.setDrawColor(255, 255, 255);
+                doc.setLineWidth(0.3);
+                doc.line(60, 38, 150, 38);
+                
+                // Report Date and Time with icon representation
+                doc.setFontSize(11);
+                doc.setFont('helvetica', 'normal');
+                doc.text(`📅 Generated: ${reportData.reportDate} at ${reportData.reportTime}`, 105, 47, { align: 'center' });
+                
+                yPos = 65;
+                
+                // Enhanced Summary Statistics Box with better design
+                doc.setFillColor(...lightGray);
+                doc.roundedRect(10, yPos, 190, 40, 4, 4, 'F');
+                doc.setDrawColor(...borderGray);
+                doc.setLineWidth(0.3);
+                doc.roundedRect(10, yPos, 190, 40, 4, 4, 'S');
+                
+                // Section Title with icon
+                doc.setTextColor(0, 0, 0);
+                doc.setFontSize(13);
+                doc.setFont('helvetica', 'bold');
+                doc.text('📊 SUMMARY STATISTICS', 15, yPos + 8);
+                
+                // Flagged Students Card - Enhanced
+                doc.setFillColor(...dangerColor);
+                doc.roundedRect(15, yPos + 12, 58, 22, 3, 3, 'F');
+                doc.setDrawColor(200, 35, 51);
+                doc.setLineWidth(0.2);
+                doc.roundedRect(15, yPos + 12, 58, 22, 3, 3, 'S');
+                doc.setTextColor(255, 255, 255);
+                doc.setFontSize(9);
+                doc.setFont('helvetica', 'normal');
+                doc.text('🚩 FLAGGED STUDENTS', 44, yPos + 19, { align: 'center' });
+                doc.setFontSize(20);
+                doc.setFont('helvetica', 'bold');
+                doc.text(reportData.flaggedStudents.toString(), 44, yPos + 29, { align: 'center' });
+                
+                // Grade Levels Affected Card - Enhanced
+                doc.setFillColor(...warningColor);
+                doc.roundedRect(78, yPos + 12, 58, 22, 3, 3, 'F');
+                doc.setDrawColor(230, 174, 6);
+                doc.setLineWidth(0.2);
+                doc.roundedRect(78, yPos + 12, 58, 22, 3, 3, 'S');
+                doc.setTextColor(0, 0, 0);
+                doc.setFontSize(9);
+                doc.setFont('helvetica', 'normal');
+                doc.text('🎓 GRADE LEVELS', 107, yPos + 19, { align: 'center' });
+                doc.setFontSize(20);
+                doc.setFont('helvetica', 'bold');
+                doc.text(reportData.gradeLevelsAffected.toString(), 107, yPos + 29, { align: 'center' });
+                
+                // Sections Monitored Card - Enhanced
+                doc.setFillColor(...infoColor);
+                doc.roundedRect(141, yPos + 12, 54, 22, 3, 3, 'F');
+                doc.setDrawColor(11, 172, 204);
+                doc.setLineWidth(0.2);
+                doc.roundedRect(141, yPos + 12, 54, 22, 3, 3, 'S');
+                doc.setTextColor(255, 255, 255);
+                doc.setFontSize(9);
+                doc.setFont('helvetica', 'normal');
+                doc.text('👥 SECTIONS', 168, yPos + 19, { align: 'center' });
+                doc.setFontSize(20);
+                doc.setFont('helvetica', 'bold');
+                doc.text(reportData.sectionsMonitored.toString(), 168, yPos + 29, { align: 'center' });
+                
+                yPos = 115;
+                
+                // Students at Risk Table - Enhanced Design
+                if (reportData.studentsAtRisk && reportData.studentsAtRisk.length > 0) {
+                    // Section Header with icon and better styling
+                    doc.setFillColor(...primaryColor);
+                    doc.roundedRect(10, yPos - 3, 190, 12, 3, 3, 'F');
+                    doc.setDrawColor(...primaryDark);
+                    doc.setLineWidth(0.3);
+                    doc.roundedRect(10, yPos - 3, 190, 12, 3, 3, 'S');
+                    doc.setTextColor(255, 255, 255);
+                    doc.setFontSize(13);
+                    doc.setFont('helvetica', 'bold');
+                    doc.text('⚠️ STUDENTS AT RISK (3+ Absences)', 15, yPos + 4);
+                    yPos += 12;
+                    
+                    // Group by Grade and Section
+                    const grouped = {};
+                    reportData.studentsAtRisk.forEach((student, idx) => {
+                        const key = `Grade ${student.gradeLevel} - ${student.section || 'N/A'}`;
+                        if (!grouped[key]) {
+                            grouped[key] = [];
+                        }
+                        grouped[key].push(student);
+                    });
+                    
+                    // Sort groups
+                    const sortedGroups = Object.keys(grouped).sort();
+                    
+                    sortedGroups.forEach((groupKey, groupIdx) => {
+                        // Check if we need a new page
+                        if (yPos > 260) {
+                            doc.addPage();
+                            yPos = 20;
+                        }
+                        
+                        // Enhanced Group header with better design
+                        doc.setFillColor(230, 240, 255);
+                        doc.roundedRect(10, yPos - 2, 190, 10, 2, 2, 'F');
+                        doc.setDrawColor(180, 200, 240);
+                        doc.setLineWidth(0.2);
+                        doc.roundedRect(10, yPos - 2, 190, 10, 2, 2, 'S');
+                        doc.setTextColor(0, 0, 0);
+                        doc.setFontSize(11);
+                        doc.setFont('helvetica', 'bold');
+                        doc.text(`📚 ${groupKey}`, 15, yPos + 4);
+                        yPos += 10;
+                        
+                        // Table data for this group
+                        const tableData = grouped[groupKey].map((s, idx) => {
+                            const status = s.absentDays >= 3 ? 'Critical' : s.absentDays === 2 ? 'Warning' : 'Monitor';
+                            return [
+                                (idx + 1).toString(),
+                                s.fullName || 'N/A',
+                                s.gender || 'N/A',
+                                s.absentDays?.toString() || '0',
+                                status,
+                                s.absentDates || 'N/A'
+                            ];
+                        });
+                        
+                        doc.autoTable({
+                            startY: yPos,
+                            head: [['#', 'Student Name', 'Gender', 'Absences', 'Status', 'Absent Dates']],
+                            body: tableData,
+                            theme: 'striped',
+                            headStyles: { 
+                                fillColor: secondaryColor,
+                                textColor: [255, 255, 255],
+                                fontStyle: 'bold',
+                                fontSize: 9,
+                                cellPadding: 4,
+                                halign: 'center'
+                            },
+                            alternateRowStyles: { 
+                                fillColor: [250, 250, 250],
+                                textColor: [0, 0, 0]
+                            },
+                            styles: { 
+                                fontSize: 8.5, 
+                                cellPadding: 3,
+                                lineColor: [222, 226, 230],
+                                lineWidth: 0.1
+                            },
+                            columnStyles: {
+                                0: { cellWidth: 12, halign: 'center', fontStyle: 'bold' },
+                                1: { cellWidth: 60, halign: 'left' },
+                                2: { cellWidth: 25, halign: 'center' },
+                                3: { cellWidth: 25, halign: 'center', fontStyle: 'bold' },
+                                4: { cellWidth: 30, halign: 'center', fontStyle: 'bold' },
+                                5: { cellWidth: 38, halign: 'left', fontSize: 7.5 }
+                            },
+                            didParseCell: function (data) {
+                                // Enhanced color coding for status column
+                                if (data.column.index === 4) {
+                                    const status = data.cell.text[0];
+                                    if (status === 'Critical') {
+                                        data.cell.styles.fillColor = dangerColor;
+                                        data.cell.styles.textColor = [255, 255, 255];
+                                        data.cell.styles.fontStyle = 'bold';
+                                    } else if (status === 'Warning') {
+                                        data.cell.styles.fillColor = warningColor;
+                                        data.cell.styles.textColor = [0, 0, 0];
+                                        data.cell.styles.fontStyle = 'bold';
+                                    } else {
+                                        data.cell.styles.fillColor = infoColor;
+                                        data.cell.styles.textColor = [255, 255, 255];
+                                        data.cell.styles.fontStyle = 'bold';
+                                    }
+                                }
+                                // Enhanced color coding for absences column
+                                if (data.column.index === 3) {
+                                    const absences = parseInt(data.cell.text[0]) || 0;
+                                    if (absences >= 3) {
+                                        data.cell.styles.fillColor = dangerColor;
+                                        data.cell.styles.textColor = [255, 255, 255];
+                                        data.cell.styles.fontStyle = 'bold';
+                                    } else if (absences === 2) {
+                                        data.cell.styles.fillColor = warningColor;
+                                        data.cell.styles.textColor = [0, 0, 0];
+                                        data.cell.styles.fontStyle = 'bold';
+                                    } else if (absences === 1) {
+                                        data.cell.styles.fillColor = infoLight;
+                                        data.cell.styles.textColor = [0, 0, 0];
+                                    }
+                                }
+                                // Add borders to all cells
+                                data.cell.styles.lineColor = borderGray;
+                                data.cell.styles.lineWidth = 0.1;
+                            }
+                        });
+                        
+                        yPos = doc.lastAutoTable.finalY + 10;
+                    });
+                } else {
+                    // Enhanced "No students" message
+                    doc.setFillColor(...successColor);
+                    doc.circle(105, yPos + 10, 15, 'F');
+                    doc.setTextColor(255, 255, 255);
+                    doc.setFontSize(16);
+                    doc.setFont('helvetica', 'bold');
+                    doc.text('✓', 105, yPos + 13, { align: 'center' });
+                    doc.setTextColor(0, 0, 0);
+                    doc.setFontSize(14);
+                    doc.setFont('helvetica', 'bold');
+                    doc.text('No students at risk found!', 105, yPos + 30, { align: 'center' });
+                    doc.setFontSize(11);
+                    doc.setFont('helvetica', 'normal');
+                    doc.setTextColor(100, 100, 100);
+                    doc.text('Great job maintaining attendance!', 105, yPos + 38, { align: 'center' });
+                }
+                
+                // Enhanced Footer with better design
+                const pageCount = doc.internal.getNumberOfPages();
+                for (let i = 1; i <= pageCount; i++) {
+                    doc.setPage(i);
+                    
+                    // Footer background
+                    doc.setFillColor(248, 249, 250);
+                    doc.rect(0, 280, 210, 7, 'F');
+                    doc.setDrawColor(borderGray);
+                    doc.setLineWidth(0.2);
+                    doc.line(0, 280, 210, 280);
+                    
+                    // Footer text
+                    doc.setFontSize(8);
+                    doc.setTextColor(108, 117, 125);
+                    doc.setFont('helvetica', 'normal');
+                    doc.text(
+                        `Page ${i} of ${pageCount} | SARDO-TRACKER Guidance Dashboard | Generated on ${reportData.reportDate}`,
+                        105,
+                        284,
+                        { align: 'center' }
+                    );
+                }
+                
+                // Save PDF
+                doc.save(filename);
+            } catch (error) {
+                console.error('Error generating PDF:', error);
+                alert('Error generating PDF: ' + error.message);
             }
         };
     </script>
