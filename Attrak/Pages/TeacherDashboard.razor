@@ -9,6 +9,325 @@
 @layout Layoutall
 @implements IAsyncDisposable
 
+@code {
+    private List<Student>? students;
+    private List<Student>? studentsAtRisk;
+    private UserInfo? teacherInfo;
+    private TeacherClassInfo? classInfo;
+    private bool isLoading = true;
+    private bool isHubConnected = false;
+    private string errorMessage = string.Empty;
+    private Dictionary<string, int> studentAbsences = new();
+    private HubConnection? hubConnection;
+
+    private async Task LoadStudentsOnly()
+    {
+        if (teacherInfo == null) return;
+        
+        try
+        {
+            var cacheBuster = DateTime.Now.Ticks;
+            var studentsResponse = await Http.GetFromJsonAsync<List<Student>>($"{ApiConfig.BaseUrl}api/teacher/students/{teacherInfo.UserId}?t={cacheBuster}");
+            if (studentsResponse != null)
+            {
+                students = studentsResponse;
+                // Update students at risk
+                studentsAtRisk = students.Where(s => s.AbsenceCount >= 3).ToList();
+                Console.WriteLine($"DEBUG: SignalR - Student list refreshed locally ({students.Count} students).");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"DEBUG: Error refreshing student list: {ex.Message}");
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        teacherInfo = await AuthService.GetCurrentUserAsync();
+        
+        if (teacherInfo == null)
+        {
+            errorMessage = "Please log in to access this dashboard.";
+            isLoading = false;
+            return;
+        }
+
+        if (teacherInfo.UserType != UserType.Teacher)
+        {
+            errorMessage = "Access denied. This dashboard is only for teachers.";
+            isLoading = false;
+            return;
+        }
+
+        // Initialize SignalR Hub Connection
+        try
+        {
+            hubConnection = new HubConnectionBuilder()
+                .WithUrl($"{ApiConfig.BaseUrl}attendanceHub")
+                .WithAutomaticReconnect()
+                .Build();
+
+            hubConnection.On<System.Text.Json.JsonElement>("ReceiveAttendanceUpdate", async (update) =>
+            {
+                Console.WriteLine($"DEBUG: SignalR - Received update! Payload: {update.GetRawText()}");
+                
+                // If it's a system message or test message, just log it
+                if (update.TryGetProperty("StudentName", out var nameProp) && 
+                    (nameProp.GetString() == "SYSTEM" || nameProp.GetString() == "TEST" || nameProp.GetString() == "GROUP TEST"))
+                {
+                    var statusStr = update.TryGetProperty("Status", out var statusProp) ? statusProp.GetString() : "Unknown";
+                    Console.WriteLine($"DEBUG: SignalR System Message: {nameProp.GetString()} - {statusStr}");
+                    return;
+                }
+
+                // Use InvokeAsync to ensure UI thread update and separate refresh for students
+                await InvokeAsync(async () => {
+                    await LoadStudentsOnly();
+                    StateHasChanged();
+                });
+            });
+
+            await hubConnection.StartAsync();
+            isHubConnected = hubConnection.State == HubConnectionState.Connected;
+            
+            // Join the groups for this teacher - join both IDs for maximum reliability
+            if (isHubConnected)
+            {
+                // Join alphanumeric ID group
+                if (!string.IsNullOrEmpty(teacherInfo.TeacherId))
+                {
+                    await hubConnection.SendAsync("JoinClassGroup", teacherInfo.TeacherId);
+                }
+                
+                // Join GUID group
+                await hubConnection.SendAsync("JoinClassGroup", teacherInfo.UserId);
+            }
+        }
+        catch (Exception sigEx)
+        {
+            Console.WriteLine($"DEBUG: SignalR connection error: {sigEx.Message}");
+            isHubConnected = false;
+        }
+
+        // Load teacher data from API
+        await LoadTeacherData();
+    }
+
+    private async Task TestSignalR()
+    {
+        if (hubConnection == null || !isHubConnected) 
+        {
+            Console.WriteLine("DEBUG: SignalR - Cannot test, not connected.");
+            return;
+        }
+
+        try 
+        {
+            Console.WriteLine("DEBUG: SignalR - Sending test signal...");
+            await hubConnection.SendAsync("TestConnection", teacherInfo.UserId);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"DEBUG: SignalR Test Error: {ex.Message}");
+        }
+    }
+
+    private async Task LoadTeacherData()
+    {
+        try
+        {
+            isLoading = true;
+            errorMessage = string.Empty;
+            StateHasChanged();
+
+            // Test if server is running
+            try
+            {
+                var healthResponse = await Http.GetAsync($"{ApiConfig.BaseUrl}api/health");
+                if (!healthResponse.IsSuccessStatusCode)
+                {
+                    errorMessage = "Server is not responding correctly.";
+                    return;
+                }
+            }
+            catch (Exception)
+            {
+                errorMessage = "Server is not running. Please start the server first.";
+                return;
+            }
+            
+            // Unified dashboard data fetch
+            var cacheBuster = DateTime.Now.Ticks;
+            var response = await Http.GetFromJsonAsync<TeacherDashboardData>($"{ApiConfig.BaseUrl}api/teacher/dashboard/{teacherInfo.UserId}?t={cacheBuster}");
+            
+            if (response != null)
+            {
+                students = response.Students ?? new List<Student>();
+                studentsAtRisk = response.StudentsAtRisk ?? new List<Student>();
+                
+                // Update local teacher info if the API returned it
+                if (response.TeacherInfo != null)
+                {
+                    teacherInfo = response.TeacherInfo;
+                }
+
+                // Map class information
+                if (response.ClassInfo != null)
+                {
+                    classInfo = response.ClassInfo;
+                    
+                    // Priority for FullName: ClassInfo.FullName -> teacherInfo.FullName -> teacherInfo.Username
+                    if (string.IsNullOrEmpty(classInfo.FullName) || classInfo.FullName == "tech2")
+                    {
+                        classInfo.FullName = teacherInfo?.Username ?? "Teacher";
+                    }
+                }
+                
+                Console.WriteLine($"DEBUG: Dashboard loaded - {students.Count} students found.");
+                
+                if (students.Count == 0)
+                {
+                    Console.WriteLine("DEBUG: No students found in the dashboard response.");
+                }
+            }
+            else
+            {
+                errorMessage = "Failed to load dashboard data. No response from server.";
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"DEBUG: LoadTeacherData Error: {ex.Message}");
+            errorMessage = $"An error occurred while loading data: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task<int> GetStudentAbsencesAsync(string studentId)
+    {
+        try
+        {
+            var response = await Http.GetFromJsonAsync<System.Text.Json.JsonElement>($"{ApiConfig.BaseUrl}api/teacher/student-absences/{studentId}");
+            if (response.ValueKind != System.Text.Json.JsonValueKind.Undefined && response.TryGetProperty("absences", out var absProp))
+            {
+                return absProp.GetInt32();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error getting absences for student {studentId}: {ex.Message}");
+        }
+        
+        return 0;
+    }
+
+    private int GetStudentAbsences(string studentId)
+    {
+        if (studentAbsences.ContainsKey(studentId))
+        {
+            return studentAbsences[studentId];
+        }
+        
+        // Return 0 as default, will be updated by API call
+        return 0;
+    }
+
+    private string GetStudentStatus(int absences)
+    {
+        return absences switch
+        {
+            >= 3 => "Flagged",
+            >= 1 => "At Risk",
+            _ => "Good"
+        };
+    }
+
+    private void ViewStudentDetails(string studentId)
+    {
+        Console.WriteLine($"DEBUG: Viewing details for student: {studentId}");
+        Navigation.NavigateTo($"/student-details/{studentId}");
+    }
+
+    private async Task ExportReport()
+    {
+        try
+        {
+            if (students == null || !students.Any())
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "No student data available to export.");
+                return;
+            }
+
+            // Prepare data for PDF export
+            var reportData = new
+            {
+                schoolName = classInfo?.SchoolName ?? "N/A",
+                gradeLevel = classInfo?.GradeLevel ?? 0,
+                section = classInfo?.Section ?? "N/A",
+                adviserName = classInfo?.FullName ?? "N/A",
+                reportDate = DateTime.Now.ToString("MMMM dd, yyyy"),
+                reportTime = DateTime.Now.ToString("hh:mm tt"),
+                totalStudents = students.Count,
+                studentsAtRisk = studentsAtRisk?.Count ?? 0,
+                maleStudents = students.Where(s => s.Gender?.ToLower() == "male")
+                    .OrderBy(s => s.FullName)
+                    .Select(s => new { fullName = s.FullName, absences = s.AbsenceCount, status = s.Status })
+                    .ToList(),
+                femaleStudents = students.Where(s => s.Gender?.ToLower() == "female")
+                    .OrderBy(s => s.FullName)
+                    .Select(s => new { fullName = s.FullName, absences = s.AbsenceCount, status = s.Status })
+                    .ToList()
+            };
+
+            // Generate filename
+            var fileName = $"AttendanceReport_Grade{classInfo?.GradeLevel}_{classInfo?.Section}_{DateTime.Now:yyyyMMdd}.pdf";
+            
+            // Serialize to JSON and export to PDF using JavaScript
+            var jsonData = System.Text.Json.JsonSerializer.Serialize(reportData);
+            await JSRuntime.InvokeVoidAsync("exportToPDF", jsonData, fileName);
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error exporting report: {ex.Message}");
+        }
+    }
+
+    private void GenerateAnalytics()
+    {
+        // TODO: Implement analytics generation
+        Console.WriteLine("Generating analytics...");
+    }
+
+    private async Task RefreshData()
+    {
+        await LoadTeacherData();
+    }
+
+    private void NavigateToDailyAttendance()
+    {
+        Navigation.NavigateTo("/daily-attendance");
+    }
+
+    private async Task Logout()
+    {
+        await AuthService.LogoutAsync();
+        Navigation.NavigateTo("/login");
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (hubConnection is not null)
+        {
+            await hubConnection.DisposeAsync();
+        }
+    }
+}
+
 <PageTitle>Teacher Dashboard - Attrak</PageTitle>
 
 <div class="container-fluid">
@@ -97,6 +416,10 @@
                         <div class="d-flex align-items-center mt-1">
                             <div class="connection-dot @(isHubConnected ? "connected" : "disconnected")"></div>
                             <span class="text-muted" style="font-size: 0.7rem;">Real-time: @(isHubConnected ? "Connected" : "Disconnected")</span>
+                            @if (isHubConnected)
+                            {
+                                <button class="btn btn-link py-0 px-2 text-primary" style="font-size: 0.65rem;" @onclick="TestSignalR">Test Signal</button>
+                            }
                         </div>
                     </div>
                     <div class="d-flex gap-2">
@@ -237,297 +560,6 @@
     </div>
 </div>
 
-@code {
-    private List<Student>? students;
-    private List<Student>? studentsAtRisk;
-    private UserInfo? teacherInfo;
-    private TeacherClassInfo? classInfo;
-    private bool isLoading = true;
-    private bool isHubConnected = false;
-    private string errorMessage = string.Empty;
-    private Dictionary<string, int> studentAbsences = new();
-    private HubConnection? hubConnection;
-
-    private async Task LoadStudentsOnly()
-    {
-        if (teacherInfo == null) return;
-        
-        try
-        {
-            var cacheBuster = DateTime.Now.Ticks;
-            var studentsResponse = await Http.GetFromJsonAsync<List<Student>>($"{ApiConfig.BaseUrl}api/teacher/students/{teacherInfo.UserId}?t={cacheBuster}");
-            if (studentsResponse != null)
-            {
-                students = studentsResponse;
-                // Update students at risk
-                studentsAtRisk = students.Where(s => s.AbsenceCount >= 3).ToList();
-                Console.WriteLine($"DEBUG: SignalR - Student list refreshed locally ({students.Count} students).");
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"DEBUG: Error refreshing student list: {ex.Message}");
-        }
-    }
-
-    protected override async Task OnInitializedAsync()
-    {
-        teacherInfo = await AuthService.GetCurrentUserAsync();
-        
-        if (teacherInfo == null)
-        {
-            errorMessage = "Please log in to access this dashboard.";
-            isLoading = false;
-            return;
-        }
-
-        if (teacherInfo.UserType != UserType.Teacher)
-        {
-            errorMessage = "Access denied. This dashboard is only for teachers.";
-            isLoading = false;
-            return;
-        }
-
-        // Initialize SignalR Hub Connection
-        try
-        {
-            hubConnection = new HubConnectionBuilder()
-                .WithUrl($"{ApiConfig.BaseUrl}attendanceHub")
-                .WithAutomaticReconnect()
-                .Build();
-
-            hubConnection.On<object>("ReceiveAttendanceUpdate", async (update) =>
-            {
-                Console.WriteLine("DEBUG: SignalR - Received attendance update event!");
-                // Use InvokeAsync to ensure UI thread update and separate refresh for students
-                await InvokeAsync(async () => {
-                    await LoadStudentsOnly();
-                    StateHasChanged();
-                });
-            });
-
-            await hubConnection.StartAsync();
-            isHubConnected = hubConnection.State == HubConnectionState.Connected;
-            
-            // Join the groups for this teacher - join both IDs for maximum reliability
-            if (isHubConnected)
-            {
-                // Join alphanumeric ID group
-                if (!string.IsNullOrEmpty(teacherInfo.TeacherId))
-                {
-                    await hubConnection.SendAsync("JoinClassGroup", teacherInfo.TeacherId);
-                    Console.WriteLine($"DEBUG: SignalR - Joined group {teacherInfo.TeacherId}");
-                }
-                
-                // Join GUID group
-                await hubConnection.SendAsync("JoinClassGroup", teacherInfo.UserId);
-                Console.WriteLine($"DEBUG: SignalR - Joined group {teacherInfo.UserId}");
-            }
-        }
-        catch (Exception sigEx)
-        {
-            Console.WriteLine($"DEBUG: SignalR connection error: {sigEx.Message}");
-            isHubConnected = false;
-        }
-
-        // Load teacher data from API
-        await LoadTeacherData();
-    }
-
-    private async Task LoadTeacherData()
-    {
-        try
-        {
-            isLoading = true;
-            errorMessage = string.Empty;
-            StateHasChanged();
-
-            // Test if server is running
-            try
-            {
-                var healthResponse = await Http.GetAsync($"{ApiConfig.BaseUrl}api/health");
-                if (!healthResponse.IsSuccessStatusCode)
-                {
-                    errorMessage = "Server is not responding correctly.";
-                    return;
-                }
-            }
-            catch (Exception)
-            {
-                errorMessage = "Server is not running. Please start the server first.";
-                return;
-            }
-            
-            // Unified dashboard data fetch
-            var cacheBuster = DateTime.Now.Ticks;
-            var response = await Http.GetFromJsonAsync<TeacherDashboardData>($"{ApiConfig.BaseUrl}api/teacher/dashboard/{teacherInfo.UserId}?t={cacheBuster}");
-            
-            if (response != null)
-            {
-                students = response.Students ?? new List<Student>();
-                studentsAtRisk = response.StudentsAtRisk ?? new List<Student>();
-                
-                // Update local teacher info if the API returned it
-                if (response.TeacherInfo != null)
-                {
-                    teacherInfo = response.TeacherInfo;
-                }
-
-                // Map class information
-                if (response.ClassInfo != null)
-                {
-                    classInfo = response.ClassInfo;
-                    
-                    // Priority for FullName: ClassInfo.FullName -> teacherInfo.FullName -> teacherInfo.Username
-                    if (string.IsNullOrEmpty(classInfo.FullName) || classInfo.FullName == "tech2")
-                    {
-                        classInfo.FullName = teacherInfo?.Username ?? "Teacher";
-                    }
-                }
-                
-                Console.WriteLine($"DEBUG: Dashboard loaded - {students.Count} students found.");
-                
-                if (students.Count == 0)
-                {
-                    Console.WriteLine("DEBUG: No students found in the dashboard response.");
-                }
-            }
-            else
-            {
-                errorMessage = "Failed to load dashboard data. No response from server.";
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"DEBUG: LoadTeacherData Error: {ex.Message}");
-            errorMessage = $"An error occurred while loading data: {ex.Message}";
-        }
-        finally
-        {
-            isLoading = false;
-            StateHasChanged();
-        }
-    }
-
-    private async Task<int> GetStudentAbsencesAsync(string studentId)
-    {
-        try
-        {
-            var response = await Http.GetFromJsonAsync<dynamic>($"{ApiConfig.BaseUrl}api/teacher/student-absences/{studentId}");
-            if (response != null && response.absences != null)
-            {
-                return (int)response.absences;
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error getting absences for student {studentId}: {ex.Message}");
-        }
-        
-        return 0;
-    }
-
-    private int GetStudentAbsences(string studentId)
-    {
-        if (studentAbsences.ContainsKey(studentId))
-        {
-            return studentAbsences[studentId];
-        }
-        
-        // Return 0 as default, will be updated by API call
-        return 0;
-    }
-
-    private string GetStudentStatus(int absences)
-    {
-        return absences switch
-        {
-            >= 3 => "Flagged",
-            >= 1 => "At Risk",
-            _ => "Good"
-        };
-    }
-
-    private void ViewStudentDetails(string studentId)
-    {
-        // TODO: Implement student details view
-        Console.WriteLine($"Viewing details for student: {studentId}");
-    }
-
-    private async Task ExportReport()
-    {
-        try
-        {
-            if (students == null || !students.Any())
-            {
-                await JSRuntime.InvokeVoidAsync("alert", "No student data available to export.");
-                return;
-            }
-
-            // Prepare data for PDF export
-            var reportData = new
-            {
-                schoolName = classInfo?.SchoolName ?? "N/A",
-                gradeLevel = classInfo?.GradeLevel ?? 0,
-                section = classInfo?.Section ?? "N/A",
-                adviserName = classInfo?.FullName ?? "N/A",
-                reportDate = DateTime.Now.ToString("MMMM dd, yyyy"),
-                reportTime = DateTime.Now.ToString("hh:mm tt"),
-                totalStudents = students.Count,
-                studentsAtRisk = studentsAtRisk?.Count ?? 0,
-                maleStudents = students.Where(s => s.Gender?.ToLower() == "male")
-                    .OrderBy(s => s.FullName)
-                    .Select(s => new { fullName = s.FullName, absences = s.AbsenceCount, status = s.Status })
-                    .ToList(),
-                femaleStudents = students.Where(s => s.Gender?.ToLower() == "female")
-                    .OrderBy(s => s.FullName)
-                    .Select(s => new { fullName = s.FullName, absences = s.AbsenceCount, status = s.Status })
-                    .ToList()
-            };
-
-            // Generate filename
-            var fileName = $"AttendanceReport_Grade{classInfo?.GradeLevel}_{classInfo?.Section}_{DateTime.Now:yyyyMMdd}.pdf";
-            
-            // Serialize to JSON and export to PDF using JavaScript
-            var jsonData = System.Text.Json.JsonSerializer.Serialize(reportData);
-            await JSRuntime.InvokeVoidAsync("exportToPDF", jsonData, fileName);
-        }
-        catch (Exception ex)
-        {
-            await JSRuntime.InvokeVoidAsync("alert", $"Error exporting report: {ex.Message}");
-        }
-    }
-
-    private void GenerateAnalytics()
-    {
-        // TODO: Implement analytics generation
-        Console.WriteLine("Generating analytics...");
-    }
-
-    private async Task RefreshData()
-    {
-        await LoadTeacherData();
-    }
-
-    private void NavigateToDailyAttendance()
-    {
-        Navigation.NavigateTo("/daily-attendance");
-    }
-
-    private async Task Logout()
-    {
-        await AuthService.LogoutAsync();
-        Navigation.NavigateTo("/login");
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        if (hubConnection is not null)
-        {
-            await hubConnection.DisposeAsync();
-        }
-    }
-}
 
 <style>
     .bg-white-opacity { background: rgba(255, 255, 255, 0.05); }
