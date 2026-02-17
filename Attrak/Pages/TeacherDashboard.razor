@@ -92,14 +92,20 @@
         <div class="col-12">
             <div class="card-elegant overflow-hidden">
                 <div class="table-header d-flex justify-content-between align-items-center p-4">
-                    <h5 class="mb-0 fw-bold">Student Attendance Report</h5>
+                    <div>
+                        <h5 class="mb-0 fw-bold">Student Attendance Report</h5>
+                        <div class="d-flex align-items-center mt-1">
+                            <div class="connection-dot @(isHubConnected ? "connected" : "disconnected")"></div>
+                            <span class="text-muted" style="font-size: 0.7rem;">Real-time: @(isHubConnected ? "Connected" : "Disconnected")</span>
+                        </div>
+                    </div>
                     <div class="d-flex gap-2">
+                        <button class="btn btn-outline-primary btn-sm rounded-pill px-3" @onclick="LoadStudentsOnly">
+                            <i class="fas fa-sync-alt me-1"></i> Refresh
+                        </button>
                         <button class="btn btn-primary btn-sm rounded-pill px-4" @onclick="NavigateToDailyAttendance">
                             <i class="fas fa-calendar-alt me-1"></i> Daily Attendance
                         </button>
-                        <span class="badge bg-secondary-soft text-muted px-3 py-2 rounded-pill small">
-                            As of @DateTime.Now.ToString("MMMM yyyy")
-                        </span>
                     </div>
                 </div>
                 <div class="table-responsive">
@@ -237,9 +243,32 @@
     private UserInfo? teacherInfo;
     private TeacherClassInfo? classInfo;
     private bool isLoading = true;
+    private bool isHubConnected = false;
     private string errorMessage = string.Empty;
     private Dictionary<string, int> studentAbsences = new();
     private HubConnection? hubConnection;
+
+    private async Task LoadStudentsOnly()
+    {
+        if (teacherInfo == null) return;
+        
+        try
+        {
+            var cacheBuster = DateTime.Now.Ticks;
+            var studentsResponse = await Http.GetFromJsonAsync<List<Student>>($"{ApiConfig.BaseUrl}api/teacher/students/{teacherInfo.UserId}?t={cacheBuster}");
+            if (studentsResponse != null)
+            {
+                students = studentsResponse;
+                // Update students at risk
+                studentsAtRisk = students.Where(s => s.AbsenceCount >= 3).ToList();
+                Console.WriteLine($"DEBUG: SignalR - Student list refreshed locally ({students.Count} students).");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"DEBUG: Error refreshing student list: {ex.Message}");
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -269,17 +298,28 @@
 
             hubConnection.On<object>("ReceiveAttendanceUpdate", async (update) =>
             {
-                Console.WriteLine("DEBUG: SignalR - Received attendance update!");
-                // Refresh the data when an update is received
-                await LoadTeacherData();
-                StateHasChanged();
+                Console.WriteLine("DEBUG: SignalR - Received attendance update event!");
+                // Use InvokeAsync to ensure UI thread update and separate refresh for students
+                await InvokeAsync(async () => {
+                    await LoadStudentsOnly();
+                    StateHasChanged();
+                });
             });
 
             await hubConnection.StartAsync();
+            isHubConnected = hubConnection.State == HubConnectionState.Connected;
             
-            // Join the group for this teacher
-            if (hubConnection.State == HubConnectionState.Connected)
+            // Join the groups for this teacher - join both IDs for maximum reliability
+            if (isHubConnected)
             {
+                // Join alphanumeric ID group
+                if (!string.IsNullOrEmpty(teacherInfo.TeacherId))
+                {
+                    await hubConnection.SendAsync("JoinClassGroup", teacherInfo.TeacherId);
+                    Console.WriteLine($"DEBUG: SignalR - Joined group {teacherInfo.TeacherId}");
+                }
+                
+                // Join GUID group
                 await hubConnection.SendAsync("JoinClassGroup", teacherInfo.UserId);
                 Console.WriteLine($"DEBUG: SignalR - Joined group {teacherInfo.UserId}");
             }
@@ -287,6 +327,7 @@
         catch (Exception sigEx)
         {
             Console.WriteLine($"DEBUG: SignalR connection error: {sigEx.Message}");
+            isHubConnected = false;
         }
 
         // Load teacher data from API
@@ -305,70 +346,61 @@
             try
             {
                 var healthResponse = await Http.GetAsync($"{ApiConfig.BaseUrl}api/health");
+                if (!healthResponse.IsSuccessStatusCode)
+                {
+                    errorMessage = "Server is not responding correctly.";
+                    return;
+                }
             }
-            catch (Exception healthEx)
+            catch (Exception)
             {
                 errorMessage = "Server is not running. Please start the server first.";
                 return;
             }
             
-            // Load teacher class information first (try to load, but don't fail completely if this fails)
-            // Add timestamp to prevent caching
+            // Unified dashboard data fetch
             var cacheBuster = DateTime.Now.Ticks;
-            try
-            {
-                var teacherInfoResponse = await Http.GetFromJsonAsync<TeacherClassInfo>($"{ApiConfig.BaseUrl}api/teacher/info/{teacherInfo.UserId}?t={cacheBuster}");
-                
-                if (teacherInfoResponse != null)
-                {
-                    classInfo = teacherInfoResponse;
-                    Console.WriteLine($"DEBUG: Loaded teacher info - FullName: {classInfo.FullName}");
-                }
-            }
-            catch (Exception teacherInfoEx)
-            {
-                Console.WriteLine($"DEBUG: Error loading teacher info: {teacherInfoEx.Message}");
-                // Don't return early - continue to try loading dashboard data
-            }
-            
-            // Load teacher dashboard data (this is the main data we need)
-            // Add timestamp to prevent caching
             var response = await Http.GetFromJsonAsync<TeacherDashboardData>($"{ApiConfig.BaseUrl}api/teacher/dashboard/{teacherInfo.UserId}?t={cacheBuster}");
+            
             if (response != null)
             {
                 students = response.Students ?? new List<Student>();
                 studentsAtRisk = response.StudentsAtRisk ?? new List<Student>();
-                teacherInfo = response.TeacherInfo ?? teacherInfo;
                 
-                // If we got dashboard data with class info, use it BUT preserve the correct FullName from teacherInfoResponse
+                // Update local teacher info if the API returned it
+                if (response.TeacherInfo != null)
+                {
+                    teacherInfo = response.TeacherInfo;
+                }
+
+                // Map class information
                 if (response.ClassInfo != null)
                 {
-                    // Use the classInfo from dashboard but keep the correct FullName from the first API call
-                    var correctFullName = classInfo?.FullName ?? response.ClassInfo.FullName;
                     classInfo = response.ClassInfo;
-                    // Override with the correct FullName if we got it from the first API call
-                    if (!string.IsNullOrEmpty(correctFullName) && correctFullName != "tech2" && correctFullName != response.ClassInfo.FullName)
+                    
+                    // Priority for FullName: ClassInfo.FullName -> teacherInfo.FullName -> teacherInfo.Username
+                    if (string.IsNullOrEmpty(classInfo.FullName) || classInfo.FullName == "tech2")
                     {
-                        classInfo.FullName = correctFullName;
-                        Console.WriteLine($"DEBUG: Fixed FullName from '{response.ClassInfo.FullName}' to '{correctFullName}'");
+                        classInfo.FullName = teacherInfo?.Username ?? "Teacher";
                     }
-                    Console.WriteLine($"DEBUG: Updated classInfo from dashboard - FullName: {classInfo.FullName}");
                 }
                 
-                // Clear any previous errors
-                if (students.Count > 0)
+                Console.WriteLine($"DEBUG: Dashboard loaded - {students.Count} students found.");
+                
+                if (students.Count == 0)
                 {
-                    errorMessage = string.Empty;
+                    Console.WriteLine("DEBUG: No students found in the dashboard response.");
                 }
             }
             else
             {
-                errorMessage = "Failed to load teacher dashboard data. Please check if students are assigned to your class.";
+                errorMessage = "Failed to load dashboard data. No response from server.";
             }
         }
         catch (Exception ex)
         {
-            errorMessage = $"An error occurred: {ex.Message}";
+            Console.WriteLine($"DEBUG: LoadTeacherData Error: {ex.Message}");
+            errorMessage = $"An error occurred while loading data: {ex.Message}";
         }
         finally
         {
@@ -511,6 +543,22 @@
     .card-elegant:hover {
         transform: translateY(-2px);
         box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+    }
+
+    .connection-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        margin-right: 5px;
+    }
+    
+    .connection-dot.connected {
+        background-color: #10b981; /* Green */
+        box-shadow: 0 0 5px #10b981;
+    }
+    
+    .connection-dot.disconnected {
+        background-color: #ef4444; /* Red */
     }
 
     .info-strip {

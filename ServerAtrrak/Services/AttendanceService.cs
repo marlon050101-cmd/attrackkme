@@ -72,7 +72,7 @@ namespace ServerAtrrak.Services
                 {
                     if (!string.IsNullOrEmpty(request.TeacherId))
                     {
-                        await _hubContext.Clients.Group(request.TeacherId).SendAsync("ReceiveAttendanceUpdate", new
+                        var updatePayload = new
                         {
                             StudentId = request.StudentId,
                             StudentName = studentName,
@@ -80,9 +80,19 @@ namespace ServerAtrrak.Services
                             Remarks = remarks,
                             AttendanceType = request.AttendanceType,
                             Timestamp = request.Timestamp
-                        });
-                        _logger.LogInformation("SignalR: Broadcasted attendance update for student {StudentId} to teacher {TeacherId}", 
-                            request.StudentId, request.TeacherId);
+                        };
+
+                        // Broadcast to the alphanumeric ID group (e.g., T123)
+                        await _hubContext.Clients.Group(request.TeacherId).SendAsync("ReceiveAttendanceUpdate", updatePayload);
+                        _logger.LogInformation("SignalR: Broadcasted to TeacherId group: {TeacherId}", request.TeacherId);
+
+                        // Attempt to find the UserId to broadcast to that group as well
+                        var userId = await GetUserIdFromTeacherIdAsync(request.TeacherId);
+                        if (!string.IsNullOrEmpty(userId) && userId != request.TeacherId)
+                        {
+                            await _hubContext.Clients.Group(userId).SendAsync("ReceiveAttendanceUpdate", updatePayload);
+                            _logger.LogInformation("SignalR: Also broadcasted to UserId group: {UserId}", userId);
+                        }
                     }
                 }
                 catch (Exception hubEx)
@@ -203,19 +213,7 @@ namespace ServerAtrrak.Services
             return attendance;
         }
 
-        private async Task<bool> IsStudentExistsAsync(string studentId)
-        {
-            using var connection = new MySqlConnection(_dbConnection.GetConnection());
-            await connection.OpenAsync();
-
-            var query = "SELECT COUNT(*) FROM student WHERE StudentId = @StudentId AND IsActive = TRUE";
-
-            using var command = new MySqlCommand(query, connection);
-            command.Parameters.AddWithValue("@StudentId", studentId);
-
-            var count = Convert.ToInt32(await command.ExecuteScalarAsync());
-            return count > 0;
-        }
+       
 
         private async Task<bool> IsAttendanceAlreadyMarkedAsync(string studentId, DateTime date, string attendanceType)
         {
@@ -253,199 +251,7 @@ namespace ServerAtrrak.Services
             return result?.ToString() ?? "Unknown Student";
         }
 
-        private async Task<ValidationResult> ValidateStudentEnrollmentAsync(AttendanceRequest request)
-        {
-            try
-        {
-            using var connection = new MySqlConnection(_dbConnection.GetConnection());
-            await connection.OpenAsync();
-
-            // Debug: Log the parameters
-            _logger.LogInformation("Validating student: StudentId={StudentId}, SubjectId={SubjectId}, SchoolId={SchoolId}", 
-                request.StudentId, request.SubjectId, request.SchoolId);
-            
-            // Debug: First check if student exists with basic info
-            var debugStudentQuery = "SELECT StudentId, FullName, SchoolId, GradeLevel, Section FROM student WHERE StudentId = @StudentId";
-            using var debugStudentCommand = new MySqlCommand(debugStudentQuery, connection);
-            debugStudentCommand.Parameters.AddWithValue("@StudentId", request.StudentId);
-            
-            using var debugStudentReader = await debugStudentCommand.ExecuteReaderAsync();
-            if (await debugStudentReader.ReadAsync())
-            {
-                var debugStudentId = debugStudentReader.GetString(0);
-                var debugStudentName = debugStudentReader.GetString(1);
-                var debugStudentSchoolId = debugStudentReader.GetString(2);
-                var debugStudentGradeLevel = debugStudentReader.GetInt32(3);
-                var debugStudentSection = debugStudentReader.GetString(4);
-                
-                _logger.LogInformation("DEBUG - Student found: ID={StudentId}, Name={StudentName}, SchoolId={SchoolId}, GradeLevel={GradeLevel}, Section={Section}", 
-                    debugStudentId, debugStudentName, debugStudentSchoolId, debugStudentGradeLevel, debugStudentSection);
-            }
-            else
-            {
-                _logger.LogWarning("DEBUG - Student NOT found in database: StudentId={StudentId}", request.StudentId);
-            }
-            debugStudentReader.Close();
-            
-            // Debug: Check subject info
-            var debugSubjectQuery = "SELECT SubjectId, SubjectName, GradeLevel FROM subject WHERE SubjectId = @SubjectId";
-            using var debugSubjectCommand = new MySqlCommand(debugSubjectQuery, connection);
-            debugSubjectCommand.Parameters.AddWithValue("@SubjectId", request.SubjectId);
-            
-            using var debugSubjectReader = await debugSubjectCommand.ExecuteReaderAsync();
-            if (await debugSubjectReader.ReadAsync())
-            {
-                var debugSubjectId = debugSubjectReader.GetString(0);
-                var debugSubjectName = debugSubjectReader.GetString(1);
-                var debugSubjectGradeLevel = debugSubjectReader.GetInt32(2);
-                
-                _logger.LogInformation("DEBUG - Subject found: ID={SubjectId}, Name={SubjectName}, GradeLevel={GradeLevel}", 
-                    debugSubjectId, debugSubjectName, debugSubjectGradeLevel);
-            }
-            else
-            {
-                _logger.LogWarning("DEBUG - Subject NOT found in database: SubjectId={SubjectId}", request.SubjectId);
-            }
-            debugSubjectReader.Close();
-
-            var query = @"
-                    SELECT s.FullName, s.SchoolId, s.Section, s.GradeLevel, sub.GradeLevel as SubjectGradeLevel
-                    FROM student s
-                    INNER JOIN subject sub ON s.GradeLevel = sub.GradeLevel
-                    WHERE s.StudentId = @StudentId 
-                    AND sub.SubjectId = @SubjectId
-                    AND s.SchoolId = @SchoolId";
-
-            using var command = new MySqlCommand(query, connection);
-            command.Parameters.AddWithValue("@StudentId", request.StudentId);
-            command.Parameters.AddWithValue("@SubjectId", request.SubjectId);
-                command.Parameters.AddWithValue("@SchoolId", request.SchoolId);
-
-            _logger.LogInformation("Executing validation query: {Query}", query);
-
-                using var reader = await command.ExecuteReaderAsync();
-                
-                if (await reader.ReadAsync())
-                {
-                    var studentName = reader.GetString(0);
-                    var studentSchoolId = reader.GetString(1);
-                    var studentSection = reader.GetString(2);
-                    var studentGradeLevel = reader.GetInt32(3);
-                    var subjectGradeLevel = reader.GetInt32(4);
-
-                    // Check if student is in the correct section (if specified)
-                    if (!string.IsNullOrEmpty(request.Section) && studentSection != request.Section)
-                    {
-                        return new ValidationResult
-                        {
-                            IsValid = false,
-                            Message = $"Student is not enrolled in section {request.Section}",
-                            StudentName = studentName
-                        };
-                    }
-
-                    // Check if student grade matches subject grade
-                    if (studentGradeLevel != subjectGradeLevel)
-                    {
-                        return new ValidationResult
-                        {
-                            IsValid = false,
-                            Message = $"Student grade level ({studentGradeLevel}) does not match subject grade level ({subjectGradeLevel})",
-                            StudentName = studentName
-                        };
-                    }
-
-                    return new ValidationResult
-                    {
-                        IsValid = true,
-                        Message = "Student validation successful",
-                        StudentName = studentName
-                    };
-                }
-                else
-                {
-                    // Debug: Check if student exists at all
-                    _logger.LogWarning("No matching record found. Checking if student exists...");
-                    
-                    var studentExistsQuery = "SELECT FullName, SchoolId, GradeLevel FROM student WHERE StudentId = @StudentId";
-                    using var studentExistsCommand = new MySqlCommand(studentExistsQuery, connection);
-                    studentExistsCommand.Parameters.AddWithValue("@StudentId", request.StudentId);
-                    
-                    using var studentExistsReader = await studentExistsCommand.ExecuteReaderAsync();
-                    if (await studentExistsReader.ReadAsync())
-                    {
-                        var studentName = studentExistsReader.GetString(0);
-                        var studentSchoolId = studentExistsReader.GetString(1);
-                        var studentGradeLevel = studentExistsReader.GetInt32(2);
-                        
-                        _logger.LogWarning("Student exists: Name={StudentName}, SchoolId={StudentSchoolId}, GradeLevel={StudentGradeLevel}", 
-                            studentName, studentSchoolId, studentGradeLevel);
-                        
-                        // Check if subject exists
-                        var subjectExistsQuery = "SELECT SubjectName, GradeLevel FROM subject WHERE SubjectId = @SubjectId";
-                        using var subjectExistsCommand = new MySqlCommand(subjectExistsQuery, connection);
-                        subjectExistsCommand.Parameters.AddWithValue("@SubjectId", request.SubjectId);
-                        
-                        using var subjectExistsReader = await subjectExistsCommand.ExecuteReaderAsync();
-                        if (await subjectExistsReader.ReadAsync())
-                        {
-                            var subjectName = subjectExistsReader.GetString(0);
-                            var subjectGradeLevel = subjectExistsReader.GetInt32(1);
-                            
-                            _logger.LogWarning("Subject exists: Name={SubjectName}, GradeLevel={SubjectGradeLevel}", 
-                                subjectName, subjectGradeLevel);
-                            
-                            if (studentSchoolId != request.SchoolId)
-                            {
-                                return new ValidationResult
-                                {
-                                    IsValid = false,
-                                    Message = $"Student is from different school. Student school: {studentSchoolId}, Requested school: {request.SchoolId}",
-                                    StudentName = studentName
-                                };
-                            }
-                            
-                            if (studentGradeLevel != subjectGradeLevel)
-                            {
-                                return new ValidationResult
-                                {
-                                    IsValid = false,
-                                    Message = $"Grade level mismatch. Student grade: {studentGradeLevel}, Subject grade: {subjectGradeLevel}",
-                                    StudentName = studentName
-                                };
-                            }
-                        }
-                        else
-                        {
-                            _logger.LogWarning("Subject not found: SubjectId={SubjectId}", request.SubjectId);
-                        }
-                    }
-                    else
-                    {
-                        _logger.LogWarning("Student not found: StudentId={StudentId}", request.StudentId);
-                    }
-                    
-                    return new ValidationResult
-                    {
-                        IsValid = false,
-                        Message = "Student not found or grade level does not match subject, or wrong school",
-                        StudentName = "Unknown Student"
-                    };
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error validating student enrollment for student {StudentId}: {ErrorMessage}", 
-                    request.StudentId, ex.Message);
-                
-                return new ValidationResult
-                {
-                    IsValid = false,
-                    Message = "Error validating student enrollment",
-                    StudentName = "Unknown Student"
-                };
-            }
-        }
+     
 
         private async Task<(string status, string remarks)> DetermineAttendanceStatusAndRemarksAsync(AttendanceRequest request)
         {
@@ -613,6 +419,28 @@ namespace ServerAtrrak.Services
                 _logger.LogError(ex, "Error inserting attendance record for student {StudentId}: {ErrorMessage}", 
                     request.StudentId, ex.Message);
                 throw; // Re-throw to be handled by the calling method
+            }
+        }
+
+        private async Task<string?> GetUserIdFromTeacherIdAsync(string teacherId)
+        {
+            try
+            {
+                using var connection = new MySqlConnection(_dbConnection.GetConnection());
+                await connection.OpenAsync();
+
+                var query = "SELECT UserId FROM user WHERE TeacherId = @TeacherId AND UserType = 'Teacher' LIMIT 1";
+
+                using var command = new MySqlCommand(query, connection);
+                command.Parameters.AddWithValue("@TeacherId", teacherId);
+
+                var result = await command.ExecuteScalarAsync();
+                return result?.ToString();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting UserId from TeacherId: {ErrorMessage}", ex.Message);
+                return null;
             }
         }
     }
