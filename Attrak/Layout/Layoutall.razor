@@ -1,7 +1,10 @@
 ﻿@inherits LayoutComponentBase
+@using Attrak.Services
+@inject ThemeService ThemeService
+@inject IJSRuntime JSRuntime
 
-<div class="layout-container">
-    <header class="app-header">
+<div class="layout-container" data-theme="@(ThemeService.IsDarkMode ? "dark" : "light")">
+    <header class="app-header header-gradient-bg">
         <div class="header-content">
             <div class="header-center">
                 <div class="welcome-section">
@@ -9,11 +12,20 @@
                 </div>
             </div>
             
-            <div class="header-right">
+            <div class="header-right d-flex align-items-center gap-3">
                 <div class="datetime-info">
                     <span class="current-date" id="currentDate"></span>
                     <span class="datetime-separator">•</span>
                     <span class="current-time" id="currentTime"></span>
+                </div>
+
+                <div class="theme-switch-pill">
+                    <button class="switch-btn @(!ThemeService.IsDarkMode ? "active" : "")" @onclick="() => SetTheme(false)" title="Light Mode">
+                        <i class="fas fa-sun"></i>
+                    </button>
+                    <button class="switch-btn @(ThemeService.IsDarkMode ? "active" : "")" @onclick="() => SetTheme(true)" title="Dark Mode">
+                        <i class="fas fa-moon"></i>
+                    </button>
                 </div>
             </div>
         </div>
@@ -24,298 +36,110 @@
     </main>
     </div>
 
+@code {
+    protected override async Task OnInitializedAsync()
+    {
+        await ThemeService.InitializeAsync();
+        ThemeService.OnThemeChanged += HandleThemeChanged;
+    }
+
+    private async Task SetTheme(bool isDark)
+    {
+        if (ThemeService.IsDarkMode != isDark)
+        {
+            await ThemeService.ToggleThemeAsync();
+            await JSRuntime.InvokeVoidAsync("document.documentElement.setAttribute", "data-theme", isDark ? "dark" : "light");
+        }
+    }
+
+    private void HandleThemeChanged()
+    {
+        StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        ThemeService.OnThemeChanged -= HandleThemeChanged;
+    }
+}
+
 <script>
     function updateDateTime() {
         const now = new Date();
-        
-        // Format date
-        const options = { 
-            weekday: 'long', 
-            year: 'numeric', 
-            month: 'long', 
-            day: 'numeric' 
-        };
+        const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
         const dateString = now.toLocaleDateString('en-US', options);
+        const timeString = now.toLocaleTimeString('en-US', { hour12: true, hour: '2-digit', minute: '2-digit' });
         
-        // Format time
-        const timeString = now.toLocaleTimeString('en-US', {
-            hour12: true,
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit'
-        });
-        
-        // Update elements
         const dateElement = document.getElementById('currentDate');
         const timeElement = document.getElementById('currentTime');
         
         if (dateElement) dateElement.textContent = dateString;
         if (timeElement) timeElement.textContent = timeString;
     }
-    
-    // Update immediately
     updateDateTime();
-    
-    // Update every second
-    setInterval(updateDateTime, 1000);
+    setInterval(updateDateTime, 60000);
 </script>
 
 <style>
     .layout-container {
         min-height: 100vh;
-        background: #ffffff;
-        color: #333333;
-        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        background: var(--bg-primary);
+        color: var(--text-main);
+        transition: background-color 0.3s ease;
     }
 
     .app-header {
-        background: linear-gradient(135deg, #240750 0%, #344C64 50%, #240750 100%);
-        border-bottom: 2px solid #5A6B7D;
-        box-shadow: 0 4px 20px rgba(36, 7, 80, 0.3), 0 2px 10px rgba(52, 76, 100, 0.2);
-        position: sticky;
-        top: 0;
+        position: relative;
         z-index: 1000;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+        border-bottom: 3px solid rgba(255, 255, 255, 0.1);
     }
 
     .header-content {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding: 0.8rem 2rem;
-        max-width: 1400px;
+        padding: 0.75rem 2.5rem;
+        max-width: 1600px;
         margin: 0 auto;
-        gap: 2rem;
-        min-height: 60px;
-    }
-
-    .header-center {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        flex: 1;
-    }
-
-    .header-right {
-        display: flex;
-        align-items: center;
-        flex-shrink: 0;
-    }
-
-    .welcome-section {
-        display: flex;
-        align-items: center;
-        gap: 0.3rem;
     }
 
     .welcome-text {
-        font-size: 2.5rem;
+        font-size: 1.6rem;
         font-weight: 700;
         color: #ffffff;
-        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
-        letter-spacing: 1px;
-        white-space: nowrap;
+        letter-spacing: -0.02em;
     }
 
     .datetime-info {
         display: flex;
         align-items: center;
-        gap: 0.8rem;
+        gap: 0.6rem;
         background: rgba(255, 255, 255, 0.1);
-        padding: 0.5rem 1.2rem;
-        border-radius: 20px;
-        backdrop-filter: blur(10px);
+        padding: 0.5rem 1.25rem;
+        border-radius: 50px;
         border: 1px solid rgba(255, 255, 255, 0.2);
+        color: #ffffff;
+        font-size: 0.85rem;
+        font-weight: 500;
         white-space: nowrap;
-    }
-
-    .current-date {
-        font-size: 1rem;
-        color: #ffffff;
-        font-weight: 500;
-    }
-
-    .datetime-separator {
-        color: #ffffff;
-        font-weight: 600;
-        font-size: 1rem;
-    }
-
-    .current-time {
-        font-size: 1rem;
-        color: #ffffff;
-        font-weight: 600;
-        font-family: 'Courier New', monospace;
-    }
-
-
-    .header-actions {
-        display: flex;
-        gap: 0.8rem;
-        align-items: center;
-        position: absolute;
-        right: 2rem;
-        top: 50%;
-        transform: translateY(-50%);
-    }
-
-    .action-btn {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        padding: 0.6rem 1rem;
-        background: rgba(255, 255, 255, 0.1);
-        border: 1px solid rgba(255, 255, 255, 0.2);
-        border-radius: 20px;
-        color: #ffffff;
-        font-size: 0.9rem;
-        font-weight: 500;
-        cursor: pointer;
-        transition: all 0.3s ease;
-        backdrop-filter: blur(10px);
-        position: relative;
-    }
-
-    .action-btn:hover {
-        background: rgba(255, 255, 255, 0.2);
-        transform: translateY(-1px);
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-    }
-
-    .action-btn .icon {
-        font-size: 1rem;
-    }
-
-
-    .profile-btn .text {
-        font-size: 0.8rem;
+        backdrop-filter: blur(4px);
     }
 
     .main-content {
-        flex: 1;
-        padding: 2rem;
-        background: #ffffff;
-        min-height: calc(100vh - 100px);
+        padding: 2.5rem;
+        max-width: 1600px;
+        margin: 0 auto;
     }
 
-    /* Dark accent elements */
-    .dark-purple {
-        color: #240750;
-        font-weight: 500;
-    }
-
-    .dark-blue {
-        color: #344C64;
-        font-weight: 500;
-    }
-
-    .light-accent {
-        color: #5A6B7D;
-        font-weight: 400;
-    }
-
-    /* Subtle effects for white background */
-    .layout-container::before {
-        content: '';
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: radial-gradient(circle at 30% 20%, rgba(36, 7, 80, 0.02) 0%, transparent 50%),
-                    radial-gradient(circle at 70% 80%, rgba(52, 76, 100, 0.02) 0%, transparent 50%);
-        pointer-events: none;
-        z-index: -1;
-    }
-
-    /* Hover effects for interactive elements */
-    .header-actions button,
-    .header-actions a {
-        color: #ffffff;
-        padding: 0.5rem 1rem;
-        border: 1px solid #5A6B7D;
-        border-radius: 6px;
-        background: transparent;
-        transition: all 0.3s ease;
-        text-decoration: none;
-        font-weight: 500;
-    }
-
-    .header-actions button:hover,
-    .header-actions a:hover {
-        background: rgba(90, 107, 125, 0.2);
-        border-color: #7A8B9D;
-        transform: translateY(-1px);
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-    }
-
-    @@media (max-width: 1200px) {
-        .welcome-text {
-            font-size: 2rem;
-        }
-        
-        .datetime-info {
-            padding: 0.4rem 1rem;
-            gap: 0.7rem;
-        }
-        
-        .current-date {
-            font-size: 0.9rem;
-        }
-        
-        .current-time {
-            font-size: 0.9rem;
-        }
+    @@media (max-width: 992px) {
+        .header-content { padding: 0.6rem 1.5rem; }
+        .welcome-text { font-size: 1.4rem; }
     }
 
     @@media (max-width: 768px) {
-        .header-content {
-            padding: 0.6rem 1rem;
-            gap: 1rem;
-            flex-direction: column;
-        }
-        
-        .header-center {
-            order: 1;
-        }
-        
-        .header-right {
-            order: 2;
-            position: static;
-        }
-        
-        .welcome-text {
-            font-size: 1.5rem;
-        }
-        
-        .datetime-info {
-            padding: 0.3rem 0.8rem;
-            gap: 0.5rem;
-        }
-        
-        .current-date {
-            font-size: 0.8rem;
-        }
-        
-        .current-time {
-            font-size: 0.8rem;
-        }
-        
-        .main-content {
-            padding: 1rem;
-        }
-        
-        .header-actions {
-            right: 1rem;
-            gap: 0.5rem;
-        }
-        
-        .action-btn {
-            padding: 0.4rem 0.6rem;
-            font-size: 0.7rem;
-        }
-        
-        .profile-btn .text {
-            display: none;
-        }
+        .header-content { padding: 0.5rem 1rem; }
+        .welcome-text { font-size: 1.2rem; }
+        .datetime-info { display: none; }
     }
 </style>

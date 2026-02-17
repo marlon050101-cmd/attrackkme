@@ -16,6 +16,7 @@ namespace Attrak
 
             // Register frontend services
             builder.Services.AddScoped<Attrak.Services.IAuthService, Attrak.Services.AuthService>();
+            builder.Services.AddScoped<Attrak.Services.ThemeService>();
 
             await builder.Build().RunAsync();
         }

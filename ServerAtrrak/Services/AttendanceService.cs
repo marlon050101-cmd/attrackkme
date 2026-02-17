@@ -1,5 +1,7 @@
 using AttrackSharedClass.Models;
 using ServerAtrrak.Data;
+using ServerAtrrak.Hubs;
+using Microsoft.AspNetCore.SignalR;
 using MySql.Data.MySqlClient;
 
 namespace ServerAtrrak.Services
@@ -8,11 +10,13 @@ namespace ServerAtrrak.Services
     {
         private readonly Dbconnection _dbConnection;
         private readonly ILogger<AttendanceService> _logger;
+        private readonly IHubContext<AttendanceHub> _hubContext;
 
-        public AttendanceService(Dbconnection dbConnection, ILogger<AttendanceService> logger)
+        public AttendanceService(Dbconnection dbConnection, ILogger<AttendanceService> logger, IHubContext<AttendanceHub> hubContext)
         {
             _dbConnection = dbConnection;
             _logger = logger;
+            _hubContext = hubContext;
         }
 
         public async Task<AttendanceResponse> MarkAttendanceAsync(AttendanceRequest request)
@@ -62,6 +66,29 @@ namespace ServerAtrrak.Services
 
                 _logger.LogInformation("Successfully marked attendance for student {StudentId} with status {Status} and remarks {Remarks}", 
                     request.StudentId, status, remarks);
+
+                // REALTIME UPDATE: Broadcast to SignalR Hub
+                try
+                {
+                    if (!string.IsNullOrEmpty(request.TeacherId))
+                    {
+                        await _hubContext.Clients.Group(request.TeacherId).SendAsync("ReceiveAttendanceUpdate", new
+                        {
+                            StudentId = request.StudentId,
+                            StudentName = studentName,
+                            Status = status,
+                            Remarks = remarks,
+                            AttendanceType = request.AttendanceType,
+                            Timestamp = request.Timestamp
+                        });
+                        _logger.LogInformation("SignalR: Broadcasted attendance update for student {StudentId} to teacher {TeacherId}", 
+                            request.StudentId, request.TeacherId);
+                    }
+                }
+                catch (Exception hubEx)
+                {
+                    _logger.LogError(hubEx, "SignalR: Error broadcasting update: {ErrorMessage}", hubEx.Message);
+                }
 
                 return new AttendanceResponse
                 {

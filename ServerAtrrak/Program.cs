@@ -58,8 +58,8 @@ namespace ServerAtrrak
                 });
             });
 
-            // Add health checks
             builder.Services.AddHealthChecks();
+            builder.Services.AddSignalR();
             
             var app = builder.Build();
 
@@ -78,6 +78,7 @@ namespace ServerAtrrak
             app.MapHealthChecks("/api/health");
 
             app.MapControllers();
+            app.MapHub<Hubs.AttendanceHub>("/attendanceHub");
 
             app.Run();
         }
