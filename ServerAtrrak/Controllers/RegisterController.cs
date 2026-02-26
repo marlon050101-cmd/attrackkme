@@ -6,6 +6,7 @@ using ServerAtrrak.Data;
 using QRCoder;
 using System.Drawing.Imaging;
 using System.Data;
+using System.ComponentModel.DataAnnotations;
 
 namespace ServerAtrrak.Controllers
 {
@@ -1177,15 +1178,37 @@ namespace ServerAtrrak.Controllers
 
     public class StudentRegisterRequest
     {
+        [Required]
         public string Username { get; set; } = string.Empty;
+        
+        [Required]
+        [EmailAddress]
         public string Email { get; set; } = string.Empty;
+        
+        [Required]
+        [MinLength(6)]
         public string Password { get; set; } = string.Empty;
+        
+        [Required]
         public string FullName { get; set; } = string.Empty;
+        
+        [Required]
+        [Range(7, 12)]
         public int GradeLevel { get; set; }
+        
+        [Required]
         public string Section { get; set; } = string.Empty;
+        
         public string? Strand { get; set; }
+        
+        [Required]
         public string SchoolName { get; set; } = string.Empty;
+        
+        [Required]
+        [RegularExpression(@"^09\d{9}$", ErrorMessage = "Contact number must start with '09' and be 11 digits long.")]
         public string ParentsNumber { get; set; } = string.Empty;
+        
+        [Required]
         public string Gender { get; set; } = string.Empty;
     }
 

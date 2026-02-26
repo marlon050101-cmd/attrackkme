@@ -8,6 +8,26 @@
 @layout Loginpage
 <PageTitle>Student Portal - Attrak</PageTitle>
 
+<style>
+    .fade-in {
+        animation: fadeIn 0.4s ease-out forwards;
+    }
+    @@keyframes fadeIn {
+        from { opacity: 0; transform: translateY(-10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    .form-control, .form-select {
+        border: 1px solid #dee2e6 !important;
+        background-color: #fcfcfc !important;
+        transition: all 0.2s ease-in-out;
+    }
+    .form-control:focus, .form-select:focus {
+        background-color: #ffffff !important;
+        border-color: #0d6efd !important;
+        box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25) !important;
+    }
+</style>
+
 <div class="container-fluid vh-100 d-flex align-items-center justify-content-center bg-light">
     <div class="row w-100">
         <div class="col-md-10 col-lg-10 mx-auto">
@@ -21,8 +41,8 @@
                 
                 <!-- Form Section -->
                 <div class="col-md-6 d-flex align-items-center justify-content-start ps-4">
-                    <div class="card shadow" style="width: 100%; max-width: 500px;">
-                        <div class="card-body p-5">
+                    <div class="card shadow-lg border-0 rounded-4" style="width: 100%; max-width: 550px; overflow: hidden;">
+                        <div class="card-body p-4 p-md-5">
                             <div class="text-center mb-4">
                                 <h2 class="fw-bold text-primary">SARDO-TRAKCARE</h2>
                                 <p class="text-muted">Attendance Management System</p>
@@ -45,19 +65,20 @@
                     <!-- Login Form -->
                     @if (isLoginTab)
                     {
+                        <div class="fade-in">
                         <EditForm Model="loginRequest" OnValidSubmit="HandleLogin">
                             <DataAnnotationsValidator />
                             
-                            <div class="mb-3">
-                                <label for="username" class="form-label">Username</label>
-                                <InputText id="username" class="form-control" @bind-Value="loginRequest.Username" placeholder="Enter your username" />
-                                <ValidationMessage For="@(() => loginRequest.Username)" class="text-danger" />
+                            <div class="mb-4 mt-3">
+                                <label for="username" class="form-label text-muted small fw-bold mb-1">Username</label>
+                                <InputText id="username" class="form-control py-3 rounded-3" @bind-Value="loginRequest.Username" placeholder="Enter your username" />
+                                <ValidationMessage For="@(() => loginRequest.Username)" class="text-danger small" />
                             </div>
 
-                            <div class="mb-3">
-                                <label for="password" class="form-label">Password</label>
-                                <InputText id="password" type="password" class="form-control" @bind-Value="loginRequest.Password" placeholder="Enter your password" />
-                                <ValidationMessage For="@(() => loginRequest.Password)" class="text-danger" />
+                            <div class="mb-4">
+                                <label for="password" class="form-label text-muted small fw-bold mb-1">Password</label>
+                                <InputText id="password" type="password" class="form-control py-3 rounded-3" @bind-Value="loginRequest.Password" placeholder="Enter your password" />
+                                <ValidationMessage For="@(() => loginRequest.Password)" class="text-danger small" />
                             </div>
 
                             @if (!string.IsNullOrEmpty(errorMessage))
@@ -81,45 +102,68 @@
                                 </button>
                             </div>
                         </EditForm>
+                        </div>
                     }
 
                     <!-- Registration Form -->
                     @if (!isLoginTab)
                     {
+                        <div class="fade-in">
                         <EditForm Model="studentRegisterRequest" OnValidSubmit="HandleStudentRegister">
                             <DataAnnotationsValidator />
                             
+                            <!-- Personal Information -->
+                            <h6 class="text-secondary fw-bold text-uppercase mb-3 mt-2" style="font-size: 0.85rem; letter-spacing: 1px;">Personal Information</h6>
                             <div class="row">
-                                <div class="col-md-6 mb-3">
-                                    <label for="reg-username" class="form-label">Username</label>
-                                    <InputText id="reg-username" class="form-control" @bind-Value="studentRegisterRequest.Username" @oninput="OnUsernameChanged" placeholder="Enter username" />
-                                    <ValidationMessage For="@(() => studentRegisterRequest.Username)" class="text-danger" />
+                                <div class="col-md-12 mb-3">
+                                    <label for="reg-fullname" class="form-label text-muted small fw-bold mb-1">Full Name</label>
+                                    <InputText id="reg-fullname" class="form-control py-2 text-uppercase rounded-3" @bind-Value="studentRegisterRequest.FullName" @oninput="OnFullNameChanged" placeholder="e.g. JUAN DELA CRUZ" />
+                                    <ValidationMessage For="@(() => studentRegisterRequest.FullName)" class="text-danger small" />
                                 </div>
                                 <div class="col-md-6 mb-3">
-                                    <label for="reg-email" class="form-label">Email</label>
-                                    <InputText id="reg-email" type="email" class="form-control" @bind-Value="studentRegisterRequest.Email" placeholder="Enter email" />
-                                    <ValidationMessage For="@(() => studentRegisterRequest.Email)" class="text-danger" />
+                                    <label for="reg-gender" class="form-label text-muted small fw-bold mb-1">Gender</label>
+                                    <InputSelect id="reg-gender" class="form-select py-2 rounded-3" @bind-Value="studentRegisterRequest.Gender">
+                                        <option value="">Select Gender</option>
+                                        <option value="Male">Male</option>
+                                        <option value="Female">Female</option>
+                                    </InputSelect>
+                                    <ValidationMessage For="@(() => studentRegisterRequest.Gender)" class="text-danger small" />
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label for="reg-parentsnumber" class="form-label text-muted small fw-bold mb-1">Parent's Contact Number (11-digit)</label>
+                                    <InputText id="reg-parentsnumber" class="form-control py-2 rounded-3" @bind-Value="studentRegisterRequest.ParentsNumber" placeholder="09XXXXXXXXX" maxlength="11" />
+                                    <ValidationMessage For="@(() => studentRegisterRequest.ParentsNumber)" class="text-danger small" />
                                 </div>
                             </div>
 
+                            <!-- School Information -->
+                            <h6 class="text-secondary fw-bold text-uppercase mb-3 mt-3" style="font-size: 0.85rem; letter-spacing: 1px;">School & Section</h6>
                             <div class="row">
-                                <div class="col-md-6 mb-3">
-                                    <label for="reg-password" class="form-label">Password</label>
-                                    <InputText id="reg-password" type="password" class="form-control" @bind-Value="studentRegisterRequest.Password" @oninput="OnPasswordChanged" placeholder="Enter password" />
-                                    <ValidationMessage For="@(() => studentRegisterRequest.Password)" class="text-danger" />
+                                <div class="col-md-12 mb-3">
+                                    <label for="reg-school" class="form-label text-muted small fw-bold mb-1">School Name</label>
+                                    <div class="position-relative">
+                                        <InputText id="reg-school" class="form-control py-2 rounded-3" @bind-Value="studentRegisterRequest.SchoolName" @oninput="OnSchoolSearchChanged" placeholder="Start typing to search..." />
+                                        <ValidationMessage For="@(() => studentRegisterRequest.SchoolName)" class="text-danger small" />
+                                        
+                                        @if (showSchoolDropdown && filteredSchools.Any())
+                                        {
+                                            <div class="position-absolute w-100 bg-white border rounded shadow-lg mt-1" style="z-index: 1000; max-height: 200px; overflow-y: auto;">
+                                                @foreach (var school in filteredSchools.Take(10))
+                                                {
+                                                    <div class="p-3 border-bottom cursor-pointer hover-bg-light transition-all" @onclick="async () => await SelectSchool(school)" style="cursor: pointer;">
+                                                        <div class="fw-bold text-primary">@school.SchoolName</div>
+                                                        <small class="text-muted d-block" style="line-height: 1.2;">@school.Region, @school.Division</small>
+                                                    </div>
+                                                }
+                                            </div>
+                                        }
+                                    </div>
                                 </div>
-                                <div class="col-md-6 mb-3">
-                                    <label for="reg-fullname" class="form-label">Full Name</label>
-                                    <InputText id="reg-fullname" class="form-control text-uppercase" @bind-Value="studentRegisterRequest.FullName" @oninput="OnFullNameChanged" placeholder="Enter full name" />
-                                    <ValidationMessage For="@(() => studentRegisterRequest.FullName)" class="text-danger" />
-                                </div>
-                            </div>
 
-                            <div class="row">
                                 <div class="col-md-6 mb-3">
-                                    <label for="reg-gradelevel" class="form-label">Grade Level</label>
-                                    <InputSelect id="reg-gradelevel" class="form-select" @bind-Value="studentRegisterRequest.GradeLevel" @onchange="OnGradeLevelChanged">
-                                        <option value="">Select Grade Level</option>
+                                    <label for="reg-gradelevel" class="form-label text-muted small fw-bold mb-1">Grade Level</label>
+                                    <InputSelect id="reg-gradelevel" class="form-select py-2 rounded-3" @bind-Value="studentRegisterRequest.GradeLevel" @onchange="OnGradeLevelChanged" disabled="@(string.IsNullOrEmpty(studentRegisterRequest.SchoolName))">
+                                        <option value="">Select Level</option>
                                         <option value="7">Grade 7</option>
                                         <option value="8">Grade 8</option>
                                         <option value="9">Grade 9</option>
@@ -127,86 +171,73 @@
                                         <option value="11">Grade 11</option>
                                         <option value="12">Grade 12</option>
                                     </InputSelect>
-                                    <ValidationMessage For="@(() => studentRegisterRequest.GradeLevel)" class="text-danger" />
+                                    <ValidationMessage For="@(() => studentRegisterRequest.GradeLevel)" class="text-danger small" />
                                 </div>
                                 <div class="col-md-6 mb-3">
-                                    <label for="reg-section" class="form-label">Section</label>
+                                    <label for="reg-section" class="form-label text-muted small fw-bold mb-1">Section</label>
                                     <div class="position-relative">
-                                        <InputText id="reg-section" class="form-control text-uppercase" @bind-Value="studentRegisterRequest.Section" @oninput="OnSectionSearchChanged" placeholder="Type to search section..." disabled="@(string.IsNullOrEmpty(studentRegisterRequest.SchoolName) || studentRegisterRequest.GradeLevel < 7)" />
-                                        <ValidationMessage For="@(() => studentRegisterRequest.Section)" class="text-danger" />
+                                        <InputText id="reg-section" class="form-control py-2 text-uppercase rounded-3" @bind-Value="studentRegisterRequest.Section" @oninput="OnSectionSearchChanged" placeholder="Search section..." disabled="@(string.IsNullOrEmpty(studentRegisterRequest.SchoolName) || studentRegisterRequest.GradeLevel < 7)" />
+                                        <ValidationMessage For="@(() => studentRegisterRequest.Section)" class="text-danger small" />
                                         
                                         @if (showSectionDropdown && filteredSections.Any())
                                         {
-                                            <div class="position-absolute w-100 bg-white border rounded shadow-lg" style="z-index: 1000; max-height: 200px; overflow-y: auto;">
-                                                @foreach (var section in filteredSections.Take(10))
+                                            <div class="position-absolute w-100 bg-white border rounded shadow-lg mt-1" style="z-index: 1000; max-height: 150px; overflow-y: auto;">
+                                                @foreach (var sec in filteredSections.Take(10))
                                                 {
-                                                    <div class="p-2 border-bottom cursor-pointer hover-bg-light" @onclick="() => SelectSection(section)" style="cursor: pointer;">
-                                                        <div class="fw-bold">@section</div>
+                                                    <div class="p-2 px-3 border-bottom cursor-pointer hover-bg-light transition-all" @onclick="() => SelectSection(sec)" style="cursor: pointer;">
+                                                        <div class="fw-bold text-primary text-uppercase">@sec</div>
                                                     </div>
                                                 }
                                             </div>
                                         }
+                                        else if (showSectionDropdown && !string.IsNullOrEmpty(studentRegisterRequest.Section) && !filteredSections.Any())
+                                        {
+                                            <div class="position-absolute w-100 bg-white border rounded shadow mt-1 p-2 small text-muted" style="z-index: 1000;">
+                                                No existing section found. You can type it manually.
+                                            </div>
+                                        }
                                     </div>
-                                    <small class="form-text text-muted">Select school and grade level first</small>
-                                </div>
-                            </div>
-
-                            <div class="row">
-                                <div class="col-md-6 mb-3">
-                                    <label for="reg-gender" class="form-label">Gender</label>
-                                    <InputSelect id="reg-gender" class="form-select" @bind-Value="studentRegisterRequest.Gender">
-                                        <option value="">Select Gender</option>
-                                        <option value="Male">Male</option>
-                                        <option value="Female">Female</option>
-                                    </InputSelect>
-                                    <ValidationMessage For="@(() => studentRegisterRequest.Gender)" class="text-danger" />
-                                </div>
-                            </div>
-
-                            <div class="row">
-                                <div class="col-md-6 mb-3">
-                                    <label for="reg-parentsnumber" class="form-label">Parent's Contact Number</label>
-                                    <InputText id="reg-parentsnumber" class="form-control" @bind-Value="studentRegisterRequest.ParentsNumber" placeholder="Enter parent's contact number" />
-                                    <ValidationMessage For="@(() => studentRegisterRequest.ParentsNumber)" class="text-danger" />
                                 </div>
                             </div>
 
                             @if (ShouldShowStrandDropdown())
                             {
-                                <div class="mb-3">
-                                    <label for="reg-strand" class="form-label">Strand</label>
-                                    <InputSelect id="reg-strand" class="form-select" @bind-Value="studentRegisterRequest.Strand">
-                                        <option value="">Select Strand</option>
-                                        <option value="STEM">STEM</option>
-                                        <option value="ABM">ABM</option>
-                                        <option value="HUMSS">HUMSS</option>
-                                        <option value="TVL">TVL</option>
-                                        <option value="GAS">GAS</option>
-                                    </InputSelect>
-                                    <ValidationMessage For="@(() => studentRegisterRequest.Strand)" class="text-danger" />
+                                <div class="row">
+                                    <div class="col-12 mb-3">
+                                        <div class="p-3 bg-light rounded-3 border border-success border-opacity-25">
+                                            <label for="reg-strand" class="form-label text-success small fw-bold mb-1">Strand & Track (Senior High)</label>
+                                            <InputSelect id="reg-strand" class="form-select border-0 py-2 rounded-3" style="background-color: white;" @bind-Value="studentRegisterRequest.Strand">
+                                                <option value="">Select Strand</option>
+                                                <option value="STEM">Science, Technology, Engineering, and Mathematics</option>
+                                                <option value="ABM">Accountancy, Business and Management</option>
+                                                <option value="HUMSS">Humanities and Social Sciences</option>
+                                                <option value="GAS">General Academic Strand</option>
+                                                <option value="TVL">Technical-Vocational-Livelihood</option>
+                                            </InputSelect>
+                                            <ValidationMessage For="@(() => studentRegisterRequest.Strand)" class="text-danger small" />
+                                        </div>
+                                    </div>
                                 </div>
                             }
-
-                            <div class="mb-3">
-                                <label for="reg-school" class="form-label">School</label>
-                                <div class="position-relative">
-                                    <InputText id="reg-school" class="form-control" @bind-Value="studentRegisterRequest.SchoolName" @oninput="OnSchoolSearchChanged" placeholder="Type to search for your school..." />
-                                    <ValidationMessage For="@(() => studentRegisterRequest.SchoolName)" class="text-danger" />
-                                    
-                                    @if (showSchoolDropdown && filteredSchools.Any())
-                                    {
-                                        <div class="position-absolute w-100 bg-white border rounded shadow-lg" style="z-index: 1000; max-height: 200px; overflow-y: auto;">
-                                            @foreach (var school in filteredSchools.Take(10))
-                                            {
-                                                <div class="p-2 border-bottom cursor-pointer hover-bg-light" @onclick="async () => await SelectSchool(school)" style="cursor: pointer;">
-                                                    <div class="fw-bold">@school.SchoolName</div>
-                                                    <small class="text-muted">@school.Region, @school.Division</small>
-                                                </div>
-                                            }
-                                        </div>
-                                    }
+                            
+                            <!-- Login Credentials -->
+                            <h6 class="text-secondary fw-bold text-uppercase mb-3 mt-3" style="font-size: 0.85rem; letter-spacing: 1px;">Account Setup</h6>
+                            <div class="row">
+                                <div class="col-md-12 mb-3">
+                                    <label for="reg-email" class="form-label text-muted small fw-bold mb-1">Email Address</label>
+                                    <InputText id="reg-email" type="email" class="form-control py-2 rounded-3" @bind-Value="studentRegisterRequest.Email" placeholder="Enter your email for account recovery" />
+                                    <ValidationMessage For="@(() => studentRegisterRequest.Email)" class="text-danger small" />
                                 </div>
-                                <small class="form-text text-muted">Start typing to search for your school</small>
+                                <div class="col-md-6 mb-3">
+                                    <label for="reg-username" class="form-label text-muted small fw-bold mb-1">Username</label>
+                                    <InputText id="reg-username" class="form-control py-2 rounded-3" @bind-Value="studentRegisterRequest.Username" @oninput="OnUsernameChanged" placeholder="Choose username" />
+                                    <ValidationMessage For="@(() => studentRegisterRequest.Username)" class="text-danger small" />
+                                </div>
+                                <div class="col-md-6 mb-4">
+                                    <label for="reg-password" class="form-label text-muted small fw-bold mb-1">Password</label>
+                                    <InputText id="reg-password" type="password" class="form-control py-2 rounded-3" @bind-Value="studentRegisterRequest.Password" @oninput="OnPasswordChanged" placeholder="Create password" />
+                                    <ValidationMessage For="@(() => studentRegisterRequest.Password)" class="text-danger small" />
+                                </div>
                             </div>
 
                             @if (!string.IsNullOrEmpty(errorMessage))
@@ -237,6 +268,7 @@
                                 </button>
                             </div>
                         </EditForm>
+                        </div>
                     }
                         </div>
                     </div>
@@ -301,8 +333,7 @@
         public string SchoolName { get; set; } = string.Empty;
         
         [Required]
-        [Phone]
-        [MaxLength(20)]
+        [RegularExpression(@"^09\d{9}$", ErrorMessage = "Contact number must start with '09' and be 11 digits long.")]
         public string ParentsNumber { get; set; } = string.Empty;
         
         [Required]
@@ -547,7 +578,7 @@
 
                 // If no matching existing section, we still shouldn't prevent them from manually typing adding a section, 
                 // but the prompt is to "make section field searchable from available section", so they can type as normal anyway.
-                showSectionDropdown = filteredSections.Any();
+                showSectionDropdown = true; // Always show dropdown to provide feedback (matches or hint)
                 StateHasChanged();
             });
         }, null, 300, Timeout.Infinite);
