@@ -14,16 +14,13 @@ namespace ServerAtrrak.Services
         private readonly ILogger<GsmSmsService> _logger;
         private string? _detectedPort = null;
         private readonly SemaphoreSlim _lock = new SemaphoreSlim(1, 1);
+        private readonly SemaphoreSlim _detectionLock = new SemaphoreSlim(1, 1);
 
         public GsmSmsService(ILogger<GsmSmsService> logger)
         {
             _logger = logger;
         }
 
-        /// <summary>
-        /// Sends an SMS to the given phone number using the GSM800C module.
-        /// Fires and forgets — never throws; all errors are logged.
-        /// </summary>
         public async Task SendSmsAsync(string phoneNumber, string message)
         {
             if (string.IsNullOrWhiteSpace(phoneNumber))
@@ -32,7 +29,6 @@ namespace ServerAtrrak.Services
                 return;
             }
 
-            // Normalize Philippine numbers: 09XXXXXXXXX → +639XXXXXXXXX
             phoneNumber = NormalizePhoneNumber(phoneNumber);
 
             try
@@ -40,7 +36,7 @@ namespace ServerAtrrak.Services
                 var port = await GetDetectedPortAsync();
                 if (port == null)
                 {
-                    _logger.LogWarning("[SMS] No GSM modem found on any COM port. SMS not sent.");
+                    _logger.LogWarning("[SMS] No GSM modem found. SMS not sent.");
                     return;
                 }
 
@@ -55,32 +51,70 @@ namespace ServerAtrrak.Services
                     };
 
                     serialPort.Open();
-                    _logger.LogInformation("[SMS] Port {Port} opened. Sending to {Phone}...", port, phoneNumber);
+                    _logger.LogInformation("[SMS] Port {Port} opened. Target: {Phone}", port, phoneNumber);
 
-                    // Set text mode
-                    SendAtCommand(serialPort, "AT+CMGF=1", 1000);
+                    // 1. Reset/Init
+                    await SendAtCommandAsync(serialPort, "AT", 500); // Wake up
+                    await SendAtCommandAsync(serialPort, "ATE0", 500); // Echo off
+                    await SendAtCommandAsync(serialPort, "AT+CMEE=2", 500); // Verbose error reports
+                    await SendAtCommandAsync(serialPort, "AT+CMGF=1", 500); // Text mode
+                    await SendAtCommandAsync(serialPort, "AT+CPMS=\"ME\",\"ME\",\"ME\"", 500);
 
-                    // Set recipient
-                    SendAtCommand(serialPort, $"AT+CMGS=\"{phoneNumber}\"", 2000);
+                    // 2. Start Send
+                    _logger.LogInformation("[SMS] Sending AT+CMGS...");
+                    serialPort.Write($"AT+CMGS=\"{phoneNumber}\"\r");
+                    
+                    // Wait for the prompt '>'
+                    var promptFound = false;
+                    var capture = string.Empty;
+                    for (int i = 0; i < 15; i++)
+                    {
+                        await Task.Delay(200);
+                        if (serialPort.BytesToRead > 0)
+                        {
+                            var chunk = serialPort.ReadExisting();
+                            capture += chunk;
+                            if (capture.Contains(">")) { promptFound = true; break; }
+                        }
+                    }
 
-                    // Write message and terminate with Ctrl+Z (0x1A)
+                    if (!promptFound)
+                    {
+                        _logger.LogWarning("[SMS] Prompt ('>') NOT found. Captured: {Capture}", capture.Replace("\r\n", " "));
+                        serialPort.Close();
+                        return;
+                    }
+
+                    // 3. Write message and Ctrl+Z
                     serialPort.Write(message + "\x1A");
+                    _logger.LogInformation("[SMS] Payload sent. Waiting for network status...");
 
-                    // Wait for response (up to 10 seconds for network)
-                    await Task.Delay(10000);
-
+                    // 4. Wait for OK or +CMGS (up to 25 seconds)
                     var response = string.Empty;
-                    try { response = serialPort.ReadExisting(); } catch { }
+                    for (int i = 0; i < 25; i++)
+                    {
+                        await Task.Delay(1000);
+                        if (serialPort.BytesToRead > 0)
+                        {
+                            var chunk = serialPort.ReadExisting();
+                            response += chunk;
+                            _logger.LogDebug("[SMS] Modem chunk: {Chunk}", chunk.Replace("\r\n", " "));
+                            if (response.Contains("OK") || response.Contains("+CMGS:")) break;
+                            if (response.Contains("ERROR")) break;
+                        }
+                    }
 
                     serialPort.Close();
 
-                    if (response.Contains("+CMGS:"))
+                    if (response.Contains("+CMGS:") || response.Contains("OK"))
                     {
-                        _logger.LogInformation("[SMS] Send SUCCESS to {Phone}. Response: {Response}", phoneNumber, response);
+                        _logger.LogInformation("[SMS] SUCCESS! Student: {StudentName}, Phone: {Phone}, Details: {Details}", 
+                            message.Split(':')[1].Split('h')[0].Trim(), phoneNumber, response.Replace("\r\n", " ").Trim());
                     }
                     else
                     {
-                        _logger.LogWarning("[SMS] Send may have failed to {Phone}. Response: {Response}", phoneNumber, response);
+                        _logger.LogError("[SMS] FAILED to send. Phone: {Phone}, Response: {Response}", 
+                            phoneNumber, response.Replace("\r\n", " ").Trim());
                     }
                 }
                 finally
@@ -90,109 +124,93 @@ namespace ServerAtrrak.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "[SMS] Error sending SMS to {Phone}. Resetting COM port cache.", phoneNumber);
-                _detectedPort = null; // Reset cache so it re-detects next time
+                _logger.LogError(ex, "[SMS] CRITICAL Error during send to {Phone}. Resetting cache.", phoneNumber);
+                _detectedPort = null;
             }
-
         }
 
-        /// <summary>
-        /// Returns cached detected port, or probes all COM ports to find the GSM modem.
-        /// Returns null if no modem is found.
-        /// </summary>
         private async Task<string?> GetDetectedPortAsync()
         {
-            if (_detectedPort != null)
-                return _detectedPort;
+            if (_detectedPort != null) return _detectedPort;
 
-            _logger.LogInformation("[SMS] Auto-detecting GSM modem COM port...");
-
-            var availablePorts = SerialPort.GetPortNames();
-            _logger.LogInformation("[SMS] Available COM ports: {Ports}", string.Join(", ", availablePorts));
-
-            foreach (var portName in availablePorts)
+            await _detectionLock.WaitAsync();
+            try
             {
-                try
+                if (_detectedPort != null) return _detectedPort;
+
+                _logger.LogInformation("[SMS] Probing all COM ports for GSM800C...");
+                var availablePorts = SerialPort.GetPortNames();
+                
+                foreach (var portName in availablePorts)
                 {
-                    using var testPort = new SerialPort(portName, 9600, Parity.None, 8, StopBits.One)
+                    try
                     {
-                        ReadTimeout = 2000,
-                        WriteTimeout = 2000
-                    };
+                        using var testPort = new SerialPort(portName, 9600, Parity.None, 8, StopBits.One)
+                        {
+                            ReadTimeout = 2000,
+                            WriteTimeout = 2000
+                        };
 
-                    testPort.Open();
-                    testPort.WriteLine("AT");
-                    await Task.Delay(1000);
+                        testPort.Open();
+                        testPort.Write("AT\r");
+                        await Task.Delay(800);
+                        testPort.Write("AT\r"); // Second probe
+                        await Task.Delay(800);
 
-                    var response = string.Empty;
-                    try { response = testPort.ReadExisting(); } catch { }
+                        var response = testPort.ReadExisting();
+                        testPort.Close();
 
-                    testPort.Close();
-
-                    if (response.Contains("OK"))
-                    {
-                        _logger.LogInformation("[SMS] GSM modem detected on port: {Port}", portName);
-                        _detectedPort = portName;
-                        return _detectedPort;
+                        if (response.Contains("OK"))
+                        {
+                            _logger.LogInformation("[SMS] GSM modem FOUND on {Port}", portName);
+                            _detectedPort = portName;
+                            return _detectedPort;
+                        }
                     }
-                    else
+                    catch (Exception ex)
                     {
-                        _logger.LogDebug("[SMS] Port {Port} did not respond with OK. Response: {Response}", portName, response);
+                        _logger.LogDebug("[SMS] Failed probing {Port}: {Msg}", portName, ex.Message);
                     }
                 }
-                catch (Exception ex)
-                {
-                    _logger.LogDebug("[SMS] Port {Port} probe failed: {Error}", portName, ex.Message);
-                }
+                return null;
             }
-
-            _logger.LogWarning("[SMS] No GSM modem found on any available COM port.");
-            return null;
+            finally
+            {
+                _detectionLock.Release();
+            }
         }
 
-        /// <summary>
-        /// Forces re-detection of the COM port on next send (call if the modem was reconnected).
-        /// </summary>
         public void ResetDetectedPort()
         {
             _detectedPort = null;
-            _logger.LogInformation("[SMS] COM port detection reset. Will auto-detect on next send.");
+            _logger.LogInformation("[SMS] Port cache cleared.");
         }
 
-        private void SendAtCommand(SerialPort port, string command, int waitMs)
+        private async Task SendAtCommandAsync(SerialPort port, string command, int waitMs)
         {
-            port.WriteLine(command);
-            Thread.Sleep(waitMs);
-            try { port.ReadExisting(); } catch { }
+            _logger.LogDebug("[SMS] Executing: {Command}", command);
+            port.Write(command + "\r");
+            await Task.Delay(waitMs);
+            try 
+            { 
+                var resp = port.ReadExisting();
+                if (resp.Contains("ERROR")) _logger.LogWarning("[SMS] Command {Command} returned ERROR: {Resp}", command, resp.Replace("\r\n", " "));
+            } 
+            catch { }
         }
 
-        /// <summary>
-        /// Builds the SMS message sent to the parent.
-        /// </summary>
         public static string BuildSmsMessage(string studentName, string attendanceType, DateTime time)
         {
-            var action = attendanceType == "TimeIn"
-                ? "arrived at school"
-                : "left school";
-
-            return $"Attrak: {studentName} has {action} at {time:hh:mm tt}, {time:MMMM dd, yyyy}.";
+            var action = attendanceType == "TimeIn" ? "arrived at" : "left";
+            return $"Attrak: {studentName} has {action} school at {time:hh:mm tt}, {time:MMMM dd, yyyy}.";
         }
 
-        /// <summary>
-        /// Normalizes Philippine phone numbers to international format for GSM AT commands.
-        /// 09XXXXXXXXX → +639XXXXXXXXX
-        /// </summary>
         private static string NormalizePhoneNumber(string phone)
         {
             phone = phone.Trim().Replace(" ", "").Replace("-", "");
-
-            if (phone.StartsWith("09") && phone.Length == 11)
-                return "+63" + phone.Substring(1); // 09XX → +639XX
-
-            if (phone.StartsWith("9") && phone.Length == 10)
-                return "+63" + phone; // 9XX → +639XX
-
-            return phone; // Already in international format or unknown format
+            if (phone.StartsWith("09") && phone.Length == 11) return "+63" + phone.Substring(1);
+            if (phone.StartsWith("9") && phone.Length == 10) return "+63" + phone;
+            return phone;
         }
     }
 }

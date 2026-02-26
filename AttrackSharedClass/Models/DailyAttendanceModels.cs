@@ -64,4 +64,16 @@ namespace AttrackSharedClass.Models
         public string Remarks { get; set; } = "";
         public string TimeOut { get; set; } = "";
     }
+
+    public class SmsQueueItem
+    {
+        public int Id { get; set; }
+        public string PhoneNumber { get; set; } = "";
+        public string Message { get; set; } = "";
+        public string StudentId { get; set; } = "";
+        public DateTime ScheduledAt { get; set; } = DateTime.Now;
+        public bool IsSent { get; set; } = false;
+        public DateTime? SentAt { get; set; }
+        public string? ErrorMessage { get; set; }
+    }
 }

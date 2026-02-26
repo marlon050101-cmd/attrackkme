@@ -219,6 +219,13 @@
 
     protected override async Task OnInitializedAsync()
     {
+        // For Windows (Office PC), auto-redirect to SMS Hub Dashboard
+        if (DeviceInfo.Current.Platform == DevicePlatform.WinUI)
+        {
+            Navigation.NavigateTo("/sms-hub");
+            return;
+        }
+
         // Start connection monitoring
         await CheckConnectionStatus();
         

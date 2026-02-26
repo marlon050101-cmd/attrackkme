@@ -27,29 +27,94 @@ namespace ServerAtrrak.Controllers
         /// <summary>
         /// Sends an SMS to the parent in a fire-and-forget background task.
         /// </summary>
+        /// <summary>
+        /// Queues an SMS in the database to be picked up by the local SMS Hub.
+        /// </summary>
         private void SendParentSmsFireAndForget(string? parentNumber, string studentName, string attendanceType, DateTime time)
         {
-            if (string.IsNullOrWhiteSpace(parentNumber))
-            {
-                _logger.LogWarning("[SMS] Skipped: Parent number is empty for student {StudentName}.", studentName);
-                return;
-            }
-            var message = GsmSmsService.BuildSmsMessage(studentName, attendanceType, time);
-            _logger.LogInformation("[SMS] Queueing message for {StudentName} to {Phone}...", studentName, parentNumber);
+            if (string.IsNullOrWhiteSpace(parentNumber)) return;
             
-            // Force re-detection to ensure hardware is ready
-            try { _smsService.ResetDetectedPort(); } catch { }
-
+            var message = GsmSmsService.BuildSmsMessage(studentName, attendanceType, time);
+            
             _ = Task.Run(async () => {
                 try 
                 {
-                    await _smsService.SendSmsAsync(parentNumber, message);
+                    using var connection = new MySqlConnection(_dbConnection.GetConnection());
+                    await connection.OpenAsync();
+                    
+                    var sql = @"INSERT INTO sms_queue (PhoneNumber, Message, StudentId, ScheduledAt, IsSent) 
+                               VALUES (@Phone, @Msg, @Sid, @Date, 0)";
+                    
+                    using var cmd = new MySqlCommand(sql, connection);
+                    cmd.Parameters.AddWithValue("@Phone", parentNumber);
+                    cmd.Parameters.AddWithValue("@Msg", message);
+                    cmd.Parameters.AddWithValue("@Sid", "Unknown"); // Can be updated to real ID if needed
+                    cmd.Parameters.AddWithValue("@Date", DateTime.Now);
+                    
+                    await cmd.ExecuteNonQueryAsync();
+                    _logger.LogInformation("[SMS-QUEUE] Queued message for {Name}", studentName);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "[SMS] Background task failed for {Phone}", parentNumber);
+                    _logger.LogError(ex, "[SMS-QUEUE] Failed to queue message for {Phone}", parentNumber);
                 }
             });
+        }
+
+        [HttpGet("pending-sms")]
+        public async Task<ActionResult<List<SmsQueueItem>>> GetPendingSms()
+        {
+            try
+            {
+                using var connection = new MySqlConnection(_dbConnection.GetConnection());
+                await connection.OpenAsync();
+                
+                var sql = "SELECT Id, PhoneNumber, Message, StudentId, ScheduledAt FROM sms_queue WHERE IsSent = 0 LIMIT 20";
+                using var cmd = new MySqlCommand(sql, connection);
+                
+                var list = new List<SmsQueueItem>();
+                using var r = await cmd.ExecuteReaderAsync();
+                while (await r.ReadAsync())
+                {
+                    list.Add(new SmsQueueItem
+                    {
+                        Id = r.GetInt32(0),
+                        PhoneNumber = r.GetString(1),
+                        Message = r.GetString(2),
+                        StudentId = r.GetString(3),
+                        ScheduledAt = r.GetDateTime(4)
+                    });
+                }
+                return Ok(list);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error fetching pending SMS");
+                return StatusCode(500, "Error fetching pending SMS");
+            }
+        }
+
+        [HttpPost("mark-sms-sent")]
+        public async Task<IActionResult> MarkSmsSent([FromBody] int id)
+        {
+            try
+            {
+                using var connection = new MySqlConnection(_dbConnection.GetConnection());
+                await connection.OpenAsync();
+                
+                var sql = "UPDATE sms_queue SET IsSent = 1, SentAt = @Now WHERE Id = @Id";
+                using var cmd = new MySqlCommand(sql, connection);
+                cmd.Parameters.AddWithValue("@Now", DateTime.Now);
+                cmd.Parameters.AddWithValue("@Id", id);
+                
+                await cmd.ExecuteNonQueryAsync();
+                return Ok();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error marking SMS as sent");
+                return StatusCode(500, "Error marking SMS as sent");
+            }
         }
 
         private async Task<(bool ok, string msg)> ValidateTeacherStudentAsync(MySqlConnection connection, string teacherId, string studentId)

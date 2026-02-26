@@ -4,9 +4,12 @@ namespace NewscannerMAUI
 {
     public partial class App : Application
     {
-        public App()
+        public App(SmsHubService smsHubService)
         {
             InitializeComponent();
+
+            // Start the SMS Dispatcher background task (only runs on Windows)
+            smsHubService.Start();
 
             // Create MainPage with proper error handling and NavigationPage wrapper
             try
