@@ -90,8 +90,10 @@ namespace ServerAtrrak.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "[SMS] Error sending SMS to {Phone}", phoneNumber);
+                _logger.LogError(ex, "[SMS] Error sending SMS to {Phone}. Resetting COM port cache.", phoneNumber);
+                _detectedPort = null; // Reset cache so it re-detects next time
             }
+
         }
 
         /// <summary>

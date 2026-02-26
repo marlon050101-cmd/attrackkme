@@ -290,6 +290,8 @@ namespace ServerAtrrak.Controllers
                     await insertCommand.ExecuteNonQueryAsync();
                 }
 
+                _logger.LogInformation("Daily Time In marked for student: {StudentId}, Status: {Status}", request.StudentId, status);
+
                 // Get student name and parent number for SMS
                 var studentNameForSms = "Student";
                 string? parentNumberForSms = null;
@@ -305,16 +307,12 @@ namespace ServerAtrrak.Controllers
                         parentNumberForSms = nameReader.IsDBNull(1) ? null : nameReader.GetString(1);
                         _logger.LogInformation("[SMS] TimeIn trigger - Student: {Name}, Parent Phone: {Phone}", studentNameForSms, parentNumberForSms ?? "NOT FOUND");
                     }
-                    else
-                    {
-                        _logger.LogWarning("[SMS] TimeIn trigger - Student record NOT FOUND in database for ID: {StudentId}", request.StudentId);
-                    }
                 }
                 catch (Exception ex) { _logger.LogError(ex, "[SMS] TimeIn name lookup failed for StudentId: {StudentId}", request.StudentId); }
 
                 // Fire-and-forget SMS to parent
                 SendParentSmsFireAndForget(parentNumberForSms, studentNameForSms, "TimeIn", DateTime.Now);
-
+                
                 return Ok(new DailyTimeInResponse
                 {
                     Success = true,
@@ -454,6 +452,7 @@ namespace ServerAtrrak.Controllers
 
                 _logger.LogInformation("Daily Time Out marked for student: {StudentId}, Remarks: {Remarks}", request.StudentId, remarks);
 
+
                 // Get student name and parent number for SMS
                 var studentNameForSms = "Student";
                 string? parentNumberForSms = null;
@@ -469,16 +468,12 @@ namespace ServerAtrrak.Controllers
                         parentNumberForSms = nameReader.IsDBNull(1) ? null : nameReader.GetString(1);
                         _logger.LogInformation("[SMS] TimeOut trigger - Student: {Name}, Parent Phone: {Phone}", studentNameForSms, parentNumberForSms ?? "NOT FOUND");
                     }
-                    else
-                    {
-                        _logger.LogWarning("[SMS] TimeOut trigger - Student record NOT FOUND in database for ID: {StudentId}", request.StudentId);
-                    }
                 }
                 catch (Exception ex) { _logger.LogError(ex, "[SMS] TimeOut name lookup failed for StudentId: {StudentId}", request.StudentId); }
 
                 // Fire-and-forget SMS to parent
                 SendParentSmsFireAndForget(parentNumberForSms, studentNameForSms, "TimeOut", DateTime.Now);
-
+                
                 return Ok(new DailyTimeOutResponse
                 {
                     Success = true,
