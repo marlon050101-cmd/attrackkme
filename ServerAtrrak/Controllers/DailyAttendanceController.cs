@@ -303,9 +303,14 @@ namespace ServerAtrrak.Controllers
                     {
                         studentNameForSms = nameReader.IsDBNull(0) ? "Student" : nameReader.GetString(0);
                         parentNumberForSms = nameReader.IsDBNull(1) ? null : nameReader.GetString(1);
+                        _logger.LogInformation("[SMS] TimeIn trigger - Student: {Name}, Parent Phone: {Phone}", studentNameForSms, parentNumberForSms ?? "NOT FOUND");
+                    }
+                    else
+                    {
+                        _logger.LogWarning("[SMS] TimeIn trigger - Student record NOT FOUND in database for ID: {StudentId}", request.StudentId);
                     }
                 }
-                catch (Exception ex) { _logger.LogWarning("[SMS] Name lookup failed: {Error}", ex.Message); }
+                catch (Exception ex) { _logger.LogError(ex, "[SMS] TimeIn name lookup failed for StudentId: {StudentId}", request.StudentId); }
 
                 // Fire-and-forget SMS to parent
                 SendParentSmsFireAndForget(parentNumberForSms, studentNameForSms, "TimeIn", DateTime.Now);
@@ -462,9 +467,14 @@ namespace ServerAtrrak.Controllers
                     {
                         studentNameForSms = nameReader.IsDBNull(0) ? "Student" : nameReader.GetString(0);
                         parentNumberForSms = nameReader.IsDBNull(1) ? null : nameReader.GetString(1);
+                        _logger.LogInformation("[SMS] TimeOut trigger - Student: {Name}, Parent Phone: {Phone}", studentNameForSms, parentNumberForSms ?? "NOT FOUND");
+                    }
+                    else
+                    {
+                        _logger.LogWarning("[SMS] TimeOut trigger - Student record NOT FOUND in database for ID: {StudentId}", request.StudentId);
                     }
                 }
-                catch (Exception ex) { _logger.LogWarning("[SMS] Name lookup failed: {Error}", ex.Message); }
+                catch (Exception ex) { _logger.LogError(ex, "[SMS] TimeOut name lookup failed for StudentId: {StudentId}", request.StudentId); }
 
                 // Fire-and-forget SMS to parent
                 SendParentSmsFireAndForget(parentNumberForSms, studentNameForSms, "TimeOut", DateTime.Now);
