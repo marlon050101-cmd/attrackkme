@@ -14,11 +14,44 @@ namespace ServerAtrrak.Controllers
     {
         private readonly Dbconnection _dbConnection;
         private readonly ILogger<DailyAttendanceController> _logger;
+        private readonly GsmSmsService _smsService;
 
-        public DailyAttendanceController(Dbconnection dbConnection, ILogger<DailyAttendanceController> logger)
+        public DailyAttendanceController(Dbconnection dbConnection, ILogger<DailyAttendanceController> logger, GsmSmsService smsService)
         {
             _dbConnection = dbConnection;
             _logger = logger;
+            _smsService = smsService;
+        }
+
+        /// <summary>
+        /// Fetches the parent's phone number for a student from the database.
+        /// Returns null if not found.
+        /// </summary>
+        private async Task<string?> GetParentNumberAsync(MySqlConnection connection, string studentId)
+        {
+            try
+            {
+                var sql = "SELECT ParentsNumber FROM student WHERE StudentId = @StudentId LIMIT 1";
+                using var cmd = new MySqlCommand(sql, connection);
+                cmd.Parameters.AddWithValue("@StudentId", studentId);
+                var result = await cmd.ExecuteScalarAsync();
+                return result == DBNull.Value || result == null ? null : result.ToString();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning("[SMS] Could not fetch parent number for {StudentId}: {Error}", studentId, ex.Message);
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Sends an SMS to the parent in a fire-and-forget background task.
+        /// </summary>
+        private void SendParentSmsFireAndForget(string? parentNumber, string studentName, string attendanceType, DateTime time)
+        {
+            if (string.IsNullOrWhiteSpace(parentNumber)) return;
+            var message = GsmSmsService.BuildSmsMessage(studentName, attendanceType, time);
+            _ = Task.Run(async () => await _smsService.SendSmsAsync(parentNumber, message));
         }
 
         private async Task<(bool ok, string msg)> ValidateTeacherStudentAsync(MySqlConnection connection, string teacherId, string studentId)
@@ -245,6 +278,26 @@ namespace ServerAtrrak.Controllers
                     await insertCommand.ExecuteNonQueryAsync();
                 }
 
+                // Get student name and parent number for SMS
+                var studentNameForSms = "Student";
+                string? parentNumberForSms = null;
+                try
+                {
+                    var nameSql = "SELECT FullName, ParentsNumber FROM student WHERE StudentId = @StudentId LIMIT 1";
+                    using var nameCmd = new MySqlCommand(nameSql, connection);
+                    nameCmd.Parameters.AddWithValue("@StudentId", request.StudentId);
+                    using var nameReader = await nameCmd.ExecuteReaderAsync();
+                    if (await nameReader.ReadAsync())
+                    {
+                        studentNameForSms = nameReader.IsDBNull(0) ? "Student" : nameReader.GetString(0);
+                        parentNumberForSms = nameReader.IsDBNull(1) ? null : nameReader.GetString(1);
+                    }
+                }
+                catch (Exception ex) { _logger.LogWarning("[SMS] Name lookup failed: {Error}", ex.Message); }
+
+                // Fire-and-forget SMS to parent
+                SendParentSmsFireAndForget(parentNumberForSms, studentNameForSms, "TimeIn", DateTime.Now);
+
                 return Ok(new DailyTimeInResponse
                 {
                     Success = true,
@@ -383,6 +436,26 @@ namespace ServerAtrrak.Controllers
                 _logger.LogInformation("Update completed, rows affected: {RowsAffected}", rowsAffected);
 
                 _logger.LogInformation("Daily Time Out marked for student: {StudentId}, Remarks: {Remarks}", request.StudentId, remarks);
+
+                // Get student name and parent number for SMS
+                var studentNameForSms = "Student";
+                string? parentNumberForSms = null;
+                try
+                {
+                    var nameSql = "SELECT FullName, ParentsNumber FROM student WHERE StudentId = @StudentId LIMIT 1";
+                    using var nameCmd = new MySqlCommand(nameSql, connection);
+                    nameCmd.Parameters.AddWithValue("@StudentId", request.StudentId);
+                    using var nameReader = await nameCmd.ExecuteReaderAsync();
+                    if (await nameReader.ReadAsync())
+                    {
+                        studentNameForSms = nameReader.IsDBNull(0) ? "Student" : nameReader.GetString(0);
+                        parentNumberForSms = nameReader.IsDBNull(1) ? null : nameReader.GetString(1);
+                    }
+                }
+                catch (Exception ex) { _logger.LogWarning("[SMS] Name lookup failed: {Error}", ex.Message); }
+
+                // Fire-and-forget SMS to parent
+                SendParentSmsFireAndForget(parentNumberForSms, studentNameForSms, "TimeOut", DateTime.Now);
 
                 return Ok(new DailyTimeOutResponse
                 {
@@ -731,6 +804,35 @@ namespace ServerAtrrak.Controllers
                         syncedCount++;
                         _logger.LogInformation("Synced offline record for student: {StudentId}, Date: {Date}", 
                             record.StudentId, record.Date);
+
+                        // Send SMS to parent for each newly synced record (fire-and-forget)
+                        try
+                        {
+                            // Fetch both student name and parent number in one query
+                            string smsStudentName = "Student";
+                            string? smsParentNum = null;
+                            var smsSql = "SELECT FullName, ParentsNumber FROM student WHERE StudentId = @StudentId LIMIT 1";
+                            using var smsCmd = new MySqlCommand(smsSql, connection);
+                            smsCmd.Parameters.AddWithValue("@StudentId", record.StudentId);
+                            using var smsReader = await smsCmd.ExecuteReaderAsync();
+                            if (await smsReader.ReadAsync())
+                            {
+                                smsStudentName = smsReader.IsDBNull(0) ? "Student" : smsReader.GetString(0);
+                                smsParentNum = smsReader.IsDBNull(1) ? null : smsReader.GetString(1);
+                            }
+                            smsReader.Close();
+
+                            if (!string.IsNullOrEmpty(smsParentNum))
+                            {
+                                if (!string.IsNullOrEmpty(record.TimeIn))
+                                    SendParentSmsFireAndForget(smsParentNum, smsStudentName, "TimeIn",
+                                        record.Date.Date.Add(TimeSpan.Parse(record.TimeIn)));
+                                if (!string.IsNullOrEmpty(record.TimeOut))
+                                    SendParentSmsFireAndForget(smsParentNum, smsStudentName, "TimeOut",
+                                        record.Date.Date.Add(TimeSpan.Parse(record.TimeOut)));
+                            }
+                        }
+                        catch (Exception smEx) { _logger.LogWarning("[SMS] Sync SMS failed for {StudentId}: {Error}", record.StudentId, smEx.Message); }
                     }
                     catch (Exception ex)
                     {

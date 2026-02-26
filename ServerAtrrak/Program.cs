@@ -45,6 +45,9 @@ namespace ServerAtrrak
             
             // Register teacher services
             builder.Services.AddScoped<TeacherService>();
+
+            // Register GSM SMS service (singleton: shared serial port + cached COM port detection)
+            builder.Services.AddSingleton<GsmSmsService>();
   
             builder.Services.AddCors(options =>
             {
