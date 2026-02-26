@@ -23,35 +23,33 @@ namespace ServerAtrrak.Controllers
             _smsService = smsService;
         }
 
-        /// <summary>
-        /// Fetches the parent's phone number for a student from the database.
-        /// Returns null if not found.
-        /// </summary>
-        private async Task<string?> GetParentNumberAsync(MySqlConnection connection, string studentId)
-        {
-            try
-            {
-                var sql = "SELECT ParentsNumber FROM student WHERE StudentId = @StudentId LIMIT 1";
-                using var cmd = new MySqlCommand(sql, connection);
-                cmd.Parameters.AddWithValue("@StudentId", studentId);
-                var result = await cmd.ExecuteScalarAsync();
-                return result == DBNull.Value || result == null ? null : result.ToString();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning("[SMS] Could not fetch parent number for {StudentId}: {Error}", studentId, ex.Message);
-                return null;
-            }
-        }
 
         /// <summary>
         /// Sends an SMS to the parent in a fire-and-forget background task.
         /// </summary>
         private void SendParentSmsFireAndForget(string? parentNumber, string studentName, string attendanceType, DateTime time)
         {
-            if (string.IsNullOrWhiteSpace(parentNumber)) return;
+            if (string.IsNullOrWhiteSpace(parentNumber))
+            {
+                _logger.LogWarning("[SMS] Skipped: Parent number is empty for student {StudentName}.", studentName);
+                return;
+            }
             var message = GsmSmsService.BuildSmsMessage(studentName, attendanceType, time);
-            _ = Task.Run(async () => await _smsService.SendSmsAsync(parentNumber, message));
+            _logger.LogInformation("[SMS] Queueing message for {StudentName} to {Phone}...", studentName, parentNumber);
+            
+            // Force re-detection to ensure hardware is ready
+            try { _smsService.ResetDetectedPort(); } catch { }
+
+            _ = Task.Run(async () => {
+                try 
+                {
+                    await _smsService.SendSmsAsync(parentNumber, message);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "[SMS] Background task failed for {Phone}", parentNumber);
+                }
+            });
         }
 
         private async Task<(bool ok, string msg)> ValidateTeacherStudentAsync(MySqlConnection connection, string teacherId, string studentId)
@@ -231,11 +229,22 @@ namespace ServerAtrrak.Controllers
                     await deleteCommand.ExecuteNonQueryAsync();
                 }
 
-                // Determine status based on time
-                var timeInDateTime = DateTime.Now.Date.Add(request.TimeIn);
-                var schoolStartTime = DateTime.Now.Date.AddHours(7).AddMinutes(30); // 7:30 AM
-                var isLate = timeInDateTime > schoolStartTime;
-                var status = isLate ? "Late" : "Present";
+                // Determine status based on time (Consolidated with client-side rules)
+                var nowTime = request.TimeIn;
+                string status = "Present";
+                
+                // Morning: 7:00 AM - 10:59 AM is Late
+                if (nowTime >= new TimeSpan(7, 0, 0) && nowTime <= new TimeSpan(10, 59, 59))
+                {
+                    status = "Late";
+                }
+                // Afternoon: 1:05 PM or later is late
+                else if (nowTime >= new TimeSpan(13, 5, 0))
+                {
+                    status = "Late";
+                }
+                
+                bool isLate = status == "Late";
 
                 if (!string.IsNullOrEmpty(existingId))
                 {
@@ -312,6 +321,8 @@ namespace ServerAtrrak.Controllers
 
                 // Fire-and-forget SMS to parent
                 SendParentSmsFireAndForget(parentNumberForSms, studentNameForSms, "TimeIn", DateTime.Now);
+
+
                 
                 return Ok(new DailyTimeInResponse
                 {
@@ -388,7 +399,16 @@ namespace ServerAtrrak.Controllers
                 }
 
                 var attendanceId = reader.GetString("AttendanceId");
-                var timeIn = reader.GetString("TimeIn");
+                // Read TimeIn safely
+                string timeIn;
+                try
+                {
+                    timeIn = reader.IsDBNull("TimeIn") ? "" : ((TimeSpan)reader.GetValue("TimeIn")).ToString(@"hh\:mm\:ss");
+                }
+                catch
+                {
+                    timeIn = reader.IsDBNull("TimeIn") ? "" : reader.GetString("TimeIn");
+                }
                 var currentStatus = reader.GetString("Status");
                 var existingTimeOut = reader.IsDBNull("TimeOut") ? "" : ((TimeSpan)reader.GetValue("TimeOut")).ToString(@"hh\:mm\:ss");
                 reader.Close();
@@ -416,11 +436,15 @@ namespace ServerAtrrak.Controllers
                 var timeOutHour = timeOutTime.Hours;
                 
                 string remarks;
-                var sevenThirtyOne = new TimeSpan(7, 31, 0); // 7:31 AM
-                var isLate = timeInTime >= sevenThirtyOne;
+                var nowTime = timeInTime;
+                bool isLate = false;
+
+                // Determine if late using same rules as TimeIn
+                if (nowTime >= new TimeSpan(7, 0, 0) && nowTime <= new TimeSpan(10, 59, 59)) isLate = true;
+                else if (nowTime >= new TimeSpan(13, 5, 0)) isLate = true;
                 
-                // Check if it's a whole day (7:30 AM - 4:30 PM range)
-                if (timeInHour <= 7 && timeOutHour >= 16) // 7:30 AM to 4:30 PM
+                // Check if it's a whole day (Arrived before 7:30 AM and Left after 4:30 PM)
+                if (timeInTime <= new TimeSpan(7, 30, 0) && timeOutTime >= new TimeSpan(16, 30, 0))
                 {
                     remarks = isLate ? "Late - Whole Day" : "Whole Day";
                 }
@@ -473,6 +497,8 @@ namespace ServerAtrrak.Controllers
 
                 // Fire-and-forget SMS to parent
                 SendParentSmsFireAndForget(parentNumberForSms, studentNameForSms, "TimeOut", DateTime.Now);
+
+
                 
                 return Ok(new DailyTimeOutResponse
                 {
