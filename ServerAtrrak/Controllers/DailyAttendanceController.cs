@@ -89,6 +89,18 @@ namespace ServerAtrrak.Controllers
             return (true, "");
         }
 
+        [HttpPost("test-sms")]
+        public async Task<IActionResult> TestSms([FromQuery] string phoneNumber, [FromQuery] string message = "Test message from Attrak system")
+        {
+            if (string.IsNullOrWhiteSpace(phoneNumber))
+                return BadRequest("Phone number is required");
+
+            _logger.LogInformation("[SMS] Test request for {Phone}", phoneNumber);
+            await _smsService.SendSmsAsync(phoneNumber, message);
+            
+            return Ok(new { Message = $"Test SMS sent to {phoneNumber}. Check server logs for results." });
+        }
+
         [HttpGet("daily-status/{studentId}")]
         public async Task<ActionResult<DailyAttendanceStatus>> GetDailyStatus(string studentId, [FromQuery] DateTime date)
         {
