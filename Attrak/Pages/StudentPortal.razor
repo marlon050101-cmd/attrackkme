@@ -131,8 +131,23 @@
                                 </div>
                                 <div class="col-md-6 mb-3">
                                     <label for="reg-section" class="form-label">Section</label>
-                                    <InputText id="reg-section" class="form-control" @bind-Value="studentRegisterRequest.Section" placeholder="Enter section" />
-                                    <ValidationMessage For="@(() => studentRegisterRequest.Section)" class="text-danger" />
+                                    <div class="position-relative">
+                                        <InputText id="reg-section" class="form-control text-uppercase" @bind-Value="studentRegisterRequest.Section" @oninput="OnSectionSearchChanged" placeholder="Type to search section..." disabled="@(string.IsNullOrEmpty(studentRegisterRequest.SchoolName) || studentRegisterRequest.GradeLevel < 7)" />
+                                        <ValidationMessage For="@(() => studentRegisterRequest.Section)" class="text-danger" />
+                                        
+                                        @if (showSectionDropdown && filteredSections.Any())
+                                        {
+                                            <div class="position-absolute w-100 bg-white border rounded shadow-lg" style="z-index: 1000; max-height: 200px; overflow-y: auto;">
+                                                @foreach (var section in filteredSections.Take(10))
+                                                {
+                                                    <div class="p-2 border-bottom cursor-pointer hover-bg-light" @onclick="() => SelectSection(section)" style="cursor: pointer;">
+                                                        <div class="fw-bold">@section</div>
+                                                    </div>
+                                                }
+                                            </div>
+                                        }
+                                    </div>
+                                    <small class="form-text text-muted">Select school and grade level first</small>
                                 </div>
                             </div>
 
@@ -183,7 +198,7 @@
                                         <div class="position-absolute w-100 bg-white border rounded shadow-lg" style="z-index: 1000; max-height: 200px; overflow-y: auto;">
                                             @foreach (var school in filteredSchools.Take(10))
                                             {
-                                                <div class="p-2 border-bottom cursor-pointer hover-bg-light" @onclick="() => SelectSchool(school)" style="cursor: pointer;">
+                                                <div class="p-2 border-bottom cursor-pointer hover-bg-light" @onclick="async () => await SelectSchool(school)" style="cursor: pointer;">
                                                     <div class="fw-bold">@school.SchoolName</div>
                                                     <small class="text-muted">@school.Region, @school.Division</small>
                                                 </div>
@@ -244,6 +259,12 @@
     private List<SchoolInfo> filteredSchools = new();
     private bool showSchoolDropdown = false;
     private Timer? schoolSearchTimer;
+
+    // Section search functionality
+    private List<string> availableSections = new();
+    private List<string> filteredSections = new();
+    private bool showSectionDropdown = false;
+    private Timer? sectionSearchTimer;
 
     public class StudentRegisterRequest
     {
@@ -471,11 +492,72 @@
         }, null, 300, Timeout.Infinite);
     }
 
-    private void SelectSchool(SchoolInfo school)
+    private async Task SelectSchool(SchoolInfo school)
     {
         studentRegisterRequest.SchoolName = school.SchoolName;
         showSchoolDropdown = false;
         filteredSchools.Clear();
+        await FetchAvailableSections();
+        StateHasChanged();
+    }
+
+    private async Task FetchAvailableSections()
+    {
+        if (string.IsNullOrEmpty(studentRegisterRequest.SchoolName) || studentRegisterRequest.GradeLevel < 7)
+        {
+            availableSections.Clear();
+            return;
+        }
+
+        try
+        {
+            var url = $"{ApiConfig.BaseUrl}api/register/sections?schoolName={Uri.EscapeDataString(studentRegisterRequest.SchoolName)}&gradeLevel={studentRegisterRequest.GradeLevel}";
+            var response = await Http.GetFromJsonAsync<List<string>>(url);
+            availableSections = response ?? new List<string>();
+        }
+        catch
+        {
+            availableSections.Clear();
+        }
+    }
+
+    private void OnSectionSearchChanged(ChangeEventArgs e)
+    {
+        var searchTerm = e.Value?.ToString()?.ToUpper() ?? "";
+        studentRegisterRequest.Section = searchTerm;
+
+        sectionSearchTimer?.Dispose();
+
+        if (string.IsNullOrEmpty(searchTerm))
+        {
+            showSectionDropdown = false;
+            filteredSections.Clear();
+            StateHasChanged();
+            return;
+        }
+
+        sectionSearchTimer = new Timer(async _ =>
+        {
+            await InvokeAsync(() =>
+            {
+                filteredSections = availableSections
+                    .Where(s => s.Contains(searchTerm, StringComparison.OrdinalIgnoreCase))
+                    .OrderBy(s => s)
+                    .ToList();
+
+                // If no matching existing section, we still shouldn't prevent them from manually typing adding a section, 
+                // but the prompt is to "make section field searchable from available section", so they can type as normal anyway.
+                showSectionDropdown = filteredSections.Any();
+                StateHasChanged();
+            });
+        }, null, 300, Timeout.Infinite);
+    }
+
+    private void SelectSection(string section)
+    {
+        studentRegisterRequest.Section = section;
+        showSectionDropdown = false;
+        filteredSections.Clear();
         StateHasChanged();
     }
 
@@ -509,11 +591,14 @@
         {
             studentRegisterRequest.Strand = "";
         }
+        
+        await FetchAvailableSections();
         await InvokeAsync(StateHasChanged);
     }
 
     public void Dispose()
     {
         schoolSearchTimer?.Dispose();
+        sectionSearchTimer?.Dispose();
     }
 }

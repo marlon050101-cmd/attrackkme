@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 17
-VisualStudioVersion = 17.13.35913.81
+# Visual Studio Version 18
+VisualStudioVersion = 18.2.11408.102
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Attrak", "Attrak\Attrak.csproj", "{EDC31CEA-23DE-4A89-BD1C-02B27D83355D}"
 EndProject
@@ -9,7 +9,9 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ServerAtrrak", "ServerAtrra
 EndProject
 Project("{D954291E-2A0B-460D-934E-DC6B0785DB48}") = "AttrackSharedClass", "AttrackSharedClass\AttrackSharedClass.shproj", "{6383F5E8-F662-46BD-A55E-D98F08866BF6}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ScannerMaui", "ScannerMaui\ScannerMaui.csproj", "{FD210816-C891-40C3-9514-596ADAF0A5F9}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NewscannerMAUI", "NewscannerMAUI\NewscannerMAUI.csproj", "{A915D808-3B12-45AB-AB38-FE2B4DB0C0B1}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ScannerMaui", "ScannerMaui\ScannerMaui.csproj", "{CEEB6C83-549E-3CAB-F0C0-6CB1656A669A}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -25,12 +27,17 @@ Global
 		{A57DF35C-C49D-4A7D-A4B8-FA3EBBA19209}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{A57DF35C-C49D-4A7D-A4B8-FA3EBBA19209}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{A57DF35C-C49D-4A7D-A4B8-FA3EBBA19209}.Release|Any CPU.Build.0 = Release|Any CPU
-		{FD210816-C891-40C3-9514-596ADAF0A5F9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{FD210816-C891-40C3-9514-596ADAF0A5F9}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{FD210816-C891-40C3-9514-596ADAF0A5F9}.Debug|Any CPU.Deploy.0 = Debug|Any CPU
-		{FD210816-C891-40C3-9514-596ADAF0A5F9}.Release|Any CPU.ActiveCfg = Debug|Any CPU
-		{FD210816-C891-40C3-9514-596ADAF0A5F9}.Release|Any CPU.Build.0 = Debug|Any CPU
-		{FD210816-C891-40C3-9514-596ADAF0A5F9}.Release|Any CPU.Deploy.0 = Debug|Any CPU
+		{A915D808-3B12-45AB-AB38-FE2B4DB0C0B1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A915D808-3B12-45AB-AB38-FE2B4DB0C0B1}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A915D808-3B12-45AB-AB38-FE2B4DB0C0B1}.Release|Any CPU.ActiveCfg = Debug|Any CPU
+		{A915D808-3B12-45AB-AB38-FE2B4DB0C0B1}.Release|Any CPU.Build.0 = Debug|Any CPU
+		{A915D808-3B12-45AB-AB38-FE2B4DB0C0B1}.Release|Any CPU.Deploy.0 = Debug|Any CPU
+		{CEEB6C83-549E-3CAB-F0C0-6CB1656A669A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{CEEB6C83-549E-3CAB-F0C0-6CB1656A669A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{CEEB6C83-549E-3CAB-F0C0-6CB1656A669A}.Debug|Any CPU.Deploy.0 = Debug|Any CPU
+		{CEEB6C83-549E-3CAB-F0C0-6CB1656A669A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{CEEB6C83-549E-3CAB-F0C0-6CB1656A669A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{CEEB6C83-549E-3CAB-F0C0-6CB1656A669A}.Release|Any CPU.Deploy.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -41,7 +48,8 @@ Global
 	GlobalSection(SharedMSBuildProjectFiles) = preSolution
 		AttrackSharedClass\AttrackSharedClass.projitems*{6383f5e8-f662-46bd-a55e-d98f08866bf6}*SharedItemsImports = 13
 		AttrackSharedClass\AttrackSharedClass.projitems*{a57df35c-c49d-4a7d-a4b8-fa3ebba19209}*SharedItemsImports = 5
+		AttrackSharedClass\AttrackSharedClass.projitems*{a915d808-3b12-45ab-ab38-fe2b4db0c0b1}*SharedItemsImports = 5
+		AttrackSharedClass\AttrackSharedClass.projitems*{ceeb6c83-549e-3cab-f0c0-6cb1656a669a}*SharedItemsImports = 5
 		AttrackSharedClass\AttrackSharedClass.projitems*{edc31cea-23de-4a89-bd1c-02b27d83355d}*SharedItemsImports = 5
-		AttrackSharedClass\AttrackSharedClass.projitems*{fd210816-c891-40c3-9514-596adaf0a5f9}*SharedItemsImports = 5
 	EndGlobalSection
 EndGlobal

@@ -1,0 +1,484 @@
+@page "/offline-setup"
+@using NewscannerMAUI.Services
+@inject AuthService AuthService
+@inject OfflineDataService OfflineDataService
+@inject ConnectionStatusService ConnectionStatusService
+
+<PageTitle>Offline Setup</PageTitle>
+
+<div class="offline-setup-container">
+    <div class="setup-header">
+        <h2>📱 Offline Mode Setup</h2>
+        <div class="connection-status">
+            <span class="status-indicator @(ConnectionStatusService.IsOnline ? "online" : (ConnectionStatusService.IsChecking ? "checking" : "offline"))">
+                @ConnectionStatusService.StatusText
+            </span>
+        </div>
+    </div>
+
+    <div class="setup-content">
+        <!-- Current Status -->
+        <div class="status-card">
+            <h3>📊 Current Status</h3>
+            <div class="status-info">
+                <div class="status-item">
+                    <span class="status-label">Mode:</span>
+                    <span class="status-value @(AuthService.IsOfflineMode ? "offline" : "online")">
+                        @(AuthService.IsOfflineMode ? "Offline" : "Online")
+                    </span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Connection:</span>
+                    <span class="status-value @(ConnectionStatusService.IsOnline ? "online" : (ConnectionStatusService.IsChecking ? "checking" : "offline"))">
+                        @ConnectionStatusService.StatusText
+                    </span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Database Path:</span>
+                    <span class="status-value database-path">
+                        @OfflineDataService.GetDatabasePath()
+                    </span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">App Data Directory:</span>
+                    <span class="status-value database-path">
+                        @OfflineDataService.GetAppDataDirectory()
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Setup New Offline User -->
+        <div class="setup-card">
+            <h3>👤 Setup New Offline User</h3>
+            <div class="setup-form">
+                <div class="form-group">
+                    <label for="username">Username:</label>
+                    <input type="text" id="username" @bind="newUsername" class="form-control" placeholder="Enter username" />
+                </div>
+                
+                <div class="form-group">
+                    <label for="password">Password:</label>
+                    <input type="password" id="password" @bind="newPassword" class="form-control" placeholder="Enter password" />
+                </div>
+                
+                <div class="form-group">
+                    <label for="fullName">Full Name:</label>
+                    <input type="text" id="fullName" @bind="newFullName" class="form-control" placeholder="Enter full name" />
+                </div>
+                
+                <div class="form-group">
+                    <label for="userType">User Type:</label>
+                    <select id="userType" @bind="newUserType" class="form-control">
+                        <option value="Teacher">Teacher</option>
+                        <option value="Student">Student</option>
+                        <option value="Admin">Admin</option>
+                    </select>
+                </div>
+                
+                <button class="btn btn-primary" @onclick="SetupOfflineUser" disabled="@isSettingUp">
+                    @if (isSettingUp)
+                    {
+                        <span>⏳ Setting up...</span>
+                    }
+                    else
+                    {
+                        <span>✅ Setup Offline User</span>
+                    }
+                </button>
+            </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="actions-card">
+            <h3>⚡ Quick Actions</h3>
+            <div class="action-buttons">
+                <button class="btn btn-success" @onclick="TestOfflineLogin">
+                    🔐 Test Offline Login
+                </button>
+                <button class="btn btn-info" @onclick="ViewOfflineData">
+                    📊 View Offline Data
+                </button>
+                <button class="btn btn-warning" @onclick="ClearOfflineData">
+                    🗑️ Clear Offline Data
+                </button>
+                <button class="btn btn-secondary" @onclick="CopyDatabasePath">
+                    📋 Copy Database Path
+                </button>
+            </div>
+        </div>
+
+        <!-- Messages -->
+        @if (!string.IsNullOrEmpty(message))
+        {
+            <div class="alert @(isSuccess ? "alert-success" : "alert-danger")">
+                @message
+            </div>
+        }
+    </div>
+</div>
+
+<style>
+    .offline-setup-container {
+        padding: 20px;
+        max-width: 800px;
+        margin: 0 auto;
+        background: #f8f9fa;
+        min-height: 100vh;
+    }
+
+    .setup-header {
+        text-align: center;
+        margin-bottom: 30px;
+        padding: 20px;
+        background: white;
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+
+    .setup-header h2 {
+        color: #333;
+        margin-bottom: 10px;
+    }
+
+    .connection-status {
+        margin-top: 10px;
+    }
+
+    .status-indicator {
+        padding: 5px 15px;
+        border-radius: 20px;
+        font-weight: bold;
+        font-size: 14px;
+    }
+
+    .status-indicator.online {
+        background: #d4edda;
+        color: #155724;
+    }
+
+    .status-indicator.offline {
+        background: #f8d7da;
+        color: #721c24;
+    }
+
+    .setup-content {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+    }
+
+    .status-card, .setup-card, .actions-card {
+        background: white;
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+
+    .status-card h3, .setup-card h3, .actions-card h3 {
+        color: #333;
+        margin-bottom: 15px;
+        border-bottom: 2px solid #e9ecef;
+        padding-bottom: 10px;
+    }
+
+    .status-info {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .status-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 10px;
+        background: #f8f9fa;
+        border-radius: 5px;
+    }
+
+    .status-label {
+        font-weight: bold;
+        color: #666;
+    }
+
+    .status-value {
+        padding: 4px 12px;
+        border-radius: 15px;
+        font-size: 12px;
+        font-weight: bold;
+    }
+
+    .status-value.online {
+        background: #d4edda;
+        color: #155724;
+    }
+
+    .status-value.offline {
+        background: #f8d7da;
+        color: #721c24;
+    }
+
+    .status-value.database-path {
+        background: #e2e3e5;
+        color: #383d41;
+        font-family: monospace;
+        font-size: 11px;
+        word-break: break-all;
+        max-width: 200px;
+    }
+
+    .setup-form {
+        display: flex;
+        flex-direction: column;
+        gap: 15px;
+    }
+
+    .form-group {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+    }
+
+    .form-group label {
+        font-weight: bold;
+        color: #333;
+    }
+
+    .form-control {
+        padding: 10px;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        font-size: 16px;
+    }
+
+    .form-control:focus {
+        outline: none;
+        border-color: #007bff;
+        box-shadow: 0 0 0 2px rgba(0,123,255,0.25);
+    }
+
+    .action-buttons {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .btn {
+        padding: 12px 20px;
+        border: none;
+        border-radius: 5px;
+        font-size: 16px;
+        font-weight: bold;
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+
+    .btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+
+    .btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+        transform: none;
+    }
+
+    .btn-primary {
+        background: #007bff;
+        color: white;
+    }
+
+    .btn-success {
+        background: #28a745;
+        color: white;
+    }
+
+    .btn-info {
+        background: #17a2b8;
+        color: white;
+    }
+
+    .btn-warning {
+        background: #ffc107;
+        color: #212529;
+    }
+
+    .alert {
+        padding: 15px;
+        border-radius: 5px;
+        margin-top: 20px;
+    }
+
+    .alert-success {
+        background: #d4edda;
+        color: #155724;
+        border: 1px solid #c3e6cb;
+    }
+
+    .alert-danger {
+        background: #f8d7da;
+        color: #721c24;
+        border: 1px solid #f5c6cb;
+    }
+
+    @@media (max-width: 768px) {
+        .offline-setup-container {
+            padding: 10px;
+        }
+        
+        .status-item {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 5px;
+        }
+    }
+</style>
+
+@code {
+    private string newUsername = string.Empty;
+    private string newPassword = string.Empty;
+    private string newFullName = string.Empty;
+    private string newUserType = "Teacher";
+    private bool isSettingUp = false;
+    private string message = string.Empty;
+    private bool isSuccess = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await base.OnInitializedAsync();
+    }
+
+    private async Task SetupOfflineUser()
+    {
+        if (string.IsNullOrEmpty(newUsername) || string.IsNullOrEmpty(newPassword) || string.IsNullOrEmpty(newFullName))
+        {
+            message = "Please fill in all fields";
+            isSuccess = false;
+            StateHasChanged();
+            return;
+        }
+
+        isSettingUp = true;
+        StateHasChanged();
+
+        try
+        {
+            var success = await AuthService.SetupOfflineUserAsync(newUsername, newPassword, newUserType, newFullName);
+            
+            if (success)
+            {
+                message = $"✅ Offline user '{newUsername}' setup successfully!";
+                isSuccess = true;
+                
+                // Clear form
+                newUsername = string.Empty;
+                newPassword = string.Empty;
+                newFullName = string.Empty;
+                newUserType = "Teacher";
+            }
+            else
+            {
+                message = "❌ Failed to setup offline user. Please try again.";
+                isSuccess = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            message = $"❌ Error: {ex.Message}";
+            isSuccess = false;
+        }
+        finally
+        {
+            isSettingUp = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task TestOfflineLogin()
+    {
+        if (string.IsNullOrEmpty(newUsername) || string.IsNullOrEmpty(newPassword))
+        {
+            message = "Please enter username and password to test";
+            isSuccess = false;
+            StateHasChanged();
+            return;
+        }
+
+        try
+        {
+            var success = await AuthService.LoginOfflineAsync(newUsername, newPassword);
+            
+            if (success)
+            {
+                message = "✅ Offline login test successful!";
+                isSuccess = true;
+            }
+            else
+            {
+                message = "❌ Offline login test failed. Check credentials.";
+                isSuccess = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            message = $"❌ Error testing login: {ex.Message}";
+            isSuccess = false;
+        }
+        
+        StateHasChanged();
+    }
+
+    private async Task ViewOfflineData()
+    {
+        try
+        {
+            var count = await OfflineDataService.GetUnsyncedCountAsync();
+            message = $"📊 Found {count} offline records";
+            isSuccess = true;
+        }
+        catch (Exception ex)
+        {
+            message = $"❌ Error viewing data: {ex.Message}";
+            isSuccess = false;
+        }
+        
+        StateHasChanged();
+    }
+
+    private async Task ClearOfflineData()
+    {
+        try
+        {
+            // This would need to be implemented in OfflineDataService
+            message = "🗑️ Clear offline data functionality needs to be implemented";
+            isSuccess = false;
+        }
+        catch (Exception ex)
+        {
+            message = $"❌ Error clearing data: {ex.Message}";
+            isSuccess = false;
+        }
+        
+        StateHasChanged();
+    }
+
+    private async Task CopyDatabasePath()
+    {
+        try
+        {
+            var databasePath = OfflineDataService.GetDatabasePath();
+            await Clipboard.SetTextAsync(databasePath);
+            message = "✅ Database path copied to clipboard!";
+            isSuccess = true;
+        }
+        catch (Exception ex)
+        {
+            message = $"❌ Error copying path: {ex.Message}";
+            isSuccess = false;
+        }
+        
+        StateHasChanged();
+    }
+}

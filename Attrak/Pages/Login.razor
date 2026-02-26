@@ -320,7 +320,22 @@
         var currentUser = await AuthService.GetCurrentUserAsync();
         if (currentUser != null)
         {
-            Navigation.NavigateTo("/dashboard");
+            if (currentUser.UserType == UserType.Student)
+            {
+                Navigation.NavigateTo("/student-portal");
+            }
+            else if (currentUser.UserType == UserType.GuidanceCounselor)
+            {
+                Navigation.NavigateTo("/guidance-dashboard");
+            }
+            else if (currentUser.UserType == UserType.Teacher)
+            {
+                Navigation.NavigateTo("/teacher-dashboard");
+            }
+            else
+            {
+                Navigation.NavigateTo("/dashboard");
+            }
         }
 
         // Load regions for registration
@@ -412,7 +427,12 @@
             if (response.Success)
             {
                 // Redirect based on user type
-                if (response.User?.UserType == UserType.GuidanceCounselor)
+                if (response.User?.UserType == UserType.Student)
+                {
+                    await AuthService.LogoutAsync();
+                    errorMessage = "Student accounts must log in through the Student Portal.";
+                }
+                else if (response.User?.UserType == UserType.GuidanceCounselor)
                 {
                     Navigation.NavigateTo("/guidance-dashboard");
                 }

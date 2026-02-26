@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage x:Class="NewscannerMAUI.Pages.CameraPage"
+             xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:zxing="clr-namespace:ZXing.Net.Maui.Controls;assembly=ZXing.Net.Maui.Controls"
+             Title="QR Scanner"
+             BackgroundColor="Black">
+    
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        
+        <!-- Header -->
+        <Frame Grid.Row="0" 
+               BackgroundColor="#007bff" 
+               Padding="20,10"
+               Margin="0">
+            <Label Text="QR Code Scanner" 
+                   TextColor="White" 
+                   FontSize="18" 
+                   FontAttributes="Bold"
+                   HorizontalOptions="Center" />
+        </Frame>
+        
+        <!-- Camera View -->
+        <Grid Grid.Row="1" BackgroundColor="Black">
+            <zxing:CameraBarcodeReaderView x:Name="cameraBarcodeReaderView"
+                                          BarcodesDetected="OnBarcodesDetected"
+                                          IsDetecting="True"
+                                          CameraLocation="Rear"
+                                          IsTorchOn="False" />
+            
+            <!-- Scanning Overlay -->
+            <Frame BackgroundColor="Transparent" 
+                   BorderColor="Lime" 
+                   HasShadow="False"
+                   Padding="0"
+                   Margin="50"
+                   VerticalOptions="Center"
+                   HorizontalOptions="Center"
+                   WidthRequest="250"
+                   HeightRequest="250" />
+        </Grid>
+        
+        <!-- Controls -->
+        <StackLayout Grid.Row="2" 
+                     BackgroundColor="#f8f9fa" 
+                     Padding="20,10"
+                     Spacing="10">
+            
+            <!-- Status Message -->
+            <Label x:Name="statusLabel" 
+                   Text="Camera ready - point at QR code" 
+                   TextColor="Green"
+                   FontSize="14"
+                   HorizontalOptions="Center" />
+            
+            <!-- Last Scanned Code -->
+            <Label x:Name="scannedCodeLabel" 
+                   Text="" 
+                   TextColor="Blue"
+                   FontSize="16"
+                   FontAttributes="Bold"
+                   HorizontalOptions="Center"
+                   IsVisible="False" />
+            
+            <!-- Buttons -->
+            <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                <Button Grid.Column="0"
+                        x:Name="stopButton"
+                        Text="Stop Scanning"
+                        BackgroundColor="Red"
+                        TextColor="White"
+                        Clicked="OnStopClicked" />
+                
+                <Button Grid.Column="1"
+                        x:Name="switchButton"
+                        Text="Switch Camera"
+                        BackgroundColor="Gray"
+                        TextColor="White"
+                        Clicked="OnSwitchCameraClicked" />
+            </Grid>
+        </StackLayout>
+    </Grid>
+</ContentPage>

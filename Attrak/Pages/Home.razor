@@ -24,6 +24,7 @@
     </div>
 </div>
 
+@using AttrackSharedClass.Models
 @code {
     protected override async Task OnInitializedAsync()
     {
@@ -31,7 +32,22 @@
         var currentUser = await AuthService.GetCurrentUserAsync();
         if (currentUser != null)
         {
-            Navigation.NavigateTo("/dashboard");
+            if (currentUser.UserType == UserType.Student)
+            {
+                Navigation.NavigateTo("/student-portal");
+            }
+            else if (currentUser.UserType == UserType.GuidanceCounselor)
+            {
+                Navigation.NavigateTo("/guidance-dashboard");
+            }
+            else if (currentUser.UserType == UserType.Teacher)
+            {
+                Navigation.NavigateTo("/teacher-dashboard");
+            }
+            else
+            {
+                Navigation.NavigateTo("/dashboard");
+            }
         }
     }
 }

@@ -1,13 +1,15 @@
 @page "/daily-attendance"
 @using AttrackSharedClass.Models
+@using Attrak.Services
 @using Microsoft.AspNetCore.Components.Forms
 @using Microsoft.AspNetCore.Components.Web
 @using Microsoft.AspNetCore.Components
-@using Attrak.Services
+@using Microsoft.AspNetCore.SignalR.Client
 @inject HttpClient Http
 @inject IJSRuntime JSRuntime
 @inject IAuthService AuthService
-@implements IDisposable
+@inject NavigationManager Navigation
+@implements IAsyncDisposable
 @layout Layoutall
 <PageTitle>Student Daily Attendance Management</PageTitle>
 
@@ -294,8 +296,9 @@
     private int timeInOnlyCount = 0;
     private int completeCount = 0;
     
-    // Real-time refresh
-    private System.Threading.Timer? _refreshTimer;
+    // Real-time Push (SignalR)
+    private HubConnection? hubConnection;
+    private bool isHubConnected = false;
     private bool _isRefreshing = false;
     private DateTime _lastRefreshTime = DateTime.Now;
 
@@ -333,8 +336,60 @@
         // Calculate summary counts after loading both students and attendance records
         CalculateSummaryCounts();
         
-        // Start real-time refresh timer (every 10 seconds)
-        StartRefreshTimer();
+        // Initialize SignalR Push Connection
+        await SetupSignalR();
+    }
+
+    private async Task SetupSignalR()
+    {
+        if (string.IsNullOrEmpty(currentTeacherId)) return;
+
+        try
+        {
+            hubConnection = new HubConnectionBuilder()
+                .WithUrl($"{ApiConfig.BaseUrl}attendanceHub")
+                .WithAutomaticReconnect()
+                .Build();
+
+            hubConnection.On<System.Text.Json.JsonElement>("ReceiveAttendanceUpdate", async (update) =>
+            {
+                Console.WriteLine($"DEBUG: SignalR - Received update! Payload: {update.GetRawText()}");
+                
+                string? studentName = null;
+                if (update.TryGetProperty("StudentName", out var nameProp))
+                {
+                    studentName = nameProp.GetString();
+                }
+
+                // If it's a system or test connection message, we just log it
+                if (studentName == "SYSTEM" || studentName == "TEST")
+                {
+                    return;
+                }
+
+                // PUSH METHOD: Automatic refresh for real updates or GROUP TEST
+                await RefreshData();
+            });
+
+            await hubConnection.StartAsync();
+            isHubConnected = hubConnection.State == HubConnectionState.Connected;
+            
+            if (isHubConnected)
+            {
+                // Join groups (both alphanumeric and GUID for reliability)
+                await hubConnection.SendAsync("JoinClassGroup", currentTeacherId);
+                
+                var currentUser = await AuthService.GetCurrentUserAsync();
+                if (currentUser != null && currentUser.UserId != currentTeacherId)
+                {
+                    await hubConnection.SendAsync("JoinClassGroup", currentUser.UserId);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"DEBUG: SignalR error: {ex.Message}");
+        }
     }
 
     private async Task LoadStudents()
@@ -552,7 +607,7 @@
             timeInTime = "";
         }
     }
-
+     
     private async Task LoadAttendanceHistory()
     {
         if (string.IsNullOrEmpty(selectedStudentId)) return;
@@ -639,11 +694,6 @@
         }
     }
     
-    private void StartRefreshTimer()
-    {
-        // Create a timer that calls RefreshData every 10 seconds
-        _refreshTimer = new System.Threading.Timer(async _ => await RefreshData(), null, TimeSpan.Zero, TimeSpan.FromSeconds(10));
-    }
     
     private async Task RefreshData()
     {
@@ -814,9 +864,12 @@
         }
     }
     
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
-        _refreshTimer?.Dispose();
+        if (hubConnection is not null)
+        {
+            await hubConnection.DisposeAsync();
+        }
     }
 }
 

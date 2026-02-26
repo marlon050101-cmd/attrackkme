@@ -72,17 +72,23 @@
             {
                 Console.WriteLine($"DEBUG: SignalR - Received update! Payload: {update.GetRawText()}");
                 
-                // If it's a system message or test message, just log it
-                if (update.TryGetProperty("StudentName", out var nameProp) && 
-                    (nameProp.GetString() == "SYSTEM" || nameProp.GetString() == "TEST" || nameProp.GetString() == "GROUP TEST"))
+                string? studentName = null;
+                if (update.TryGetProperty("StudentName", out var nameProp))
+                {
+                    studentName = nameProp.GetString();
+                }
+
+                // If it's a system or test connection message, we just log it
+                if (studentName == "SYSTEM" || studentName == "TEST")
                 {
                     var statusStr = update.TryGetProperty("Status", out var statusProp) ? statusProp.GetString() : "Unknown";
-                    Console.WriteLine($"DEBUG: SignalR System Message: {nameProp.GetString()} - {statusStr}");
+                    Console.WriteLine($"DEBUG: SignalR System Message: {studentName} - {statusStr}");
                     return;
                 }
 
-                // Use InvokeAsync to ensure UI thread update and separate refresh for students
+                // PUSH METHOD: Automatic refresh when ANY real attendance or GROUP TEST is received
                 await InvokeAsync(async () => {
+                    Console.WriteLine($"DEBUG: SignalR - Real-time push update for: {studentName}. Refreshing list...");
                     await LoadStudentsOnly();
                     StateHasChanged();
                 });

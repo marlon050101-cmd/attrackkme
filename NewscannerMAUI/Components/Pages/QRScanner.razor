@@ -1,0 +1,1257 @@
+@page "/qr-scanner"
+@using AttrackSharedClass.Models
+@using NewscannerMAUI.Services
+@inject IHttpClientFactory HttpClientFactory
+@inject NavigationManager Navigation
+@inject AuthService AuthService
+@inject IJSRuntime JSRuntime
+@inject NewscannerMAUI.Services.QRScannerService QRScannerService
+@inject NewscannerMAUI.Services.OfflineDataService OfflineDataService
+@inject NewscannerMAUI.Services.ConnectionStatusService ConnectionStatusService
+@inject NewscannerMAUI.Services.HybridQRValidationService HybridQRValidationService
+@using Microsoft.Maui.ApplicationModel.DataTransfer
+
+<style>
+    .scanner-container {
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        background-color: #f8f9fa;
+        overflow: hidden;
+    }
+
+    .header-section {
+        background-color: white;
+        padding: 10px 15px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        z-index: 10;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .header-title {
+        font-size: 18px;
+        font-weight: bold;
+        color: #333;
+        margin: 0;
+    }
+
+    .header-actions {
+        display: flex;
+        gap: 10px;
+    }
+
+    /* Connection Status Styles */
+    .connection-badge {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        padding: 5px 10px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 600;
+        transition: all 0.3s ease;
+    }
+
+    .connection-badge.online {
+        background-color: #d1e7dd;
+        color: #0f5132;
+    }
+
+    .connection-badge.offline {
+        background-color: #f8d7da;
+        color: #842029;
+    }
+
+    .connection-badge.checking {
+        background-color: #fff3cd;
+        color: #664d03;
+    }
+
+    .connection-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+    }
+
+    .online .connection-dot { background-color: #198754; }
+    .offline .connection-dot { background-color: #dc3545; }
+    .checking .connection-dot { background-color: #ffc107; }
+
+    /* Offline Count Badge */
+    .offline-count-badge {
+        background-color: #fd7e14;
+        color: white;
+        padding: 2px 8px;
+        border-radius: 10px;
+        font-size: 11px;
+        margin-left: 5px;
+    }
+
+    .main-content {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        position: relative;
+    }
+
+    /* Scanner Area */
+    .scanner-area {
+        flex: 1;
+        background-color: #000;
+        position: relative;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        overflow: hidden;
+    }
+    
+    .scanner-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 5;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        pointer-events: none;
+    }
+    
+    .scanner-frame {
+        width: 70%;
+        max-width: 300px;
+        aspect-ratio: 1/1;
+        border: 2px solid rgba(255, 255, 255, 0.5);
+        border-radius: 20px;
+        position: relative;
+        box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5);
+    }
+    
+    .scanner-corner {
+        position: absolute;
+        width: 40px;
+        height: 40px;
+        border-color: #0d6efd;
+        border-style: solid;
+    }
+    
+    .top-left { top: -2px; left: -2px; border-width: 4px 0 0 4px; border-radius: 20px 0 0 0; }
+    .top-right { top: -2px; right: -2px; border-width: 4px 4px 0 0; border-radius: 0 20px 0 0; }
+    .bottom-left { bottom: -2px; left: -2px; border-width: 0 0 4px 4px; border-radius: 0 0 0 20px; }
+    .bottom-right { bottom: -2px; right: -2px; border-width: 0 4px 4px 0; border-radius: 0 0 20px 0; }
+
+    .scanner-text {
+        color: white;
+        margin-top: 20px;
+        font-size: 14px;
+        text-align: center;
+        text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+    }
+
+    /* Action Buttons Area */
+    .action-area {
+        background-color: white;
+        padding: 20px;
+        border-radius: 20px 20px 0 0;
+        box-shadow: 0 -5px 20px rgba(0,0,0,0.1);
+        z-index: 20;
+    }
+    
+    .scan-buttons-container {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 15px;
+        margin-bottom: 20px;
+    }
+    
+    .scan-btn {
+        padding: 15px;
+        border: none;
+        border-radius: 12px;
+        font-weight: 600;
+        font-size: 16px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        transition: transform 0.2s, box-shadow 0.2s;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    
+    .scan-btn:active {
+        transform: scale(0.98);
+    }
+
+    .btn-timein {
+        background: linear-gradient(135deg, #198754 0%, #20c997 100%);
+        color: white;
+    }
+
+    .btn-timeout {
+        background: linear-gradient(135deg, #dc3545 0%, #ffc107 100%);
+        color: white;
+    }
+
+    .btn-icon {
+        font-size: 24px;
+    }
+
+    /* Continuous Scanning Mode */
+    .setup-actions {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .btn-continuous {
+        background: linear-gradient(135deg, #0d6efd 0%, #0dcaf0 100%);
+        color: white;
+        padding: 15px;
+        border: none;
+        border-radius: 12px;
+        font-weight: 600;
+        font-size: 16px;
+        width: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+
+    .mode-badge {
+        background-color: rgba(255,255,255,0.2);
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 12px;
+    }
+
+    /* Result Cards */
+    .result-overlay {
+        position: absolute;
+        bottom: 20px;
+        left: 20px;
+        right: 20px;
+        z-index: 30;
+    }
+
+    .result-card {
+        background: white;
+        border-radius: 12px;
+        padding: 15px;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        animation: slideUp 0.3s ease-out;
+    }
+
+    .result-icon {
+        width: 50px;
+        height: 50px;
+        border-radius: 50%;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        font-size: 24px;
+        flex-shrink: 0;
+    }
+
+    .result-success {
+        background-color: #d1e7dd;
+        color: #198754;
+    }
+
+    .result-error {
+        background-color: #f8d7da;
+        color: #dc3545;
+    }
+
+    .result-content {
+        flex: 1;
+    }
+
+    .result-title {
+        font-weight: bold;
+        font-size: 16px;
+        margin-bottom: 2px;
+    }
+
+    .result-message {
+        font-size: 13px;
+        color: #666;
+    }
+
+    @@keyframes slideUp {
+        from { transform: translateY(100%); opacity: 0; }
+        to { transform: translateY(0); opacity: 1; }
+    }
+    
+    /* Attendance List */
+    .attendance-list-container {
+        flex: 1;
+        overflow-y: auto;
+        padding: 15px;
+        background-color: #f8f9fa;
+    }
+    
+    .list-header {
+        font-size: 14px;
+        font-weight: 600;
+        color: #666;
+        margin-bottom: 10px;
+        display: flex;
+        justify-content: space-between;
+    }
+    
+    .attendance-card {
+        background: white;
+        border-radius: 10px;
+        padding: 12px;
+        margin-bottom: 10px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-left: 4px solid transparent;
+    }
+    
+    .attendance-card.timein { border-left-color: #198754; }
+    .attendance-card.timeout { border-left-color: #dc3545; }
+    .attendance-card.both { border-left-color: #0d6efd; }
+    
+    .student-info {
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .student-name {
+        font-weight: bold;
+        font-size: 14px;
+        color: #333;
+    }
+    
+    .student-id {
+        font-size: 11px;
+        color: #888;
+    }
+    
+    .time-info {
+        text-align: right;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+    }
+    
+    .time-badge {
+        font-size: 11px;
+        padding: 2px 6px;
+        border-radius: 4px;
+        margin-bottom: 2px;
+        display: inline-block;
+    }
+    
+    .badge-in { background-color: #e8f5e9; color: #1b5e20; }
+    .badge-out { background-color: #ffebee; color: #b71c1c; }
+    
+    .offline-indicator {
+        font-size: 10px;
+        color: #fd7e14;
+        font-weight: bold;
+    }
+    
+    /* Loading Overlay */
+    .loading-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: rgba(255,255,255,0.8);
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        z-index: 100;
+    }
+    
+    .spinner {
+        width: 40px;
+        height: 40px;
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #0d6efd;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin-bottom: 10px;
+    }
+    
+    @@keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+
+    /* Modal Styles */
+    .modal-backdrop {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.5);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 1000;
+    }
+
+    .modal-content {
+        background-color: white;
+        padding: 20px;
+        border-radius: 10px;
+        width: 90%;
+        max-width: 500px;
+        max-height: 80vh;
+        overflow-y: auto;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 15px;
+        border-bottom: 1px solid #eee;
+        padding-bottom: 10px;
+    }
+
+    .modal-title {
+        font-size: 18px;
+        font-weight: bold;
+        margin: 0;
+    }
+
+    .close-btn {
+        background: none;
+        border: none;
+        font-size: 24px;
+        cursor: pointer;
+        color: #666;
+    }
+
+    .modal-body {
+        max-height: 60vh;
+        overflow-y: auto;
+    }
+
+    .debug-info {
+        background-color: #f8f9fa;
+        padding: 10px;
+        border-radius: 5px;
+        font-family: monospace;
+        font-size: 12px;
+        white-space: pre-wrap;
+        margin-top: 10px;
+    }
+
+    /* Toast Notification */
+    .toast-notification {
+        position: fixed;
+        bottom: 80px;
+        left: 50%;
+        transform: translateX(-50%);
+        background-color: rgba(50, 50, 50, 0.9);
+        color: white;
+        padding: 12px 24px;
+        border-radius: 30px;
+        font-size: 14px;
+        z-index: 2000;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+        animation: fadeInOut 3s ease forwards;
+        pointer-events: none;
+    }
+
+    @@keyframes fadeInOut {
+        0% { opacity: 0; transform: translate(-50%, 20px); }
+        10% { opacity: 1; transform: translate(-50%, 0); }
+        90% { opacity: 1; transform: translate(-50%, 0); }
+        100% { opacity: 0; transform: translate(-50%, -20px); }
+    }
+</style>
+
+<div class="scanner-container">
+    <!-- Header -->
+    <div class="header-section">
+        <div class="header-branding">
+            <h1 class="header-title">ScannerMAUI</h1>
+        </div>
+        
+        <div class="header-actions">
+            <!-- Connection Status -->
+            <div class="connection-badge @(ConnectionStatusService.IsOnline ? "online" : (ConnectionStatusService.IsChecking ? "checking" : "offline"))" 
+                 @onclick="CheckConnectionStatus">
+                <div class="connection-dot"></div>
+                <span>@(ConnectionStatusService.IsOnline ? "Online" : "Offline")</span>
+                
+                @if (offlineRecordCount > 0)
+                {
+                    <span class="offline-count-badge" @onclick:stopPropagation @onclick="ShowOfflineRecords">
+                        @offlineRecordCount
+                    </span>
+                }
+            </div>
+            
+            <!-- Menu/More Options -->
+            <button class="btn btn-sm btn-outline-secondary" @onclick="ToggleDebugMenu">
+                <i class="fas fa-ellipsis-v"></i>
+            </button>
+        </div>
+    </div>
+
+    @if (isScanning)
+    {
+        <!-- Scanner is running as a native MAUI page -->
+        <div class="action-area mt-4">
+            <div class="text-center text-muted">
+                <i class="fas fa-camera fa-2x mb-2"></i>
+                <p>Scanner is active — use the camera view to scan QR codes.</p>
+            </div>
+        </div>
+    }
+    else
+    {
+        <!-- Dashboard/List View -->
+        <div class="attendance-list-container">
+            <div class="list-header">
+                <span>Today's Attendance (@(attendanceList?.Count ?? 0))</span>
+                <span class="text-primary" @onclick="LoadTodayAttendance">
+                    <i class="fas fa-sync-alt"></i> Refresh
+                </span>
+            </div>
+            
+            @if (attendanceList == null || !attendanceList.Any())
+            {
+                <div class="text-center p-4 text-muted">
+                    <i class="fas fa-clipboard-list fa-3x mb-3 text-light"></i>
+                    <p>No attendance records for today</p>
+                </div>
+            }
+            else
+            {
+                @foreach (var record in attendanceList)
+                {
+                    <div class="attendance-card @(record.AttendanceType?.ToLower() == "both" ? "both" : (record.AttendanceType?.ToLower() == "timein" ? "timein" : "timeout"))">
+                        <div class="student-info">
+                            <span class="student-name">@record.StudentName</span>
+                            <span class="student-id">@record.StudentId</span>
+                        </div>
+                        <div class="time-info">
+                            @if (record.AttendanceType == "TimeIn" || record.AttendanceType == "Both")
+                            {
+                                <div class="time-badge badge-in">IN: @record.TimeIn?.ToString("hh:mm tt")</div>
+                            }
+                            @if (record.AttendanceType == "TimeOut" || record.AttendanceType == "Both")
+                            {
+                                <div class="time-badge badge-out">OUT: @record.TimeOut?.ToString("hh:mm tt")</div>
+                            }
+                            @if (!string.IsNullOrEmpty(record.Status) && record.Status != "Present")
+                            {
+                                <span class="badge bg-warning text-dark" style="font-size: 10px;">@record.Status</span>
+                            }
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+        
+        <!-- Action Buttons: Time In / Time Out -->
+        <div class="action-area">
+            <div class="setup-actions" style="display:flex; gap:10px;">
+                <!-- Time In Button -->
+                <button class="btn-continuous" style="background: linear-gradient(135deg, #28a745, #20c997); flex:1;" @onclick="StartTimeInScanning">
+                    <i class="fas fa-sign-in-alt btn-icon"></i>
+                    <div>
+                        <div style="font-size:16px; font-weight:bold;">Time In</div>
+                        <div class="mode-badge" style="background:rgba(255,255,255,0.25);">Morning Entry</div>
+                    </div>
+                </button>
+
+                <!-- Time Out Button -->
+                <button class="btn-continuous" style="background: linear-gradient(135deg, #dc3545, #e83e8c); flex:1;" @onclick="StartTimeOutScanning">
+                    <i class="fas fa-sign-out-alt btn-icon"></i>
+                    <div>
+                        <div style="font-size:16px; font-weight:bold;">Time Out</div>
+                        <div class="mode-badge" style="background:rgba(255,255,255,0.25);">Afternoon Exit</div>
+                    </div>
+                </button>
+            </div>
+        </div>
+    }
+    
+    <!-- Result Overlay (Toast) -->
+    @if (showToast && !string.IsNullOrEmpty(toastMessage))
+    {
+        <div class="toast-notification">
+            @toastMessage
+        </div>
+    }
+    
+    <!-- Loading Overlay -->
+
+    <!-- Loading Overlay -->
+    @if (isProcessing)
+    {
+        <div class="loading-overlay">
+            <div class="spinner"></div>
+            <div>Processing...</div>
+        </div>
+    }
+</div>
+
+@if (isSyncing)
+{
+    <div class="modal-backdrop">
+        <div class="modal-content sync-modal">
+            <div class="modal-header" style="background: linear-gradient(135deg, #007bff, #00d2ff); color: white; border-radius: 20px 20px 0 0;">
+                <h5 class="modal-title" style="color:white;">
+                    <i class="fas fa-sync-alt fa-spin me-2"></i> Synchronizing Data...
+                </h5>
+            </div>
+            <div class="modal-body">
+                <div class="sync-progress-container mb-3">
+                    <div class="d-flex justify-content-between mb-1" style="font-size:13px;">
+                        <span class="text-muted">Progress</span>
+                        <span class="fw-bold">@syncedCount / @totalToSync records</span>
+                    </div>
+                    <div class="progress" style="height: 20px; border-radius: 10px;">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                             role="progressbar" 
+                             style="width: @(syncProgress)%; background: linear-gradient(90deg, #007bff, #00d2ff);">
+                            @if (syncProgress > 10) { <span>@syncProgress%</span> }
+                        </div>
+                    </div>
+                </div>
+
+                <div class="sync-details-list" style="max-height: 280px; overflow-y: auto;">
+                    @if (syncResults.Any())
+                    {
+                        @foreach (var detail in syncResults.AsEnumerable().Reverse())
+                        {
+                            <div class="sync-detail-item @(detail.Success ? "text-success" : "text-danger")">
+                                <span>
+                                    <i class="fas @(detail.Success ? "fa-check-circle" : "fa-times-circle") me-1"></i>
+                                    <strong>@detail.StudentName</strong>
+                                    <small class="text-muted ms-1">(@detail.Action)</small>
+                                </span>
+                                <span class="badge @(detail.Success ? "bg-success" : "bg-danger")" style="font-size:11px;">@detail.Message</span>
+                            </div>
+                        }
+                    }
+                    else
+                    {
+                        <div class="text-center text-muted py-4">
+                            <i class="fas fa-spinner fa-spin fa-2x mb-2"></i>
+                            <p>Preparing records...</p>
+                        </div>
+                    }
+                </div>
+            </div>
+            @if (syncedCount >= totalToSync && totalToSync > 0)
+            {
+                <div class="modal-footer" style="flex-direction: column; gap: 8px;">
+                    <div class="w-100 text-center" style="font-size:13px;">
+                        <span class="text-success fw-bold">✓ @(syncResults.Count(d => d.Success)) synced</span>
+                        @if (syncResults.Any(d => !d.Success))
+                        {
+                            <span class="text-danger fw-bold ms-3">✗ @(syncResults.Count(d => !d.Success)) failed</span>
+                        }
+                    </div>
+                    <button class="btn btn-primary w-100" @onclick="CloseSyncModal">Done</button>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+<!-- Offline Records Modal -->
+@if (showOfflineRecordsModal)
+{
+    <div class="modal-backdrop" @onclick="() => showOfflineRecordsModal = false">
+        <div class="modal-content" @onclick:stopPropagation>
+            <div class="modal-header">
+                <h5 class="modal-title">Offline Data (@offlineRecordCount)</h5>
+                <button class="close-btn" @onclick="() => showOfflineRecordsModal = false">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="d-flex gap-2 mb-3">
+                    <button class="btn btn-primary flex-grow-1 btn-sm" @onclick="TriggerAutoSync" disabled="@(!ConnectionStatusService.IsOnline)">
+                        <i class="fas fa-sync me-1"></i> Sync Now
+                    </button>
+                    <button class="btn btn-danger btn-sm" @onclick="ClearPendingData">
+                        <i class="fas fa-trash me-1"></i> Clear Data
+                    </button>
+                </div>
+                
+                @if (offlineRecords != null && offlineRecords.Any())
+                {
+                    <div class="list-group">
+                        @foreach (var group in GetGroupedOfflineRecords())
+                        {
+                            <div class="list-group-item">
+                                <div class="d-flex justify-content-between align-items-start">
+                                    <div>
+                                        <strong>@group.StudentName</strong>
+                                        <div class="small text-muted">ID: @group.StudentId</div>
+                                        <div class="small text-muted mt-1">
+                                            📅 @string.Join(", ", group.Dates)
+                                        </div>
+                                        <div class="mt-1" style="font-size:12px;">
+                                            @if (group.HasTimeIn)
+                                            {
+                                                <span class="badge bg-success me-1">✓ Time In</span>
+                                            }
+                                            @if (group.HasTimeOut)
+                                            {
+                                                <span class="badge bg-primary">✓ Time Out</span>
+                                            }
+                                            @if (!group.HasTimeIn && !group.HasTimeOut)
+                                            {
+                                                <span class="badge bg-secondary">Pending</span>
+                                            }
+                                        </div>
+                                    </div>
+                                    @if (group.IsSynced)
+                                    {
+                                        <span class="badge bg-success">Synced</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-warning text-dark">Pending</span>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <p class="text-center text-muted">No offline records found.</p>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Debug Menu (Hidden by default) -->
+@if (showDebugMenu)
+{
+    <div class="modal-backdrop" @onclick="() => showDebugMenu = false">
+        <div class="modal-content" @onclick:stopPropagation>
+            <div class="modal-header">
+                <h5 class="modal-title">Development Menu</h5>
+                <button class="close-btn" @onclick="() => showDebugMenu = false">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="d-grid gap-2">
+                    <button class="btn btn-outline-primary btn-sm" @onclick="TestConnection">Check Connection</button>
+                    <button class="btn btn-outline-info btn-sm" @onclick="LoadOfflineRecordCount">Check Offline Count</button>
+                    <button class="btn btn-outline-warning btn-sm" @onclick="CreateTestOfflineRecord">Create Test Record</button>
+                    <button class="btn btn-outline-success btn-sm" @onclick="TriggerAutoSync">Force Sync</button>
+                    <button class="btn btn-outline-secondary btn-sm" @onclick="CopyDatabasePath">Copy DB Path</button>
+                    <button class="btn btn-outline-danger btn-sm" @onclick="Logout">Logout</button>
+                </div>
+                
+                <div class="debug-info mt-3">
+                    <strong>DB Path:</strong> @OfflineDataService.GetDatabasePath()<br/>
+                    <strong>Teacher:</strong> @(currentTeacher?.FullName ?? "None")<br/>
+                    <strong>Status:</strong> @ConnectionStatusService.StatusText
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private bool isScanning = false;
+    private bool isProcessing = false;
+    private string toastMessage = string.Empty;
+    private bool showToast = false;
+    private AttendanceRecord? lastScanResult;
+    private List<AttendanceRecord> attendanceList = new();
+    private TeacherInfo? currentTeacher;
+    private int offlineRecordCount = 0;
+    private bool showOfflineRecordsModal = false;
+    private bool showDebugMenu = false;
+    private List<OfflineAttendanceRecord> offlineRecords = new();
+    
+    // Unused but needed for compilation if referenced
+    private string attendanceType = "";
+    private string message = "";
+    private bool isSuccess = false;
+    private bool showDatabaseInfo = false;
+    private List<PendingStudent> pendingStudents = new();
+    private bool showPendingModal = false;
+    private bool isAutoSyncing = false;
+    private string currentStudentId = "";
+    
+    // Sync Progress tracking
+    private bool isSyncing = false;
+    private int syncProgress = 0;
+    private int syncedCount = 0;
+    private int totalToSync = 0;
+    private List<SyncRecordDetail> syncResults = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            // Subscribe to events
+            QRScannerService.QRCodeScanned += OnQRCodeScanned;
+            QRScannerService.ScannerClosed += OnScannerClosed;
+            ConnectionStatusService.ConnectionStatusChanged += OnConnectionStatusChanged;
+            
+            // Get current user
+            var currentUser = await AuthService.GetCurrentUserAsync();
+            if (currentUser != null)
+            {
+                currentTeacher = new TeacherInfo
+                {
+                    TeacherId = currentUser.TeacherId,
+                    FullName = currentUser.Username
+                };
+            }
+            else
+            {
+                // Not logged in, redirect
+                Navigation.NavigateTo("/");
+                return;
+            }
+            
+            // Initial load
+            await CheckConnectionStatus();
+            await LoadOfflineRecordCount();
+            await LoadTodayAttendance();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Error initializing QR Scanner: {ex.Message}");
+        }
+    }
+    
+    public void Dispose()
+    {
+        // Unsubscribe from events
+        if (QRScannerService != null)
+        {
+            QRScannerService.QRCodeScanned -= OnQRCodeScanned;
+            QRScannerService.ScannerClosed -= OnScannerClosed;
+        }
+        
+        if (ConnectionStatusService != null)
+        {
+            ConnectionStatusService.ConnectionStatusChanged -= OnConnectionStatusChanged;
+        }
+    }
+
+    private async Task CheckConnectionStatus()
+    {
+        await ConnectionStatusService.CheckConnectionAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void ToggleDebugMenu()
+    {
+        showDebugMenu = !showDebugMenu;
+    }
+
+    private async Task LoadTodayAttendance()
+    {
+        try
+        {
+            if (currentTeacher == null) return;
+            
+            // Guard: skip if TeacherId is empty to prevent loading ALL students
+            if (string.IsNullOrEmpty(currentTeacher.TeacherId))
+            {
+                System.Diagnostics.Debug.WriteLine("WARNING: TeacherId is null/empty - skipping attendance load to avoid showing all students");
+                attendanceList = new List<AttendanceRecord>();
+                await InvokeAsync(StateHasChanged);
+                return;
+            }
+            
+            System.Diagnostics.Debug.WriteLine($"Loading today's attendance for teacher: {currentTeacher.TeacherId}");
+            
+            List<DailyAttendanceRecord> response = null;
+            
+            if (ConnectionStatusService.IsOnline)
+            {
+                var httpClient = HttpClientFactory.CreateClient("AttrakAPI");
+                response = await httpClient.GetFromJsonAsync<List<DailyAttendanceRecord>>($"api/dailyattendance/today/{currentTeacher.TeacherId}");
+            }
+            else
+            {
+                // Load local unsynced records when offline
+                var localRecords = await OfflineDataService.GetUnsyncedDailyAttendanceAsync(currentTeacher.TeacherId);
+                response = localRecords.Select(r => new DailyAttendanceRecord {
+                    StudentId = r.StudentId,
+                    StudentName = r.StudentName,
+                    Date = r.Date,
+                    TimeIn = r.TimeIn,
+                    TimeOut = r.TimeOut,
+                    Status = r.Status,
+                    Remarks = r.AttendanceType // Store type in remarks for internal processing if needed
+                }).ToList();
+            }
+            
+            if (response != null && response.Any())
+            {
+                // Group by StudentId to merge TimeIn and TimeOut into a single row
+                attendanceList = response
+                    .GroupBy(r => r.StudentId)
+                    .Select(group => {
+                        var firstRecord = group.First();
+                        
+                        // Find the TimeIn and TimeOut from ANY record for this student
+                        var recordWithTimeIn = group.FirstOrDefault(r => !string.IsNullOrEmpty(r.TimeIn));
+                        var recordWithTimeOut = group.FirstOrDefault(r => !string.IsNullOrEmpty(r.TimeOut));
+                        
+                        DateTime? timeIn = null;
+                        if (recordWithTimeIn != null)
+                        {
+                            if (DateTime.TryParse(recordWithTimeIn.TimeIn, out DateTime dtIn))
+                                timeIn = dtIn;
+                            else if (TimeSpan.TryParse(recordWithTimeIn.TimeIn, out TimeSpan tsIn))
+                                timeIn = recordWithTimeIn.Date.Add(tsIn);
+                        }
+
+                        DateTime? timeOut = null;
+                        if (recordWithTimeOut != null)
+                        {
+                            if (DateTime.TryParse(recordWithTimeOut.TimeOut, out DateTime dtOut))
+                                timeOut = dtOut;
+                            else if (TimeSpan.TryParse(recordWithTimeOut.TimeOut, out TimeSpan tsOut))
+                                timeOut = recordWithTimeOut.Date.Add(tsOut);
+                        }
+                        
+                        string type = "Both";
+                        if (timeIn != null && timeOut == null) type = "TimeIn";
+                        else if (timeIn == null && timeOut != null) type = "TimeOut";
+                        else if (timeIn == null && timeOut == null) type = "Unknown";
+                        
+                        // Use the latest status and remarks from the group
+                        var latestByUpdate = group.OrderByDescending(r => r.Date).FirstOrDefault() ?? firstRecord;
+                        
+                        return new AttendanceRecord
+                        {
+                            StudentId = group.Key,
+                            StudentName = firstRecord.StudentName,
+                            TimeIn = timeIn,
+                            TimeOut = timeOut,
+                            AttendanceType = type,
+                            Status = latestByUpdate.Status, // e.g., "Late"
+                            Remarks = latestByUpdate.Remarks, // e.g., "Half Day"
+                            Timestamp = timeOut ?? timeIn ?? DateTime.Now
+                        };
+                    })
+                    .OrderByDescending(a => a.Timestamp)
+                    .ToList();
+            }
+            else
+            {
+                attendanceList = new List<AttendanceRecord>();
+            }
+            
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Error loading attendance: {ex.Message}");
+        }
+    }
+
+    private async void OnQRCodeScanned(object? sender, string qrCode)
+    {
+        await ProcessQRCode(qrCode);
+    }
+    
+    private async void OnScannerClosed(object? sender, EventArgs e)
+    {
+        // Native scanner was closed - reset scanning state and refresh the list
+        isScanning = false;
+        await LoadTodayAttendance();
+        await LoadOfflineRecordCount();
+        await InvokeAsync(StateHasChanged);
+    }
+    private async Task ProcessQRCode(string qrCode)
+    {
+        try
+        {
+            // 1. Instant Local Duplicate Check (For Performance)
+            var existingRecord = attendanceList.FirstOrDefault(r => r.StudentId == qrCode);
+            if (existingRecord != null)
+            {
+                bool isDuplicate = false;
+                string duplicateStatus = "";
+                
+                if (attendanceType == "TimeIn" && existingRecord.TimeIn != null)
+                {
+                    isDuplicate = true;
+                    duplicateStatus = $"Already Timed In at {existingRecord.TimeIn.Value:hh:mm tt}";
+                }
+                else if (attendanceType == "TimeOut" && existingRecord.TimeOut != null)
+                {
+                    isDuplicate = true;
+                    duplicateStatus = $"Already Timed Out at {existingRecord.TimeOut.Value:hh:mm tt}";
+                }
+
+                if (isDuplicate)
+                {
+                    toastMessage = $"{existingRecord.StudentName} - {duplicateStatus}";
+                    showToast = true;
+                    await InvokeAsync(StateHasChanged);
+                    _ = Task.Run(async () => { await Task.Delay(3000); showToast = false; await InvokeAsync(StateHasChanged); });
+                    return; // EXIT EARLY - NO API CALL NEEDED
+                }
+            }
+
+            isProcessing = true;
+            await InvokeAsync(StateHasChanged);
+            
+            // Use the hybrid service to validate/process
+            // It handles online/offline logic automatically
+            
+            // For continuous scanning, we usually don't know the type (In vs Out)
+            // So we let the system decide or default to TimeIn if ambiguous
+            // But ideally the service checks the current state
+            
+            // Current simplified implementation:
+            var result = await HybridQRValidationService.ValidateQRCodeAsync(qrCode, attendanceType, currentTeacher?.TeacherId);
+            
+            if (result.IsValid)
+            {
+                // Refresh data immediately
+                _ = LoadTodayAttendance();
+                _ = LoadOfflineRecordCount();
+            }
+            
+            isProcessing = false;
+            
+            // Show toast feedback with student name
+            toastMessage = result.IsValid ? 
+                $"{(result.StudentName ?? "Student")} - {attendanceType} Recorded" : 
+                result.Message;
+            showToast = true;
+            
+            await InvokeAsync(StateHasChanged);
+            
+            // Clear toast after delay
+            _ = Task.Run(async () => {
+                await Task.Delay(3000);
+                showToast = false;
+                await InvokeAsync(StateHasChanged);
+            });
+            
+            // Resume scanning after shorter delay for better responsiveness
+            if (isScanning)
+            {
+                await Task.Delay(500); // reduced from 2000ms
+                // Native scanner usually continues automatically or needs a trigger
+                // If the native scanner pauses on result, we might need to re-enable it
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Error processing QR: {ex.Message}");
+            isProcessing = false;
+        }
+    }
+
+    private Task StartTimeInScanning() => StartContinuousScanning("TimeIn");
+    private Task StartTimeOutScanning() => StartContinuousScanning("TimeOut");
+
+    private async Task StartContinuousScanning(string attendanceType = "TimeIn")
+    {
+        try
+        {
+            isScanning = true;
+            this.attendanceType = attendanceType; // track current mode
+            await InvokeAsync(StateHasChanged);
+            
+            await QRScannerService.OpenNativeQRScanner(attendanceType);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Error starting scanner: {ex.Message}");
+            isScanning = false;
+            toastMessage = "Could not start camera";
+            showToast = true;
+            await InvokeAsync(StateHasChanged);
+            await Task.Delay(3000);
+            showToast = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private Task StopScanning()
+    {
+        isScanning = false;
+        // Native scanner usually closes on back button, but we can try to force close if API allows
+        // Since we're just hiding the overlay, the native page might still be active
+        // Ideally we navigation back or send a message to native code
+        return Task.CompletedTask;
+    }
+
+    // --- Helper Methods reused from original code ---
+    
+    private async Task LoadOfflineRecordCount()
+    {
+        offlineRecordCount = await OfflineDataService.GetUnsyncedCountAsync(currentTeacher?.TeacherId);
+        await InvokeAsync(StateHasChanged);
+    }
+    
+    private async Task ShowOfflineRecords()
+    {
+        showOfflineRecordsModal = true;
+        offlineRecords = (await OfflineDataService.GetUnsyncedAttendanceAsync(currentTeacher?.TeacherId)) ?? new();
+        await InvokeAsync(StateHasChanged);
+    }
+    
+    public class GroupedOfflineRecord
+    {
+        public string StudentId { get; set; } = "";
+        public string StudentName { get; set; } = "";
+        public bool HasTimeIn { get; set; }
+        public bool HasTimeOut { get; set; }
+        public List<string> Dates { get; set; } = new();
+        public bool IsSynced { get; set; }
+    }
+
+    private IEnumerable<GroupedOfflineRecord> GetGroupedOfflineRecords()
+    {
+        if (offlineRecords == null) return Enumerable.Empty<GroupedOfflineRecord>();
+        
+        return offlineRecords
+            .GroupBy(r => r.StudentId)
+            .Select(g => new GroupedOfflineRecord {
+                StudentId = g.Key,
+                StudentName = g.FirstOrDefault(r => !string.IsNullOrEmpty(r.StudentName))?.StudentName ?? g.Key,
+                HasTimeIn = g.Any(r => r.AttendanceType == "TimeIn"),
+                HasTimeOut = g.Any(r => r.AttendanceType == "TimeOut"),
+                Dates = g.Select(r => r.ScanTime.ToString("MM/dd")).Distinct().ToList(),
+                IsSynced = g.All(r => r.IsSynced)
+            }).ToList();
+    }
+    
+    private async Task ClearPendingData()
+    {
+        bool confirm = await JSRuntime.InvokeAsync<bool>("confirm", "Are you sure you want to delete all offline records? This cannot be undone.");
+            
+        if (confirm)
+        {
+            await OfflineDataService.ClearAllOfflineDataAsync(); // Need to implement this
+            showOfflineRecordsModal = false;
+            await LoadOfflineRecordCount();
+            toastMessage = "Pending records cleared";
+            showToast = true;
+            await InvokeAsync(StateHasChanged);
+            _ = Task.Run(async () => { await Task.Delay(3000); showToast = false; await InvokeAsync(StateHasChanged); });
+        }
+    }
+    
+    private async Task TriggerAutoSync()
+    {
+        if (!ConnectionStatusService.IsOnline) return;
+        
+        // Close offline records modal and show sync progress modal
+        showOfflineRecordsModal = false;
+        syncResults.Clear();
+        syncedCount = 0;
+        totalToSync = 0;
+        syncProgress = 0;
+        isSyncing = true;
+        await InvokeAsync(StateHasChanged);
+        
+        var result = await HybridQRValidationService.SyncOfflineDataAsync((current, total) => {
+            syncedCount = current;
+            totalToSync = total;
+            syncProgress = total > 0 ? (int)((double)current / total * 100) : 0;
+            InvokeAsync(StateHasChanged);
+        });
+        
+        // Populate results so user can see per-record status
+        syncResults = result?.Details ?? new();
+        syncedCount = syncResults.Count;
+        totalToSync = syncResults.Count;
+        syncProgress = 100;
+
+        await LoadOfflineRecordCount();
+        await LoadTodayAttendance();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void CloseSyncModal()
+    {
+        isSyncing = false;
+        showOfflineRecordsModal = false;
+        StateHasChanged();
+    }
+    
+    // Stub methods for missing functionality to ensure compilation
+    private string userId = "";
+    
+    private async Task CreateTestOfflineRecord()
+    {
+        await OfflineDataService.SaveOfflineAttendanceAsync("TEST-" + DateTime.Now.Ticks.ToString().Substring(10), "TimeIn");
+        await LoadOfflineRecordCount();
+    }
+    
+    private async void TestConnection() => await CheckConnectionStatus();
+    
+    private async Task CopyDatabasePath()
+    {
+        await Clipboard.SetTextAsync(OfflineDataService.GetDatabasePath());
+        toastMessage = "Path copied";
+        showToast = true;
+        await InvokeAsync(StateHasChanged);
+        await Task.Delay(2000);
+        showToast = false;
+        await InvokeAsync(StateHasChanged);
+    }
+    
+    private async void OnConnectionStatusChanged(object? sender, bool isOnline)
+    {
+        await InvokeAsync(StateHasChanged);
+        if (isOnline)
+        {
+            // Auto sync on reconnect
+            await HybridQRValidationService.SyncOfflineDataAsync();
+            await LoadOfflineRecordCount();
+        }
+    }
+
+    private void Logout()
+    {
+        AuthService.Logout();
+        Navigation.NavigateTo("/");
+    }
+
+    // Quick fix for the AttendanceRecord class usage differences
+    public class AttendanceRecord
+    {
+        public string StudentId { get; set; } = "";
+        public string StudentName { get; set; } = "";
+        public DateTime Timestamp { get; set; }
+        public DateTime? TimeIn { get; set; }
+        public DateTime? TimeOut { get; set; }
+        public bool IsValid { get; set; }
+        public string Status { get; set; } = "";
+        public string AttendanceType { get; set; } = ""; 
+        public string Message { get; set; } = "";
+        public string Remarks { get; set; } = "";
+    }
+}

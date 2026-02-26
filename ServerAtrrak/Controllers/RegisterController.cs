@@ -328,6 +328,26 @@ namespace ServerAtrrak.Controllers
             }
         }
 
+        [HttpGet("sections")]
+        public async Task<ActionResult<List<string>>> GetSections([FromQuery] string schoolName, [FromQuery] int gradeLevel)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(schoolName) || gradeLevel < 7 || gradeLevel > 12)
+                {
+                    return Ok(new List<string>());
+                }
+
+                var sections = await _schoolService.GetSectionsBySchoolAndGradeAsync(schoolName, gradeLevel);
+                return Ok(sections);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error fetching sections for school {SchoolName} and grade {GradeLevel}: {ErrorMessage}", schoolName, gradeLevel, ex.Message);
+                return StatusCode(500, new List<string>());
+            }
+        }
+
         [HttpGet("student/{studentId}/qr")]
         public async Task<ActionResult<string>> GetStudentQRCode(string studentId)
         {

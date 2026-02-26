@@ -288,5 +288,58 @@ namespace ServerAtrrak.Services
                 throw;
             }
         }
+        public async Task<List<string>> GetSectionsBySchoolAndGradeAsync(string schoolName, int gradeLevel)
+        {
+            try
+            {
+                using var connection = new MySqlConnection(_dbConnection.GetConnection());
+                await connection.OpenAsync();
+
+                // Get SchoolId first
+                var schoolQuery = "SELECT SchoolId FROM school WHERE SchoolName = @SchoolName LIMIT 1";
+                using var schoolCommand = new MySqlCommand(schoolQuery, connection);
+                schoolCommand.Parameters.AddWithValue("@SchoolName", schoolName);
+                var schoolIdObj = await schoolCommand.ExecuteScalarAsync();
+                
+                if (schoolIdObj == null) return new List<string>();
+                var schoolId = schoolIdObj.ToString();
+
+                // Query teacher and student tables for distinct sections
+                var query = @"
+                    SELECT DISTINCT Section FROM (
+                        SELECT Section FROM teacher WHERE SchoolId = @SchoolId AND Gradelvl = @GradeLevel AND Section IS NOT NULL AND Section != ''
+                        UNION
+                        SELECT Section FROM student WHERE SchoolId = @SchoolId AND GradeLevel = @GradeLevel AND Section IS NOT NULL AND Section != ''
+                    ) AS combined_sections
+                    ORDER BY Section";
+
+                using var command = new MySqlCommand(query, connection);
+                command.Parameters.AddWithValue("@SchoolId", schoolId);
+                command.Parameters.AddWithValue("@GradeLevel", gradeLevel);
+
+                using var reader = await command.ExecuteReaderAsync();
+
+                var sections = new List<string>();
+                while (await reader.ReadAsync())
+                {
+                    try
+                    {
+                        var section = reader.GetString(0);
+                        if (!string.IsNullOrEmpty(section))
+                        {
+                            sections.Add(section.Trim().ToUpper());
+                        }
+                    }
+                    catch { /* Ignore nulls or invalid casting just in case */ }
+                }
+
+                return sections.Distinct().OrderBy(s => s).ToList();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting sections for school {SchoolName} and grade {GradeLevel}", schoolName, gradeLevel);
+                throw;
+            }
+        }
     }
 }

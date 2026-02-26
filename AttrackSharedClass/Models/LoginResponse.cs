@@ -18,5 +18,11 @@ namespace AttrackSharedClass.Models
         public string? StudentId { get; set; }
         public DateTime? LastLoginAt { get; set; }
         public bool IsActive { get; set; } = true;
+
+        // Validation fields for strict student-teacher matching
+        public string? SchoolId { get; set; }
+        public int? GradeLevel { get; set; }
+        public string? Section { get; set; }
+        public string? Strand { get; set; }
     }
 }
