@@ -292,24 +292,41 @@ namespace ServerAtrrak.Services
         {
             try
             {
+                _logger.LogInformation("GetSectionsBySchoolAndGradeAsync called: schoolId='{SchoolId}', schoolName='{SchoolName}', gradeLevel={GradeLevel}", 
+                    schoolId, schoolName, gradeLevel);
+
                 using var connection = new MySqlConnection(_dbConnection.GetConnection());
                 await connection.OpenAsync();
 
                 if (string.IsNullOrEmpty(schoolId) && !string.IsNullOrEmpty(schoolName))
                 {
-                    // Get SchoolId first
-                    var schoolQuery = "SELECT SchoolId FROM school WHERE SchoolName = @SchoolName LIMIT 1";
+                    _logger.LogInformation("SchoolId missing, attempting lookup by name: '{SchoolName}'", schoolName);
+                    // Use LIKE to be more forgiving if the name is slightly truncated or has extra spaces
+                    var schoolQuery = "SELECT SchoolId, SchoolName FROM school WHERE SchoolName = @SchoolName OR SchoolName LIKE @SearchTerm LIMIT 1";
                     using var schoolCommand = new MySqlCommand(schoolQuery, connection);
-                    schoolCommand.Parameters.AddWithValue("@SchoolName", schoolName);
-                    var schoolIdObj = await schoolCommand.ExecuteScalarAsync();
+                    schoolCommand.Parameters.AddWithValue("@SchoolName", schoolName.Trim());
+                    schoolCommand.Parameters.AddWithValue("@SearchTerm", schoolName.Trim() + "%");
                     
-                    if (schoolIdObj != null)
+                    using var nameReader = await schoolCommand.ExecuteReaderAsync();
+                    if (await nameReader.ReadAsync())
                     {
-                        schoolId = schoolIdObj.ToString();
+                        schoolId = nameReader.GetString(0);
+                        var foundName = nameReader.GetString(1);
+                        _logger.LogInformation("Found school by name: '{FoundName}' -> '{SchoolId}'", foundName, schoolId);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("No school found matching name: '{SchoolName}'", schoolName);
                     }
                 }
                 
-                if (string.IsNullOrEmpty(schoolId)) return new List<string>();
+                if (string.IsNullOrEmpty(schoolId)) 
+                {
+                    _logger.LogWarning("SchoolId is still null or empty after lookup. Returning empty sections list.");
+                    return new List<string>();
+                }
+
+                _logger.LogInformation("Fetching sections for SchoolId: {SchoolId}, GradeLevel: {GradeLevel}", schoolId, gradeLevel);
 
                 // Query teacher and student tables for distinct sections
                 var query = @"
@@ -321,7 +338,7 @@ namespace ServerAtrrak.Services
                     ORDER BY Section";
 
                 using var command = new MySqlCommand(query, connection);
-                command.Parameters.AddWithValue("@SchoolId", schoolId);
+                command.Parameters.AddWithValue("@SchoolId", schoolId.Trim());
                 command.Parameters.AddWithValue("@GradeLevel", gradeLevel);
 
                 using var reader = await command.ExecuteReaderAsync();
@@ -337,14 +354,15 @@ namespace ServerAtrrak.Services
                             sections.Add(section.Trim().ToUpper());
                         }
                     }
-                    catch { /* Ignore nulls or invalid casting just in case */ }
+                    catch { }
                 }
 
+                _logger.LogInformation("Found {Count} sections for SchoolId {SchoolId}, GradeLevel {GradeLevel}", sections.Count, schoolId, gradeLevel);
                 return sections.Distinct().OrderBy(s => s).ToList();
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting sections for school {SchoolName} and grade {GradeLevel}", schoolName, gradeLevel);
+                _logger.LogError(ex, "Error getting sections for school {SchoolName} (ID: {SchoolId}) and grade {GradeLevel}", schoolName, schoolId, gradeLevel);
                 throw;
             }
         }

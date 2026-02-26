@@ -162,21 +162,21 @@
 
                                 <div class="col-md-6 mb-3">
                                     <label for="reg-gradelevel" class="form-label text-muted small fw-bold mb-1">Grade Level</label>
-                                    <InputSelect id="reg-gradelevel" class="form-select py-2 rounded-3" @bind-Value="studentRegisterRequest.GradeLevel" @onchange="OnGradeLevelChanged" disabled="@(string.IsNullOrEmpty(studentRegisterRequest.SchoolName))">
-                                        <option value="">Select Level</option>
+                                    <select id="reg-gradelevel" class="form-select py-2 rounded-3" value="@studentRegisterRequest.GradeLevel" @onchange="OnGradeLevelChanged" disabled="@(string.IsNullOrEmpty(studentRegisterRequest.SchoolName))">
+                                        <option value="0">Select Level</option>
                                         <option value="7">Grade 7</option>
                                         <option value="8">Grade 8</option>
                                         <option value="9">Grade 9</option>
                                         <option value="10">Grade 10</option>
                                         <option value="11">Grade 11</option>
                                         <option value="12">Grade 12</option>
-                                    </InputSelect>
+                                    </select>
                                     <ValidationMessage For="@(() => studentRegisterRequest.GradeLevel)" class="text-danger small" />
                                 </div>
                                 <div class="col-md-6 mb-3">
                                     <label for="reg-section" class="form-label text-muted small fw-bold mb-1">Section</label>
                                     <div class="position-relative">
-                                        <InputText id="reg-section" class="form-control py-2 text-uppercase rounded-3" @bind-Value="studentRegisterRequest.Section" @oninput="OnSectionSearchChanged" placeholder="Search section..." disabled="@(string.IsNullOrEmpty(studentRegisterRequest.SchoolName) || studentRegisterRequest.GradeLevel < 7)" />
+                                        <InputText id="reg-section" class="form-control py-2 text-uppercase rounded-3" @bind-Value="studentRegisterRequest.Section" @oninput="OnSectionSearchChanged" @onfocus="OnSectionFocus" placeholder="SEARCH SECTION..." autocomplete="off" disabled="@(string.IsNullOrEmpty(studentRegisterRequest.SchoolName) || studentRegisterRequest.GradeLevel < 7)" />
                                         <ValidationMessage For="@(() => studentRegisterRequest.Section)" class="text-danger small" />
                                         
                                         @if (showSectionDropdown && filteredSections.Any())
@@ -495,6 +495,7 @@
     {
         var searchTerm = e.Value?.ToString() ?? "";
         studentRegisterRequest.SchoolName = searchTerm;
+        studentRegisterRequest.SchoolId = string.Empty; // Reset ID if user types manually
 
         // Cancel previous timer
         schoolSearchTimer?.Dispose();
@@ -513,14 +514,18 @@
             await InvokeAsync(() =>
             {
                 filteredSchools = allSchools
-                    .Where(s => s.SchoolName.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) ||
-                               s.Region.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) ||
-                               s.Division.Contains(searchTerm, StringComparison.OrdinalIgnoreCase))
-                    .OrderBy(s => s.SchoolName)
+                    .Where(s => s.SchoolName.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) || 
+                               (s.SchoolAddress != null && s.SchoolAddress.Contains(searchTerm, StringComparison.OrdinalIgnoreCase)))
+                    .Take(10)
                     .ToList();
-
-                showSchoolDropdown = filteredSchools.Any();
+                showSchoolDropdown = true;
                 StateHasChanged();
+                
+                // Also trigger sections fetch if name is substantially typed
+                if (searchTerm.Length > 5)
+                {
+                    _ = FetchAvailableSections();
+                }
             });
         }, null, 300, Timeout.Infinite);
     }
@@ -555,19 +560,31 @@
         }
     }
 
+    private void OnSectionFocus()
+    {
+        if (availableSections.Any())
+        {
+            filteredSections = availableSections.OrderBy(s => s).ToList();
+            showSectionDropdown = true;
+        }
+    }
+
     private void OnSectionSearchChanged(ChangeEventArgs e)
     {
         var searchTerm = e.Value?.ToString()?.ToUpper() ?? "";
         studentRegisterRequest.Section = searchTerm;
 
-        sectionSearchTimer?.Dispose();
-
         if (string.IsNullOrEmpty(searchTerm))
         {
-            showSectionDropdown = false;
-            filteredSections.Clear();
+            filteredSections = availableSections.OrderBy(s => s).ToList();
+            showSectionDropdown = true;
             StateHasChanged();
             return;
+        }
+
+        if (sectionSearchTimer != null)
+        {
+            sectionSearchTimer.Dispose();
         }
 
         sectionSearchTimer = new Timer(async _ =>
@@ -578,10 +595,7 @@
                     .Where(s => s.Contains(searchTerm, StringComparison.OrdinalIgnoreCase))
                     .OrderBy(s => s)
                     .ToList();
-
-                // If no matching existing section, we still shouldn't prevent them from manually typing adding a section, 
-                // but the prompt is to "make section field searchable from available section", so they can type as normal anyway.
-                showSectionDropdown = true; // Always show dropdown to provide feedback (matches or hint)
+                showSectionDropdown = true;
                 StateHasChanged();
             });
         }, null, 300, Timeout.Infinite);

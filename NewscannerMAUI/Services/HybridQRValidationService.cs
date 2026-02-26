@@ -33,7 +33,8 @@ namespace NewscannerMAUI.Services
 
         public async Task<string> GetOfflineStudentNameAsync(string studentId)
         {
-            return await _offlineDataService.GetStudentNameForDisplayAsync(studentId);
+            var teacherId = await GetCurrentTeacherIdAsync();
+            return await _offlineDataService.GetStudentNameForDisplayAsync(studentId, teacherId);
         }
 
         public async Task<QRValidationResult> ValidateQRCodeAsync(string qrCode, string? attendanceType = null, string? teacherId = null)
@@ -119,7 +120,7 @@ namespace NewscannerMAUI.Services
                         var localStatus = await CheckOfflineAttendanceStatusAsync(studentId, resolvedAttendanceType, resolvedTeacherId);
                         if (resolvedAttendanceType == "TimeIn" && localStatus.HasTimeIn)
                         {
-                            var name = await _offlineDataService.GetStudentNameForDisplayAsync(studentId);
+                            var name = await _offlineDataService.GetStudentNameForDisplayAsync(studentId, resolvedTeacherId);
                             return new QRValidationResult
                             {
                                 IsValid = false,
@@ -129,7 +130,7 @@ namespace NewscannerMAUI.Services
                         }
                         if (resolvedAttendanceType == "TimeOut" && localStatus.HasTimeOut)
                         {
-                            var name = await _offlineDataService.GetStudentNameForDisplayAsync(studentId);
+                            var name = await _offlineDataService.GetStudentNameForDisplayAsync(studentId, resolvedTeacherId);
                             return new QRValidationResult
                             {
                                 IsValid = false,
@@ -214,7 +215,7 @@ namespace NewscannerMAUI.Services
                                 // If still default, try to get from cache
                                 if (studentName == "Student")
                                 {
-                                    var cachedName = await _offlineDataService.GetStudentNameForDisplayAsync(studentId);
+                                    var cachedName = await _offlineDataService.GetStudentNameForDisplayAsync(studentId, resolvedTeacherId);
                                     if (!string.IsNullOrEmpty(cachedName) && cachedName != "Student") 
                                         studentName = cachedName;
                                 }
@@ -242,6 +243,7 @@ namespace NewscannerMAUI.Services
                             {
                                 IsValid = true,
                                 Message = $"{studentName} - {attendanceType} Successful",
+                                StudentName = studentName,
                                 ErrorType = QRValidationErrorType.None,
                                 StudentData = new StudentQRData 
                                 { 
@@ -385,7 +387,7 @@ namespace NewscannerMAUI.Services
                 // If profile is missing, it's an "Unknown" student. Generate a "Student X" name.
                 if (string.IsNullOrEmpty(studentName))
                 {
-                    studentName = await _offlineDataService.GetStudentNameForDisplayAsync(studentId);
+                    studentName = await _offlineDataService.GetStudentNameForDisplayAsync(studentId, teacherId);
                 }
 
                 // Removed strict teacher-student profile matching here. 
@@ -455,6 +457,7 @@ namespace NewscannerMAUI.Services
                     {
                         IsValid = true,
                         Message = $"{studentName} - {attendanceType} Successful",
+                        StudentName = studentName,
                         ErrorType = QRValidationErrorType.None,
                         StudentData = new StudentQRData 
                         { 

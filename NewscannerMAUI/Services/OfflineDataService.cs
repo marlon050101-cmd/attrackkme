@@ -430,13 +430,15 @@ namespace NewscannerMAUI.Services
                 }
                 
                 // Cache the student name if provided, otherwise try to fetch/find it
-                if (!string.IsNullOrEmpty(studentName))
+                if (string.IsNullOrEmpty(studentName))
+                {
+                    studentName = await GetStudentNameForDisplayAsync(studentId, teacherId);
+                }
+                
+                // Only cache real names (not "Student X")
+                if (!string.IsNullOrEmpty(studentName) && !studentName.StartsWith("Student "))
                 {
                     await CacheStudentNameAsync(studentId, studentName);
-                }
-                else
-                {
-                    await TryCacheStudentNameAsync(studentId);
                 }
                 
                 return true;
@@ -513,11 +515,11 @@ namespace NewscannerMAUI.Services
 
         // Get unsynced daily attendance records with their actual stored TimeIn/TimeOut values
         // Get unsynced daily attendance records with their actual stored TimeIn/TimeOut values
-        public async Task<List<OfflineDailyAttendanceRecord>> GetUnsyncedDailyAttendanceAsync(string? teacherId = null)
+        public async Task<List<OfflineDailyAttendanceRecord>> GetUnsyncedDailyAttendanceAsync(string? teacherId = null, string? date = null)
         {
             try
             {
-                System.Diagnostics.Debug.WriteLine($"=== Getting Unsynced Daily Attendance Records for {teacherId ?? "All Teachers"} ===");
+                System.Diagnostics.Debug.WriteLine($"=== Getting Unsynced Daily Attendance Records for {teacherId ?? "All Teachers"} (Date: {date ?? "All"}) ===");
                 
                 using var connection = new SqliteConnection(_connectionString);
                 await connection.OpenAsync();
@@ -537,11 +539,16 @@ namespace NewscannerMAUI.Services
                         snc.student_name
                     FROM offline_daily_attendance oda
                     LEFT JOIN student_names_cache snc ON oda.student_id = snc.student_id
-                    WHERE oda.is_synced = 0";
+                    WHERE oda.is_synced IN (0, 2)";
 
                 if (!string.IsNullOrEmpty(teacherId))
                 {
                     query += " AND oda.teacher_id = @teacherId";
+                }
+
+                if (!string.IsNullOrEmpty(date))
+                {
+                    query += " AND oda.date = @date";
                 }
 
                 query += " ORDER BY oda.created_at DESC";
@@ -553,15 +560,33 @@ namespace NewscannerMAUI.Services
                 {
                     command.Parameters.AddWithValue("@teacherId", teacherId);
                 }
+                if (!string.IsNullOrEmpty(date))
+                {
+                    command.Parameters.AddWithValue("@date", date);
+                }
                 using var reader = await command.ExecuteReaderAsync();
                 
+                // Pre-load unknown IDs for this teacher to ensure sequential numbering in the list
+                var unknownIds = await GetUnknownStudentIdsAsync(teacherId);
+
                 while (await reader.ReadAsync())
                 {
+                    var studentId = reader.GetString("student_id");
+                    var cachedName = reader.IsDBNull("student_name") ? "" : reader.GetString("student_name");
+                    var studentName = cachedName;
+                    
+                    // If no real name, use "Student X" numbering
+                    if (string.IsNullOrEmpty(studentName) || studentName.StartsWith("Student "))
+                    {
+                        var index = unknownIds.IndexOf(studentId);
+                        studentName = $"Student {(index == -1 ? unknownIds.Count + 1 : index + 1)}";
+                    }
+
                     records.Add(new OfflineDailyAttendanceRecord
                     {
                         AttendanceId = reader.GetString("attendance_id"),
-                        StudentId = reader.GetString("student_id"),
-                        StudentName = reader.IsDBNull("student_name") ? $"Student {reader.GetString("student_id")}" : reader.GetString("student_name"),
+                        StudentId = studentId,
+                        StudentName = studentName,
                         Date = DateTime.Parse(reader.GetString("date")),
                         TimeIn = reader.IsDBNull("time_in") ? null : reader.GetString("time_in"),
                         TimeOut = reader.IsDBNull("timeout") ? null : reader.GetString("timeout"),
@@ -645,13 +670,11 @@ namespace NewscannerMAUI.Services
                 using var connection = new SqliteConnection(_connectionString);
                 await connection.OpenAsync();
 
-                // Get unsynced daily attendance records (only those saved in offline mode)
-                // Exclude records that were saved as backup during online mode
-                var dailyQuery = @"SELECT a.attendance_id, a.student_id, a.date, a.time_in, a.time_out, a.status, a.device_id, a.is_synced, a.created_at, a.attendance_type,
+                var dailyQuery = @"SELECT a.attendance_id, a.student_id, a.date, a.time_in, a.time_out, a.status, a.device_id, a.is_synced, a.created_at, a.attendance_type, a.remarks,
                              COALESCE(n.student_name, '') as student_name
                       FROM offline_daily_attendance a
                       LEFT JOIN student_names_cache n ON a.student_id = n.student_id
-                      WHERE a.is_synced = 0";
+                      WHERE a.is_synced IN (0, 2)";
 
                 if (!string.IsNullOrEmpty(teacherId))
                 {
@@ -690,6 +713,9 @@ namespace NewscannerMAUI.Services
                 debugReader.Close();
                 System.Diagnostics.Debug.WriteLine("=== END DATABASE RECORDS DEBUG ===");
 
+                // Pre-load unknown IDs for this teacher
+                var unknownIds = await GetUnknownStudentIdsAsync(teacherId);
+
                 using var dailyReader = await dailyCommand.ExecuteReaderAsync();
                 while (await dailyReader.ReadAsync())
                 {
@@ -701,6 +727,15 @@ namespace NewscannerMAUI.Services
                     var createdAt = dailyReader.GetDateTime("created_at");
                     var attendanceType = dailyReader.IsDBNull("attendance_type") ? "Unknown" : dailyReader.GetString("attendance_type");
                     
+                    var cachedName = dailyReader.IsDBNull(dailyReader.GetOrdinal("student_name")) ? "" : dailyReader.GetString("student_name");
+                    var studentName = cachedName;
+                    
+                    if (string.IsNullOrEmpty(studentName) || studentName.StartsWith("Student "))
+                    {
+                        var index = unknownIds.IndexOf(studentId);
+                        studentName = $"Student {(index == -1 ? unknownIds.Count + 1 : index + 1)}";
+                    }
+
                     // Create one record per attendance type (TimeIn or TimeOut)
                     // Since we now create separate records for each scan, we only need one record per row
                     DateTime scanTime;
@@ -722,12 +757,14 @@ namespace NewscannerMAUI.Services
                     
                     records.Add(new OfflineAttendanceRecord
                     {
-                        Id = attendanceId, // Use actual UUID string, not hash
+                        Id = attendanceId,
                         StudentId = studentId,
-                        StudentName = dailyReader.IsDBNull(dailyReader.GetOrdinal("student_name")) ? "" : dailyReader.GetString("student_name"),
+                        StudentName = studentName,
                         ScanTime = scanTime,
                         AttendanceType = attendanceType,
-                        IsSynced = isSynced,
+                        IsSynced = dailyReader.GetInt32("is_synced") == 1,
+                        SyncStatus = dailyReader.GetInt32("is_synced"),
+                        Remarks = dailyReader.IsDBNull("remarks") ? "" : dailyReader.GetString("remarks"),
                         DeviceId = deviceId,
                         CreatedAt = createdAt
                     });
@@ -736,25 +773,37 @@ namespace NewscannerMAUI.Services
 
                 // Get unsynced regular attendance records
                 var regularCommand = new SqliteCommand(
-                    @"SELECT a.attendance_id, a.student_id, a.timestamp, a.attendance_type, a.device_id, a.is_synced, a.created_at,
+                    @"SELECT a.attendance_id, a.student_id, a.timestamp, a.attendance_type, a.device_id, a.is_synced, a.created_at, a.remarks,
                              COALESCE(n.student_name, '') as student_name
                       FROM offline_attendance a
                       LEFT JOIN student_names_cache n ON a.student_id = n.student_id
-                      WHERE a.is_synced = 0 ORDER BY a.created_at",
+                      WHERE a.is_synced IN (0, 2) ORDER BY a.created_at",
                     connection);
 
                 using var regularReader = await regularCommand.ExecuteReaderAsync();
                 while (await regularReader.ReadAsync())
                 {
+                    var studentId = regularReader.GetString("student_id");
+                    var cachedName = regularReader.IsDBNull(regularReader.GetOrdinal("student_name")) ? "" : regularReader.GetString("student_name");
+                    var studentName = cachedName;
+                    
+                    if (string.IsNullOrEmpty(studentName) || studentName.StartsWith("Student "))
+                    {
+                        var index = unknownIds.IndexOf(studentId);
+                        studentName = $"Student {(index == -1 ? unknownIds.Count + 1 : index + 1)}";
+                    }
+
                     records.Add(new OfflineAttendanceRecord
                     {
-                        Id = regularReader.GetString("attendance_id"), // Use actual UUID string, not hash
-                        StudentId = regularReader.GetString("student_id"),
-                        StudentName = regularReader.IsDBNull(regularReader.GetOrdinal("student_name")) ? "" : regularReader.GetString("student_name"),
+                        Id = regularReader.GetString("attendance_id"),
+                        StudentId = studentId,
+                        StudentName = studentName,
                         AttendanceType = regularReader.GetString("attendance_type"),
                         ScanTime = regularReader.GetDateTime("timestamp"),
                         DeviceId = regularReader.IsDBNull("device_id") ? "" : regularReader.GetString("device_id"),
                         IsSynced = regularReader.GetInt32("is_synced") == 1,
+                        SyncStatus = regularReader.GetInt32("is_synced"),
+                        Remarks = regularReader.IsDBNull("remarks") ? "" : regularReader.GetString("remarks"),
                         CreatedAt = regularReader.GetDateTime("created_at")
                     });
                 }
@@ -774,31 +823,27 @@ namespace NewscannerMAUI.Services
                 using var connection = new SqliteConnection(_connectionString);
                 await connection.OpenAsync();
 
-                // Since the record is now safely on the server, we delete it from the local offline database
-                // to prevent storage bloat and duplicate tracking issues over days.
+                // Per user's specific request: "pag na sync ko na remove agad"
+                // We revert to deleting the record once successfully synced to the server.
                 var dailyCommand = new SqliteCommand(
                     "DELETE FROM offline_daily_attendance WHERE attendance_id = @id",
                     connection);
                 dailyCommand.Parameters.AddWithValue("@id", recordId);
 
                 var dailyResult = await dailyCommand.ExecuteNonQueryAsync();
-                if (dailyResult > 0)
-                {
-                    return true;
-                }
 
-                // Try to update in regular attendance table
+                // Try to delete from regular attendance table as well
                 var regularCommand = new SqliteCommand(
                     "DELETE FROM offline_attendance WHERE attendance_id = @id",
                     connection);
                 regularCommand.Parameters.AddWithValue("@id", recordId);
 
                 var regularResult = await regularCommand.ExecuteNonQueryAsync();
-                return regularResult > 0;
+                return (dailyResult > 0 || regularResult > 0);
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Error marking attendance as synced: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"Error removing synced attendance: {ex.Message}");
                 return false;
             }
         }
@@ -846,7 +891,7 @@ namespace NewscannerMAUI.Services
                 // Count UNIQUE students instead of raw records
                 var dailyQuery = @"SELECT COUNT(DISTINCT student_id) 
                       FROM offline_daily_attendance 
-                      WHERE is_synced = 0";
+                      WHERE is_synced IN (0, 2)";
                 if (!string.IsNullOrEmpty(teacherId))
                 {
                     dailyQuery += " AND teacher_id = @teacherId";
@@ -862,7 +907,7 @@ namespace NewscannerMAUI.Services
                 // Count other unsynced attendance records
                 var otherQuery = @"SELECT COUNT(DISTINCT student_id) 
                       FROM offline_attendance 
-                      WHERE is_synced = 0";
+                      WHERE is_synced IN (0, 2)";
                 if (!string.IsNullOrEmpty(teacherId))
                 {
                     otherQuery += " AND teacher_id = @teacherId";
@@ -972,10 +1017,15 @@ namespace NewscannerMAUI.Services
                         }
                     }
 
+                    if (string.IsNullOrEmpty(studentName))
+                    {
+                        studentName = await GetStudentNameForDisplayAsync(studentId, teacherId);
+                    }
+
                     pendingStudents.Add(new PendingStudent
                     {
                         StudentId = studentId,
-                        StudentName = !string.IsNullOrEmpty(studentName) && !studentName.StartsWith("Student ") ? studentName : $"Student {studentId}",
+                        StudentName = studentName,
                         AttendanceType = attendanceType,
                         ScanTime = scanTime,
                         DeviceId = deviceId,
@@ -1014,10 +1064,15 @@ namespace NewscannerMAUI.Services
                     // Try to get student name from cache
                     var studentName = await GetStudentNameAsync(studentId);
                     
+                    if (string.IsNullOrEmpty(studentName))
+                    {
+                        studentName = await GetStudentNameForDisplayAsync(studentId, teacherId);
+                    }
+                    
                     pendingStudents.Add(new PendingStudent
                     {
                         StudentId = studentId,
-                        StudentName = !string.IsNullOrEmpty(studentName) && !studentName.StartsWith("Student ") ? studentName : $"Student {studentId}",
+                        StudentName = studentName,
                         AttendanceType = attendanceType,
                         ScanTime = timestamp,
                         DeviceId = deviceId,
@@ -1132,7 +1187,7 @@ namespace NewscannerMAUI.Services
         }
 
         // Public method to get student name (for UI)
-        public async Task<string> GetStudentNameForDisplayAsync(string studentId)
+        public async Task<string> GetStudentNameForDisplayAsync(string studentId, string? teacherId = null)
         {
             try
             {
@@ -1157,11 +1212,12 @@ namespace NewscannerMAUI.Services
                 var offlineName = await command.ExecuteScalarAsync();
                 if (offlineName != null)
                 {
-                    return offlineName.ToString() ?? "Student";
+                    var nameStr = offlineName.ToString();
+                    if (!string.IsNullOrEmpty(nameStr)) return nameStr;
                 }
                 
                 // If still no name found, return "Student X"
-                var unknownIndex = await GetUnknownStudentIndexAsync(studentId);
+                var unknownIndex = await GetUnknownStudentIndexAsync(studentId, teacherId);
                 return $"Student {unknownIndex}"; 
             }
             catch (Exception ex)
@@ -1171,39 +1227,53 @@ namespace NewscannerMAUI.Services
             }
         }
 
-        private async Task<int> GetUnknownStudentIndexAsync(string studentId)
+        public async Task<List<string>> GetUnknownStudentIdsAsync(string? teacherId = null)
         {
             try
             {
                 using var connection = new SqliteConnection(_connectionString);
                 await connection.OpenAsync();
 
-                // Get all unique student IDs in the unsynced table that are NOT in the cache (or are marked as unknown)
-                // We look at both historical tables to keep indices consistent
-                var command = new SqliteCommand(@"
+                // Get all unique student IDs in the unsynced table that are NOT in the cache (or are placeholder "Student " entries)
+                var queryStr = @"
                     SELECT student_id FROM (
-                        SELECT student_id FROM offline_attendance 
-                        WHERE student_id NOT IN (SELECT student_id FROM student_names_cache)
-                        UNION
-                        SELECT student_id FROM offline_daily_attendance
-                        WHERE student_id NOT IN (SELECT student_id FROM student_names_cache)
-                    ) GROUP BY student_id ORDER BY student_id", connection);
+                        SELECT student_id, teacher_id, created_at FROM offline_attendance 
+                        WHERE is_synced IN (0, 2) 
+                          AND (student_id NOT IN (SELECT student_id FROM student_names_cache)
+                               OR student_id IN (SELECT student_id FROM student_names_cache WHERE student_name LIKE 'Student %'))
+                        UNION ALL
+                        SELECT student_id, teacher_id, created_at FROM offline_daily_attendance
+                        WHERE is_synced IN (0, 2) 
+                          AND (student_id NOT IN (SELECT student_id FROM student_names_cache)
+                               OR student_id IN (SELECT student_id FROM student_names_cache WHERE student_name LIKE 'Student %'))
+                    ) 
+                    WHERE (@teacherId IS NULL OR teacher_id = @teacherId OR teacher_id = 'Unknown' OR teacher_id = 'Offline')
+                    GROUP BY student_id 
+                    ORDER BY MIN(created_at) ASC";
 
                 var unknownIds = new List<string>();
+                using var command = new SqliteCommand(queryStr, connection);
+                command.Parameters.AddWithValue("@teacherId", (object?)teacherId ?? DBNull.Value);
                 using var reader = await command.ExecuteReaderAsync();
                 while (await reader.ReadAsync())
                 {
                     unknownIds.Add(reader.GetString(0));
                 }
-
-                // Check if current ID is already in the list
-                var index = unknownIds.IndexOf(studentId);
-                if (index != -1) return index + 1;
-
-                // If not found (new scan), return count + 1
-                return unknownIds.Count + 1;
+                return unknownIds;
             }
-            catch { return 1; }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error getting unknown student IDs: {ex.Message}");
+                return new List<string>();
+            }
+        }
+
+        private async Task<int> GetUnknownStudentIndexAsync(string studentId, string? teacherId = null)
+        {
+            var unknownIds = await GetUnknownStudentIdsAsync(teacherId);
+            var index = unknownIds.IndexOf(studentId);
+            if (index != -1) return index + 1;
+            return unknownIds.Count + 1;
         }
 
         private async Task<string?> FetchStudentNameFromServerAsync(string studentId)
@@ -1427,7 +1497,7 @@ namespace NewscannerMAUI.Services
                 if (!isValidStudent)
                 {
                     // Remove all records for this invalid student
-                    await RemoveInvalidStudentRecordsAsync(studentId);
+                    await DeleteOfflineRecordsByStudentIdAsync(studentId);
                     System.Diagnostics.Debug.WriteLine($"Student {studentId} is not in teacher's class list. Removed from pending records.");
                     return new SyncResult 
                     { 
@@ -1563,6 +1633,56 @@ namespace NewscannerMAUI.Services
             }
         }
 
+        public async Task<string> SaveExportToDownloadsAsync()
+        {
+            try
+            {
+                var csvData = await ExportAttendanceDataAsync();
+                if (string.IsNullOrEmpty(csvData))
+                    return "❌ No data to export.";
+
+                var fileName = $"attendance_export_{DateTime.Now:yyyyMMdd_HHmmss}.csv";
+                
+                // Try multiple Downloads folder paths
+                var downloadsPaths = new[]
+                {
+                    "/storage/emulated/0/Download",
+                    "/storage/emulated/0/Downloads", 
+                    Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Download"),
+                    Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads"),
+                    "/sdcard/Download",
+                    "/sdcard/Downloads"
+                };
+
+                foreach (var downloadsPath in downloadsPaths)
+                {
+                    try
+                    {
+                        if (Directory.Exists(downloadsPath))
+                        {
+                            var destinationPath = Path.Combine(downloadsPath, fileName);
+                            await File.WriteAllTextAsync(destinationPath, csvData);
+                            
+                            System.Diagnostics.Debug.WriteLine($"Successfully exported CSV to: {destinationPath}");
+                            return $"✅ CSV Exported to Downloads folder!\nPath: {destinationPath}\n\nYou can now see '{fileName}' using your File Manager.";
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Could not export CSV to {downloadsPath}: {ex.Message}");
+                    }
+                }
+
+                // Fallback to regular save if downloads folder not accessible
+                await SaveExportToFileAsync(fileName);
+                return $"⚠️ Could not access Downloads folder.\nExported to app's private directory as '{fileName}'.\nCheck Android permissions if you still can't find it.";
+            }
+            catch (Exception ex)
+            {
+                return $"❌ Error exporting CSV: {ex.Message}";
+            }
+        }
+
         // Utility Methods
         private string GetDeviceId()
         {
@@ -1638,7 +1758,7 @@ namespace NewscannerMAUI.Services
                             File.Copy(_databasePath, destinationPath, true);
                             
                             System.Diagnostics.Debug.WriteLine($"Successfully copied database to: {destinationPath}");
-                            return $"✅ Database copied to Downloads!\nPath: {destinationPath}\nCheck your Downloads folder in file manager.";
+                            return $"✅ Database copied to Downloads folder!\nPath: {destinationPath}\n\nYou can now see 'attrak_database_copy.db' using your File Manager.";
                         }
                         else
                         {
@@ -1772,36 +1892,47 @@ namespace NewscannerMAUI.Services
             return false; // Default to false if validation fails
         }
 
-        // Method to remove all records for an invalid student
-        private async Task RemoveInvalidStudentRecordsAsync(string studentId)
+        // Method to remove all records for a student from both offline tables (used for individual deletion)
+        public async Task<bool> DeleteOfflineRecordsByStudentIdAsync(string studentId)
         {
             try
             {
                 using var connection = new SqliteConnection(_connectionString);
                 await connection.OpenAsync();
+                
+                using var transaction = connection.BeginTransaction();
+                try
+                {
+                    // Remove from daily attendance table
+                    var dailyCommand = new SqliteCommand(
+                        "DELETE FROM offline_daily_attendance WHERE student_id = @studentId",
+                        connection, transaction);
+                    dailyCommand.Parameters.AddWithValue("@studentId", studentId);
+                    var dailyResult = await dailyCommand.ExecuteNonQueryAsync();
 
-                // Remove from daily attendance table
-                var dailyCommand = new SqliteCommand(
-                    "DELETE FROM offline_daily_attendance WHERE student_id = @studentId",
-                    connection);
-                dailyCommand.Parameters.AddWithValue("@studentId", studentId);
+                    // Remove from regular attendance table
+                    var regularCommand = new SqliteCommand(
+                        "DELETE FROM offline_attendance WHERE student_id = @studentId",
+                        connection, transaction);
+                    regularCommand.Parameters.AddWithValue("@studentId", studentId);
+                    var regularResult = await regularCommand.ExecuteNonQueryAsync();
 
-                var dailyResult = await dailyCommand.ExecuteNonQueryAsync();
-
-                // Remove from regular attendance table
-                var regularCommand = new SqliteCommand(
-                    "DELETE FROM offline_attendance WHERE student_id = @studentId",
-                    connection);
-                regularCommand.Parameters.AddWithValue("@studentId", studentId);
-
-                var regularResult = await regularCommand.ExecuteNonQueryAsync();
-
-                var totalRemoved = dailyResult + regularResult;
-                System.Diagnostics.Debug.WriteLine($"Removed {totalRemoved} invalid records for student {studentId} (daily: {dailyResult}, regular: {regularResult})");
+                    await transaction.CommitAsync();
+                    
+                    var totalRemoved = dailyResult + regularResult;
+                    System.Diagnostics.Debug.WriteLine($"Removed {totalRemoved} records for student {studentId} (daily: {dailyResult}, regular: {regularResult})");
+                    return totalRemoved > 0;
+                }
+                catch
+                {
+                    await transaction.RollbackAsync();
+                    throw;
+                }
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Error removing invalid student records: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"Error removing student records: {ex.Message}");
+                return false;
             }
         }
 
@@ -1909,11 +2040,31 @@ namespace NewscannerMAUI.Services
                                 isPermanentRejection = true;
                             }
 
-                            // If the server explicitly rejected it due to rules, keeping it locally will just 
-                            // cause endless sync failures. Delete it from the local queue.
+                            // If the server explicitly rejected it due to rules, mark it as REJECTED (2)
+                            // so it stops trying to sync but stays in the DB for the user to see why it failed.
                             if (isPermanentRejection)
                             {
-                                await MarkAttendanceAsSyncedAsync(record.Id); // This safely deletes it from the SQLite DB
+                                try 
+                                {
+                                    using var conn = new SqliteConnection(_connectionString);
+                                    await conn.OpenAsync();
+                                    var cmd = new SqliteCommand(
+                                        "UPDATE offline_daily_attendance SET is_synced = 2, status = 'Rejected', remarks = @msg, updated_at = CURRENT_TIMESTAMP WHERE attendance_id = @id", 
+                                        conn);
+                                    cmd.Parameters.AddWithValue("@msg", detail.Message);
+                                    cmd.Parameters.AddWithValue("@id", record.Id);
+                                    await cmd.ExecuteNonQueryAsync();
+
+                                    var cmd2 = new SqliteCommand(
+                                        "UPDATE offline_attendance SET is_synced = 2, remarks = @msg, updated_at = CURRENT_TIMESTAMP WHERE attendance_id = @id", 
+                                        conn);
+                                    cmd2.Parameters.AddWithValue("@msg", detail.Message);
+                                    cmd2.Parameters.AddWithValue("@id", record.Id);
+                                    await cmd2.ExecuteNonQueryAsync();
+                                }
+                                catch(Exception ex) { 
+                                    System.Diagnostics.Debug.WriteLine($"Error marking as rejected: {ex.Message}"); 
+                                }
                             }
 
                             syncResult.FailCount++;
@@ -2164,6 +2315,10 @@ namespace NewscannerMAUI.Services
                 var command2 = new SqliteCommand("DELETE FROM offline_attendance", connection);
                 await command2.ExecuteNonQueryAsync();
 
+                // Also clear the student names cache to ensure a true "Student 1" reset
+                var command3 = new SqliteCommand("DELETE FROM student_names_cache", connection);
+                await command3.ExecuteNonQueryAsync();
+
                 return true;
             }
             catch (Exception ex)
@@ -2208,6 +2363,8 @@ namespace NewscannerMAUI.Services
         public DateTime ScanTime { get; set; }
         public string DeviceId { get; set; } = string.Empty;
         public bool IsSynced { get; set; }
+        public int SyncStatus { get; set; } // 0=Pending, 1=Synced, 2=Rejected
+        public string Remarks { get; set; } = string.Empty;
         public DateTime CreatedAt { get; set; }
         public string TeacherId { get; set; } = string.Empty;
     }
@@ -2255,6 +2412,7 @@ namespace NewscannerMAUI.Services
         public string Status { get; set; } = string.Empty;
         public string? DeviceId { get; set; }
         public bool IsSynced { get; set; }
+        public int SyncStatus { get; set; }
         public string AttendanceType { get; set; } = string.Empty;
         public DateTime CreatedAt { get; set; }
     }

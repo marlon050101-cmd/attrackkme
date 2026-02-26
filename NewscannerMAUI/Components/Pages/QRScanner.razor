@@ -12,6 +12,18 @@
 @using Microsoft.Maui.ApplicationModel.DataTransfer
 
 <style>
+    .confirm-modal {
+        max-width: 350px;
+        border-radius: 15px;
+        border: none;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    }
+    .btn-xs {
+        padding: 1px 5px;
+        font-size: 10px;
+        line-height: 1.5;
+        border-radius: 3px;
+    }
     .scanner-container {
         display: flex;
         flex-direction: column;
@@ -692,7 +704,7 @@
                     <button class="btn btn-primary flex-grow-1 btn-sm" @onclick="TriggerAutoSync" disabled="@(!ConnectionStatusService.IsOnline)">
                         <i class="fas fa-sync me-1"></i> Sync Now
                     </button>
-                    <button class="btn btn-danger btn-sm" @onclick="ClearPendingData">
+                    <button class="btn btn-danger btn-sm" @onclick="ConfirmClearAll">
                         <i class="fas fa-trash me-1"></i> Clear Data
                     </button>
                 </div>
@@ -725,7 +737,16 @@
                                             }
                                         </div>
                                     </div>
-                                    @if (group.IsSynced)
+                                    @if (group.IsRejected)
+                                    {
+                                        <div class="d-flex flex-column align-items-end gap-1">
+                                            <span class="badge bg-danger">Rejected</span>
+                                            <button class="btn btn-outline-danger btn-xs py-0" style="font-size: 10px;" @onclick="() => ConfirmDeleteIndividual(group.StudentId, group.StudentName)">
+                                                <i class="fas fa-trash-alt me-1"></i> Delete
+                                            </button>
+                                        </div>
+                                    }
+                                    else if (group.IsSynced)
                                     {
                                         <span class="badge bg-success">Synced</span>
                                     }
@@ -734,6 +755,12 @@
                                         <span class="badge bg-warning text-dark">Pending</span>
                                     }
                                 </div>
+                                @if (group.IsRejected && !string.IsNullOrEmpty(group.Remarks))
+                                {
+                                    <div class="alert alert-danger p-1 mt-1 mb-0" style="font-size:11px;">
+                                        <i class="fas fa-exclamation-triangle me-1"></i> @group.Remarks
+                                    </div>
+                                }
                             </div>
                         }
                     </div>
@@ -762,7 +789,16 @@
                     <button class="btn btn-outline-info btn-sm" @onclick="LoadOfflineRecordCount">Check Offline Count</button>
                     <button class="btn btn-outline-warning btn-sm" @onclick="CreateTestOfflineRecord">Create Test Record</button>
                     <button class="btn btn-outline-success btn-sm" @onclick="TriggerAutoSync">Force Sync</button>
+                    <button class="btn btn-outline-info btn-sm" @onclick="CopyDBToDownloads">
+                        <i class="fas fa-file-export me-1"></i> Copy DB to Downloads
+                    </button>
+                    <button class="btn btn-outline-secondary btn-sm" @onclick="ExportToCSV">
+                        <i class="fas fa-file-csv me-1"></i> Export CSV to Downloads
+                    </button>
                     <button class="btn btn-outline-secondary btn-sm" @onclick="CopyDatabasePath">Copy DB Path</button>
+                    <button class="btn btn-outline-danger btn-sm" @onclick="ConfirmClearAll">
+                        <i class="fas fa-trash-alt me-1"></i> Clear All Records
+                    </button>
                     <button class="btn btn-outline-danger btn-sm" @onclick="Logout">Logout</button>
                 </div>
                 
@@ -771,6 +807,28 @@
                     <strong>Teacher:</strong> @(currentTeacher?.FullName ?? "None")<br/>
                     <strong>Status:</strong> @ConnectionStatusService.StatusText
                 </div>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Confirmation Modal -->
+@if (showConfirmModal)
+{
+    <div class="modal-backdrop" style="z-index: 2000;">
+        <div class="modal-content confirm-modal" @onclick:stopPropagation>
+            <div class="modal-header bg-light">
+                <h5 class="modal-title">@confirmTitle</h5>
+                <button class="close-btn" @onclick="() => showConfirmModal = false">&times;</button>
+            </div>
+            <div class="modal-body text-center p-4">
+                <i class="fas fa-exclamation-triangle text-warning mb-3" style="font-size: 3rem;"></i>
+                <p class="mb-0">@confirmMessage</p>
+                <p class="text-muted small mt-2">This action cannot be undone.</p>
+            </div>
+            <div class="modal-footer border-0 pb-4 d-flex gap-2">
+                <button class="btn btn-secondary flex-grow-1" @onclick="() => showConfirmModal = false">Cancel</button>
+                <button class="btn btn-danger flex-grow-1" @onclick="ExecuteConfirmAction">Yes, I'm sure</button>
             </div>
         </div>
     </div>
@@ -798,6 +856,12 @@
     private bool showPendingModal = false;
     private bool isAutoSyncing = false;
     private string currentStudentId = "";
+    
+    // Confirmation Modal state
+    private bool showConfirmModal = false;
+    private string confirmTitle = "";
+    private string confirmMessage = "";
+    private Func<Task>? onConfirmAction;
     
     // Sync Progress tracking
     private bool isSyncing = false;
@@ -895,8 +959,9 @@
             }
             else
             {
-                // Load local unsynced records when offline
-                var localRecords = await OfflineDataService.GetUnsyncedDailyAttendanceAsync(currentTeacher.TeacherId);
+                // Load local unsynced records when offline - only for TODAY to prevent duplicate messages from old days
+                var todayStr = DateTime.Now.ToString("yyyy-MM-dd");
+                var localRecords = await OfflineDataService.GetUnsyncedDailyAttendanceAsync(currentTeacher.TeacherId, todayStr);
                 response = localRecords.Select(r => new DailyAttendanceRecord {
                     StudentId = r.StudentId,
                     StudentName = r.StudentName,
@@ -991,6 +1056,13 @@
     {
         try
         {
+            // Clean QR Code: remove "STUDENT:" prefix if present
+            if (qrCode.StartsWith("STUDENT:", StringComparison.OrdinalIgnoreCase))
+            {
+                qrCode = qrCode.Substring(8);
+            }
+            qrCode = qrCode.Trim();
+
             // 1. Instant Local Duplicate Check (For Performance)
             var existingRecord = attendanceList.FirstOrDefault(r => r.StudentId == qrCode);
             if (existingRecord != null)
@@ -1114,11 +1186,16 @@
         await InvokeAsync(StateHasChanged);
     }
     
+    private async Task LoadOfflineRecords()
+    {
+        offlineRecords = (await OfflineDataService.GetUnsyncedAttendanceAsync(currentTeacher?.TeacherId)) ?? new();
+        await InvokeAsync(StateHasChanged);
+    }
+
     private async Task ShowOfflineRecords()
     {
         showOfflineRecordsModal = true;
-        offlineRecords = (await OfflineDataService.GetUnsyncedAttendanceAsync(currentTeacher?.TeacherId)) ?? new();
-        await InvokeAsync(StateHasChanged);
+        await LoadOfflineRecords();
     }
     
     public class GroupedOfflineRecord
@@ -1129,6 +1206,8 @@
         public bool HasTimeOut { get; set; }
         public List<string> Dates { get; set; } = new();
         public bool IsSynced { get; set; }
+        public bool IsRejected { get; set; }
+        public string Remarks { get; set; } = "";
     }
 
     private IEnumerable<GroupedOfflineRecord> GetGroupedOfflineRecords()
@@ -1143,25 +1222,62 @@
                 HasTimeIn = g.Any(r => r.AttendanceType == "TimeIn"),
                 HasTimeOut = g.Any(r => r.AttendanceType == "TimeOut"),
                 Dates = g.Select(r => r.ScanTime.ToString("MM/dd")).Distinct().ToList(),
-                IsSynced = g.All(r => r.IsSynced)
+                IsSynced = g.All(r => r.SyncStatus == 1),
+                IsRejected = g.Any(r => r.SyncStatus == 2),
+                Remarks = g.FirstOrDefault(r => r.SyncStatus == 2)?.Remarks ?? ""
             }).ToList();
     }
     
-    private async Task ClearPendingData()
+    private async Task ConfirmClearAll()
     {
-        bool confirm = await JSRuntime.InvokeAsync<bool>("confirm", "Are you sure you want to delete all offline records? This cannot be undone.");
-            
-        if (confirm)
-        {
-            await OfflineDataService.ClearAllOfflineDataAsync(); // Need to implement this
+        confirmTitle = "Clear All Data";
+        confirmMessage = "Are you sure you want to delete all offline records?";
+        onConfirmAction = async () => {
+            await OfflineDataService.ClearAllOfflineDataAsync();
             showOfflineRecordsModal = false;
             await LoadOfflineRecordCount();
-            toastMessage = "Pending records cleared";
+            toastMessage = "All offline records cleared";
             showToast = true;
             await InvokeAsync(StateHasChanged);
             _ = Task.Run(async () => { await Task.Delay(3000); showToast = false; await InvokeAsync(StateHasChanged); });
+        };
+        showConfirmModal = true;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task ConfirmDeleteIndividual(string studentId, string studentName)
+    {
+        confirmTitle = "Delete Record";
+        confirmMessage = $"Are you sure you want to delete the records for {studentName}?";
+        onConfirmAction = async () => {
+            var success = await OfflineDataService.DeleteOfflineRecordsByStudentIdAsync(studentId);
+            if (success)
+            {
+                await LoadOfflineRecordCount();
+                // If we're in the modal, we need to refresh the list
+                if (showOfflineRecordsModal)
+                {
+                    await LoadOfflineRecords();
+                }
+                toastMessage = $"Record for {studentName} deleted";
+                showToast = true;
+                _ = Task.Run(async () => { await Task.Delay(3000); showToast = false; await InvokeAsync(StateHasChanged); });
+            }
+        };
+        showConfirmModal = true;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task ExecuteConfirmAction()
+    {
+        if (onConfirmAction != null)
+        {
+            showConfirmModal = false;
+            await onConfirmAction();
+            onConfirmAction = null;
         }
     }
+
     
     private async Task TriggerAutoSync()
     {
@@ -1211,6 +1327,37 @@
     }
     
     private async void TestConnection() => await CheckConnectionStatus();
+
+    private async Task CopyDBToDownloads()
+    {
+        isProcessing = true;
+        await InvokeAsync(StateHasChanged);
+        
+        var result = await OfflineDataService.CopyDatabaseToAccessibleLocationAsync();
+        
+        isProcessing = false;
+        toastMessage = result;
+        showToast = true;
+        await InvokeAsync(StateHasChanged);
+        
+        _ = Task.Run(async () => { await Task.Delay(5000); showToast = false; await InvokeAsync(StateHasChanged); });
+    }
+
+    private async Task ExportToCSV()
+    {
+        isProcessing = true;
+        await InvokeAsync(StateHasChanged);
+        
+        var result = await OfflineDataService.SaveExportToDownloadsAsync();
+        
+        isProcessing = false;
+        toastMessage = result;
+        showToast = true;
+        await InvokeAsync(StateHasChanged);
+        
+        _ = Task.Run(async () => { await Task.Delay(5000); showToast = false; await InvokeAsync(StateHasChanged); });
+    }
+    
     
     private async Task CopyDatabasePath()
     {
@@ -1228,8 +1375,8 @@
         await InvokeAsync(StateHasChanged);
         if (isOnline)
         {
-            // Auto sync on reconnect
-            await HybridQRValidationService.SyncOfflineDataAsync();
+            // Auto sync on reconnect disabled as per user request (wants manual control)
+            // await HybridQRValidationService.SyncOfflineDataAsync();
             await LoadOfflineRecordCount();
         }
     }
