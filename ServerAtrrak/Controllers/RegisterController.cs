@@ -63,7 +63,12 @@ namespace ServerAtrrak.Controllers
                 }
 
                 // Find school by name
-                var schoolId = await FindSchoolByNameAsync(request.SchoolName);
+                var schoolId = request.SchoolId;
+                if (string.IsNullOrEmpty(schoolId))
+                {
+                    schoolId = await FindSchoolByNameAsync(request.SchoolName);
+                }
+
                 if (string.IsNullOrEmpty(schoolId))
                 {
                     return BadRequest(new StudentRegisterResponse
@@ -330,16 +335,16 @@ namespace ServerAtrrak.Controllers
         }
 
         [HttpGet("sections")]
-        public async Task<ActionResult<List<string>>> GetSections([FromQuery] string schoolName, [FromQuery] int gradeLevel)
+        public async Task<ActionResult<List<string>>> GetSections([FromQuery] string? schoolId, [FromQuery] string? schoolName, [FromQuery] int gradeLevel)
         {
             try
             {
-                if (string.IsNullOrEmpty(schoolName) || gradeLevel < 7 || gradeLevel > 12)
+                if (gradeLevel < 7 || gradeLevel > 12)
                 {
                     return Ok(new List<string>());
                 }
 
-                var sections = await _schoolService.GetSectionsBySchoolAndGradeAsync(schoolName, gradeLevel);
+                var sections = await _schoolService.GetSectionsBySchoolAndGradeAsync(schoolId, schoolName, gradeLevel);
                 return Ok(sections);
             }
             catch (Exception ex)
@@ -1203,6 +1208,8 @@ namespace ServerAtrrak.Controllers
         
         [Required]
         public string SchoolName { get; set; } = string.Empty;
+
+        public string? SchoolId { get; set; }
         
         [Required]
         [RegularExpression(@"^09\d{9}$", ErrorMessage = "Contact number must start with '09' and be 11 digits long.")]

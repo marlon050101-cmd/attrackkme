@@ -329,8 +329,10 @@
         public string? Strand { get; set; }
         
         [Required]
-        [MaxLength(200)]
         public string SchoolName { get; set; } = string.Empty;
+        
+        [Required]
+        public string SchoolId { get; set; } = string.Empty;
         
         [Required]
         [RegularExpression(@"^09\d{9}$", ErrorMessage = "Contact number must start with '09' and be 11 digits long.")]
@@ -526,6 +528,7 @@
     private async Task SelectSchool(SchoolInfo school)
     {
         studentRegisterRequest.SchoolName = school.SchoolName;
+        studentRegisterRequest.SchoolId = school.SchoolId;
         showSchoolDropdown = false;
         filteredSchools.Clear();
         await FetchAvailableSections();
@@ -534,7 +537,7 @@
 
     private async Task FetchAvailableSections()
     {
-        if (string.IsNullOrEmpty(studentRegisterRequest.SchoolName) || studentRegisterRequest.GradeLevel < 7)
+        if ((string.IsNullOrEmpty(studentRegisterRequest.SchoolName) && string.IsNullOrEmpty(studentRegisterRequest.SchoolId)) || studentRegisterRequest.GradeLevel < 7)
         {
             availableSections.Clear();
             return;
@@ -542,7 +545,7 @@
 
         try
         {
-            var url = $"{ApiConfig.BaseUrl}api/register/sections?schoolName={Uri.EscapeDataString(studentRegisterRequest.SchoolName)}&gradeLevel={studentRegisterRequest.GradeLevel}";
+            var url = $"{ApiConfig.BaseUrl}api/register/sections?schoolId={studentRegisterRequest.SchoolId}&schoolName={Uri.EscapeDataString(studentRegisterRequest.SchoolName)}&gradeLevel={studentRegisterRequest.GradeLevel}";
             var response = await Http.GetFromJsonAsync<List<string>>(url);
             availableSections = response ?? new List<string>();
         }

@@ -288,21 +288,28 @@ namespace ServerAtrrak.Services
                 throw;
             }
         }
-        public async Task<List<string>> GetSectionsBySchoolAndGradeAsync(string schoolName, int gradeLevel)
+        public async Task<List<string>> GetSectionsBySchoolAndGradeAsync(string? schoolId, string? schoolName, int gradeLevel)
         {
             try
             {
                 using var connection = new MySqlConnection(_dbConnection.GetConnection());
                 await connection.OpenAsync();
 
-                // Get SchoolId first
-                var schoolQuery = "SELECT SchoolId FROM school WHERE SchoolName = @SchoolName LIMIT 1";
-                using var schoolCommand = new MySqlCommand(schoolQuery, connection);
-                schoolCommand.Parameters.AddWithValue("@SchoolName", schoolName);
-                var schoolIdObj = await schoolCommand.ExecuteScalarAsync();
+                if (string.IsNullOrEmpty(schoolId) && !string.IsNullOrEmpty(schoolName))
+                {
+                    // Get SchoolId first
+                    var schoolQuery = "SELECT SchoolId FROM school WHERE SchoolName = @SchoolName LIMIT 1";
+                    using var schoolCommand = new MySqlCommand(schoolQuery, connection);
+                    schoolCommand.Parameters.AddWithValue("@SchoolName", schoolName);
+                    var schoolIdObj = await schoolCommand.ExecuteScalarAsync();
+                    
+                    if (schoolIdObj != null)
+                    {
+                        schoolId = schoolIdObj.ToString();
+                    }
+                }
                 
-                if (schoolIdObj == null) return new List<string>();
-                var schoolId = schoolIdObj.ToString();
+                if (string.IsNullOrEmpty(schoolId)) return new List<string>();
 
                 // Query teacher and student tables for distinct sections
                 var query = @"
