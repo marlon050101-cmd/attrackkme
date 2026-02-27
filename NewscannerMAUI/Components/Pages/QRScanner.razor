@@ -494,6 +494,24 @@
         90% { opacity: 1; transform: translate(-50%, 0); }
         100% { opacity: 0; transform: translate(-50%, -20px); }
     }
+    .hid-scanner-proxy {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        z-index: 1000;
+        background: rgba(30, 41, 59, 0.9);
+        padding: 10px;
+        border-radius: 8px;
+        border: 1px solid #38bdf8;
+    }
+    .hid-input {
+        background: transparent;
+        border: none;
+        color: #38bdf8;
+        font-family: inherit;
+        outline: none;
+        width: 250px;
+    }
 </style>
 
 <div class="scanner-container">
@@ -834,6 +852,15 @@
     </div>
 }
 
+@if (DeviceInfo.Platform == DevicePlatform.WinUI || DeviceInfo.Platform == DevicePlatform.MacCatalyst)
+{
+    <div class="hid-scanner-proxy">
+        <input @ref="hidInput" @bind="hidBuffer" @bind:event="oninput" @onkeyup="HandleHidKeyUp" 
+               placeholder="Scanner Input (Select this if using physical scanner)" 
+               class="hid-input" id="hid-scanner-input" />
+    </div>
+}
+
 @code {
     private bool isScanning = false;
     private bool isProcessing = false;
@@ -869,6 +896,27 @@
     private int syncedCount = 0;
     private int totalToSync = 0;
     private List<SyncRecordDetail> syncResults = new();
+
+    private ElementReference hidInput;
+    private string hidBuffer = "";
+
+    private async Task HandleHidKeyUp(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(hidBuffer))
+        {
+            var code = hidBuffer.Trim();
+            hidBuffer = "";
+            await ProcessQRCode(code);
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && (DeviceInfo.Platform == DevicePlatform.WinUI || DeviceInfo.Platform == DevicePlatform.MacCatalyst))
+        {
+            try { await hidInput.FocusAsync(); } catch { }
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -955,7 +1003,10 @@
             if (ConnectionStatusService.IsOnline)
             {
                 var httpClient = HttpClientFactory.CreateClient("AttrakAPI");
-                response = await httpClient.GetFromJsonAsync<List<DailyAttendanceRecord>>($"api/dailyattendance/today/{currentTeacher.TeacherId}");
+                var todayStr = DateTime.Now.ToString("yyyy-MM-dd");
+                response = await httpClient.GetFromJsonAsync<List<DailyAttendanceRecord>>($"api/dailyattendance/today/{currentTeacher.TeacherId}?date={todayStr}");
+                var targetDate = DateTime.Today;
+                response = response?.Where(r => r.Date.Date == targetDate.Date).ToList();
             }
             else
             {
@@ -970,7 +1021,7 @@
                     TimeOut = r.TimeOut,
                     Status = r.Status,
                     Remarks = r.AttendanceType // Store type in remarks for internal processing if needed
-                }).ToList();
+                }).Where(r => r.Date.Date == DateTime.Today.Date).ToList();
             }
             
             if (response != null && response.Any())
@@ -988,19 +1039,31 @@
                         DateTime? timeIn = null;
                         if (recordWithTimeIn != null)
                         {
-                            if (DateTime.TryParse(recordWithTimeIn.TimeIn, out DateTime dtIn))
-                                timeIn = dtIn;
-                            else if (TimeSpan.TryParse(recordWithTimeIn.TimeIn, out TimeSpan tsIn))
-                                timeIn = recordWithTimeIn.Date.Add(tsIn);
+                            var tIn = recordWithTimeIn.TimeIn;
+                            if (tIn == "00:00:00") tIn = "";
+                            
+                            if (!string.IsNullOrEmpty(tIn))
+                            {
+                                if (DateTime.TryParse(tIn, out DateTime dtIn))
+                                    timeIn = dtIn;
+                                else if (TimeSpan.TryParse(tIn, out TimeSpan tsIn))
+                                    timeIn = recordWithTimeIn.Date.Add(tsIn);
+                            }
                         }
 
                         DateTime? timeOut = null;
                         if (recordWithTimeOut != null)
                         {
-                            if (DateTime.TryParse(recordWithTimeOut.TimeOut, out DateTime dtOut))
-                                timeOut = dtOut;
-                            else if (TimeSpan.TryParse(recordWithTimeOut.TimeOut, out TimeSpan tsOut))
-                                timeOut = recordWithTimeOut.Date.Add(tsOut);
+                            var tOut = recordWithTimeOut.TimeOut;
+                            if (tOut == "00:00:00") tOut = "";
+
+                            if (!string.IsNullOrEmpty(tOut))
+                            {
+                                if (DateTime.TryParse(tOut, out DateTime dtOut))
+                                    timeOut = dtOut;
+                                else if (TimeSpan.TryParse(tOut, out TimeSpan tsOut))
+                                    timeOut = recordWithTimeOut.Date.Add(tsOut);
+                            }
                         }
                         
                         string type = "Both";
@@ -1020,9 +1083,9 @@
                             AttendanceType = type,
                             Status = latestByUpdate.Status, // e.g., "Late"
                             Remarks = latestByUpdate.Remarks, // e.g., "Half Day"
-                            Timestamp = timeOut ?? timeIn ?? DateTime.Now
                         };
                     })
+                    .Where(a => a.Timestamp.Date == DateTime.Today.Date || (a.TimeIn.HasValue && a.TimeIn.Value.Date == DateTime.Today.Date) || (a.TimeOut.HasValue && a.TimeOut.Value.Date == DateTime.Today.Date))
                     .OrderByDescending(a => a.Timestamp)
                     .ToList();
             }
@@ -1039,9 +1102,11 @@
         }
     }
 
-    private async void OnQRCodeScanned(object? sender, string qrCode)
+    private void OnQRCodeScanned(object? sender, string qrCode)
     {
-        await ProcessQRCode(qrCode);
+        // NativeQRScannerPage already processes the QR code and validates it.
+        // We do absolutely nothing here to prevent double API calls which freeze the UI.
+        System.Diagnostics.Debug.WriteLine($"Ignored secondary process for {qrCode}");
     }
     
     private async void OnScannerClosed(object? sender, EventArgs e)
@@ -1054,6 +1119,7 @@
     }
     private async Task ProcessQRCode(string qrCode)
     {
+        if (isProcessing) return; // Prevent concurrent processing which causes UI freezes
         try
         {
             // Clean QR Code: remove "STUDENT:" prefix if present
@@ -1064,7 +1130,7 @@
             qrCode = qrCode.Trim();
 
             // 1. Instant Local Duplicate Check (For Performance)
-            var existingRecord = attendanceList.FirstOrDefault(r => r.StudentId == qrCode);
+            var existingRecord = attendanceList.FirstOrDefault(r => r.StudentId == qrCode && r.Timestamp.Date == DateTime.Today.Date);
             if (existingRecord != null)
             {
                 bool isDuplicate = false;

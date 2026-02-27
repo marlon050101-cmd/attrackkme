@@ -496,14 +496,13 @@ namespace NewscannerMAUI.Services
             {
                 var today = DateTime.Today;
                 
-                // Get existing records from offline database (including synced ones for today)
-                // This ensures we can prevent duplicates even after a sync
-                var dailyRecords = await _offlineDataService.GetAllDailyAttendanceForDateAsync(today, teacherId);
+                // Get existing records from offline database for THIS specific student
+                // This ensures we prevent duplicates without loading the entire class data (which causes lag)
+                var dailyRecords = await _offlineDataService.GetDailyAttendanceForStudentAsync(studentId, today, teacherId);
                 
                 // Check for TimeIn record
                 var timeInRecord = dailyRecords
-                    .FirstOrDefault(r => r.StudentId == studentId && 
-                                       r.AttendanceType == "TimeIn");
+                    .FirstOrDefault(r => r.AttendanceType == "TimeIn");
                 if (timeInRecord != null)
                 {
                     status.HasTimeIn = true;
@@ -512,8 +511,7 @@ namespace NewscannerMAUI.Services
                 
                 // Check for TimeOut record
                 var timeOutRecord = dailyRecords
-                    .FirstOrDefault(r => r.StudentId == studentId && 
-                                       r.AttendanceType == "TimeOut");
+                    .FirstOrDefault(r => r.AttendanceType == "TimeOut");
                 if (timeOutRecord != null)
                 {
                     status.HasTimeOut = true;
@@ -549,7 +547,7 @@ namespace NewscannerMAUI.Services
                 var hasTimeIn = timeInResponse?.TimeIn != null;
 
                 // Check if student has Time Out for today
-                var todayUrl = _serverBaseUrl.EndsWith("/") ? $"{_serverBaseUrl}api/dailyattendance/today/{teacherId}" : $"{_serverBaseUrl}/api/dailyattendance/today/{teacherId}";
+                var todayUrl = _serverBaseUrl.EndsWith("/") ? $"{_serverBaseUrl}api/dailyattendance/today/{teacherId}?date={today:yyyy-MM-dd}" : $"{_serverBaseUrl}/api/dailyattendance/today/{teacherId}?date={today:yyyy-MM-dd}";
                 var todayResponse = await _httpClient.GetFromJsonAsync<List<DailyAttendanceRecord>>(todayUrl);
                 var hasTimeOut = todayResponse?.Any(r => r.StudentId == studentId && !string.IsNullOrEmpty(r.TimeOut)) == true;
 

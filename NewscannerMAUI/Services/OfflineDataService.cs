@@ -607,6 +607,63 @@ namespace NewscannerMAUI.Services
         }
 
 
+        // Get daily attendance records for a specific student for a specific date (optimized duplicate prevention)
+        public async Task<List<OfflineDailyAttendanceRecord>> GetDailyAttendanceForStudentAsync(string studentId, DateTime date, string? teacherId = null)
+        {
+            try
+            {
+                var dateStr = date.ToString("yyyy-MM-dd");
+                using var connection = new SqliteConnection(_connectionString);
+                await connection.OpenAsync();
+                
+                var query = @"
+                    SELECT attendance_id, student_id, date, time_in, time_out, status, device_id, is_synced, attendance_type, created_at
+                    FROM offline_daily_attendance 
+                    WHERE substr(date, 1, 10) = @date AND student_id = @studentId";
+
+                if (!string.IsNullOrEmpty(teacherId))
+                {
+                    query += " AND teacher_id = @teacherId";
+                }
+
+                query += " ORDER BY created_at DESC";
+                
+                var records = new List<OfflineDailyAttendanceRecord>();
+                using var command = new SqliteCommand(query, connection);
+                command.Parameters.AddWithValue("@date", dateStr);
+                command.Parameters.AddWithValue("@studentId", studentId);
+                
+                if (!string.IsNullOrEmpty(teacherId))
+                {
+                    command.Parameters.AddWithValue("@teacherId", teacherId);
+                }
+                
+                using var reader = await command.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    records.Add(new OfflineDailyAttendanceRecord
+                    {
+                        AttendanceId = reader.GetString("attendance_id"),
+                        StudentId = reader.GetString("student_id"),
+                        Date = DateTime.Parse(reader.GetString("date")),
+                        TimeIn = reader.IsDBNull("time_in") ? null : reader.GetString("time_in"),
+                        TimeOut = reader.IsDBNull("time_out") ? null : reader.GetString("time_out"),
+                        Status = reader.GetString("status"),
+                        DeviceId = reader.IsDBNull("device_id") ? "" : reader.GetString("device_id"),
+                        IsSynced = reader.GetInt32("is_synced") == 1,
+                        AttendanceType = reader.GetString("attendance_type"),
+                        CreatedAt = reader.GetDateTime("created_at")
+                    });
+                }
+                return records;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error getting daily attendance for student: {ex.Message}");
+                return new List<OfflineDailyAttendanceRecord>();
+            }
+        }
+
         // Get ALL daily attendance records for a specific date (used for duplicate prevention)
         public async Task<List<OfflineDailyAttendanceRecord>> GetAllDailyAttendanceForDateAsync(DateTime date, string? teacherId = null)
         {

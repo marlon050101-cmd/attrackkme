@@ -54,10 +54,10 @@ namespace NewscannerMAUI.Pages
                     var result = e.Results.FirstOrDefault();
                     if (result != null && !string.IsNullOrEmpty(result.Value))
                     {
-                        // Prevent duplicate processing of the same QR code (reduced to 0.2s for faster scanning)
+                        // Prevent duplicate processing of the same QR code (increased to 3.0s for stability)
                         var currentTime = DateTime.Now;
                         if (result.Value == _lastScannedCode && 
-                            (currentTime - _lastScanTime).TotalSeconds < 0.2)
+                            (currentTime - _lastScanTime).TotalSeconds < 3.0)
                         {
                             System.Diagnostics.Debug.WriteLine($"Duplicate QR code detected, ignoring: {result.Value}");
                             return;
@@ -150,10 +150,11 @@ namespace NewscannerMAUI.Pages
                                             statusLabel.Text = $"Already {action}";
                                             statusLabel.TextColor = Colors.Orange;
                                             
+                                            _isProcessing = false; // Allow next scan immediately
+                                            
                                             Task.Delay(1500).ContinueWith(_ => {
                                                 MainThread.BeginInvokeOnMainThread(() => {
                                                     resultLabel.IsVisible = false;
-                                                    _isProcessing = false;
                                                 });
                                             });
                                         });
@@ -177,6 +178,8 @@ namespace NewscannerMAUI.Pages
                                                 
                                                 statusLabel.Text = "Scan Recorded Successfully";
                                                 statusLabel.TextColor = Colors.Green;
+                                                
+                                                _isProcessing = false; // Allow next scan immediately
                                                 
                                                 QRCodeScanned?.Invoke(this, result.Value);
                                                 
@@ -206,6 +209,8 @@ namespace NewscannerMAUI.Pages
                                                  string statusAction = _currentAttendanceType == "TimeIn" ? "Timed In" : "Timed Out";
                                                  statusLabel.Text = isAlreadyRecorded ? $"Already {statusAction}" : "Invalid QR code - Please try again";
                                                  statusLabel.TextColor = isAlreadyRecorded ? Colors.Orange : Colors.Red;
+                                                
+                                                _isProcessing = false; // Allow next scan immediately
                                                 
                                                 Task.Delay(2000).ContinueWith(_ => 
                                                 {
@@ -262,6 +267,8 @@ namespace NewscannerMAUI.Pages
                                     resultLabel.Text = $"✓ Success: {result.Value}";
                                     resultLabel.TextColor = Colors.Green;
                                     
+                                    _isProcessing = false; // Allow next scan immediately
+                                    
                                     // Clear the result after 2 seconds
                                     Task.Delay(2000).ContinueWith(_ => 
                                     {
@@ -271,7 +278,6 @@ namespace NewscannerMAUI.Pages
                                             resultLabel.Text = "";
                                             statusLabel.Text = "Ready to scan next QR code";
                                             statusLabel.TextColor = Colors.Green;
-                                            _isProcessing = false;
                                         });
                                     });
                                 }

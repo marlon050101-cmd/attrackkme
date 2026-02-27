@@ -175,7 +175,7 @@ namespace ServerAtrrak.Controllers
                 var query = @"
                     SELECT TimeIn, Status, Remarks 
                     FROM daily_attendance 
-                    WHERE StudentId = @StudentId AND Date = @Date";
+                    WHERE StudentId = @StudentId AND DATE(Date) = DATE(@Date)";
 
                 using var command = new MySqlCommand(query, connection);
                 command.Parameters.AddWithValue("@StudentId", studentId);
@@ -240,10 +240,10 @@ namespace ServerAtrrak.Controllers
                     request.StudentId, request.Date);
 
                 // Check if there's already a record for this student on the SAME date
-                var checkQuery = "SELECT AttendanceId, TimeIn, TimeOut, Date FROM daily_attendance WHERE StudentId = @StudentId AND Date = @Date ORDER BY CreatedAt DESC";
+                var checkQuery = "SELECT AttendanceId, TimeIn, TimeOut, Date FROM daily_attendance WHERE StudentId = @StudentId AND DATE(Date) = DATE(@Date) ORDER BY CreatedAt DESC";
                 using var checkCommand = new MySqlCommand(checkQuery, connection);
                 checkCommand.Parameters.AddWithValue("@StudentId", request.StudentId);
-                checkCommand.Parameters.AddWithValue("@Date", DateTime.Now.Date);
+                checkCommand.Parameters.AddWithValue("@Date", request.Date.Date);
 
                 using var reader = await checkCommand.ExecuteReaderAsync();
                 var existingId = "";
@@ -264,6 +264,7 @@ namespace ServerAtrrak.Controllers
                         // Fallback: read as string if TimeSpan conversion fails
                         existingTimeIn = reader.IsDBNull("TimeIn") ? "" : reader.GetString("TimeIn");
                     }
+                    if (existingTimeIn == "00:00:00") existingTimeIn = "";
                     
                     try
                     {
@@ -273,6 +274,7 @@ namespace ServerAtrrak.Controllers
                     {
                         existingTimeOut = reader.IsDBNull("TimeOut") ? "" : reader.GetString("TimeOut");
                     }
+                    if (existingTimeOut == "00:00:00") existingTimeOut = "";
                     
                     // Check if there are multiple records (duplicates)
                     if (await reader.ReadAsync())
@@ -286,10 +288,10 @@ namespace ServerAtrrak.Controllers
                 // If there are duplicates, delete all but the first one
                 if (hasMultipleRecords)
                 {
-                    var deleteQuery = "DELETE FROM daily_attendance WHERE StudentId = @StudentId AND Date = @Date AND AttendanceId != @KeepId";
+                    var deleteQuery = "DELETE FROM daily_attendance WHERE StudentId = @StudentId AND DATE(Date) = DATE(@Date) AND AttendanceId != @KeepId";
                     using var deleteCommand = new MySqlCommand(deleteQuery, connection);
                     deleteCommand.Parameters.AddWithValue("@StudentId", request.StudentId);
-                    deleteCommand.Parameters.AddWithValue("@Date", DateTime.Now.Date);
+                    deleteCommand.Parameters.AddWithValue("@Date", request.Date.Date);
                     deleteCommand.Parameters.AddWithValue("@KeepId", existingId);
                     await deleteCommand.ExecuteNonQueryAsync();
                 }
@@ -355,7 +357,7 @@ namespace ServerAtrrak.Controllers
                     using var insertCommand = new MySqlCommand(insertQuery, connection);
                     insertCommand.Parameters.AddWithValue("@AttendanceId", Guid.NewGuid().ToString());
                     insertCommand.Parameters.AddWithValue("@StudentId", request.StudentId);
-                    insertCommand.Parameters.AddWithValue("@Date", DateTime.Now.Date);
+                    insertCommand.Parameters.AddWithValue("@Date", request.Date.Date);
                     insertCommand.Parameters.AddWithValue("@TimeIn", request.TimeIn.ToString(@"hh\:mm\:ss"));
                     insertCommand.Parameters.AddWithValue("@Status", status);
                     insertCommand.Parameters.AddWithValue("@Remarks", isLate ? "Late arrival" : "");
@@ -443,13 +445,13 @@ namespace ServerAtrrak.Controllers
                 }
 
                 // Check if Time In exists for today - get the LATEST record to avoid duplicates
-                var checkQuery = "SELECT AttendanceId, TimeIn, Status, TimeOut FROM daily_attendance WHERE StudentId = @StudentId AND Date = @Date ORDER BY CreatedAt DESC LIMIT 1";
+                var checkQuery = "SELECT AttendanceId, TimeIn, Status, TimeOut FROM daily_attendance WHERE StudentId = @StudentId AND DATE(Date) = DATE(@Date) ORDER BY CreatedAt DESC LIMIT 1";
                 _logger.LogInformation("Executing query: {Query} with StudentId: {StudentId}, Date: {Date}", 
                     checkQuery, request.StudentId, request.Date.Date);
                 
                 using var checkCommand = new MySqlCommand(checkQuery, connection);
                 checkCommand.Parameters.AddWithValue("@StudentId", request.StudentId);
-                checkCommand.Parameters.AddWithValue("@Date", DateTime.Now.Date);
+                checkCommand.Parameters.AddWithValue("@Date", request.Date.Date);
 
                 using var reader = await checkCommand.ExecuteReaderAsync();
                 if (!await reader.ReadAsync())
@@ -476,6 +478,7 @@ namespace ServerAtrrak.Controllers
                 }
                 var currentStatus = reader.GetString("Status");
                 var existingTimeOut = reader.IsDBNull("TimeOut") ? "" : ((TimeSpan)reader.GetValue("TimeOut")).ToString(@"hh\:mm\:ss");
+                if (existingTimeOut == "00:00:00") existingTimeOut = "";
                 reader.Close();
                 
                 _logger.LogInformation("Found TimeIn record - AttendanceId: {AttendanceId}, TimeIn: {TimeIn}, Status: {Status}, ExistingTimeOut: {ExistingTimeOut}", 
@@ -586,10 +589,11 @@ namespace ServerAtrrak.Controllers
         }
 
         [HttpGet("today/{teacherId}")]
-        public async Task<ActionResult<List<DailyAttendanceRecord>>> GetTodayAttendance(string teacherId)
+        public async Task<ActionResult<List<DailyAttendanceRecord>>> GetTodayAttendance(string teacherId, [FromQuery] DateTime? date = null)
         {
             try
             {
+                var targetDate = date?.Date ?? DateTime.Today;
                 using var connection = new MySqlConnection(_dbConnection.GetConnection());
                 await connection.OpenAsync();
 
@@ -624,11 +628,11 @@ namespace ServerAtrrak.Controllers
                     SELECT da.StudentId, s.FullName, da.Date, da.TimeIn, da.TimeOut, da.Status, da.Remarks
                     FROM daily_attendance da
                     INNER JOIN student s ON da.StudentId = s.StudentId
-                    WHERE da.Date = @Date 
+                    WHERE DATE(da.Date) = DATE(@Date) 
                     ORDER BY da.Date DESC, da.TimeIn DESC";
 
                 using var command = new MySqlCommand(query, connection);
-                command.Parameters.AddWithValue("@Date", DateTime.Today);
+                command.Parameters.AddWithValue("@Date", targetDate);
 
                 using var reader = await command.ExecuteReaderAsync();
                 var records = new List<DailyAttendanceRecord>();
@@ -641,7 +645,11 @@ namespace ServerAtrrak.Controllers
                     var studentName = reader.GetString(1);
                     var attendanceDate = reader.GetDateTime(2);
                     var timeIn = reader.IsDBNull(3) ? "" : reader.GetValue(3).ToString();
+                    if (timeIn == "00:00:00") timeIn = "";
+                    
                     var timeOut = reader.IsDBNull(4) ? "" : reader.GetValue(4).ToString();
+                    if (timeOut == "00:00:00") timeOut = "";
+                    
                     var status = reader.GetString(5);
                     var remarks = reader.IsDBNull(6) ? "" : reader.GetString(6);
 
@@ -695,14 +703,19 @@ namespace ServerAtrrak.Controllers
 
                 while (await reader.ReadAsync())
                 {
-                    records.Add(new DailyAttendanceRecord
+                    var record = new DailyAttendanceRecord
                     {
                         Date = reader.GetDateTime("Date"),
                         TimeIn = reader.IsDBNull("TimeIn") ? "" : reader.GetString("TimeIn"),
                         TimeOut = reader.IsDBNull("TimeOut") ? "" : ((TimeSpan)reader.GetValue("TimeOut")).ToString(@"hh\:mm\:ss"),
                         Status = reader.GetString("Status"),
                         Remarks = reader.IsDBNull("Remarks") ? "" : reader.GetString("Remarks")
-                    });
+                    };
+
+                    if (record.TimeIn == "00:00:00") record.TimeIn = "";
+                    if (record.TimeOut == "00:00:00") record.TimeOut = "";
+
+                    records.Add(record);
                 }
 
                 return Ok(records);
@@ -768,7 +781,10 @@ namespace ServerAtrrak.Controllers
                             if (await reader.ReadAsync())
                             {
                                 var existingTimeIn = reader.IsDBNull("TimeIn") ? null : reader.GetString("TimeIn");
+                                if (existingTimeIn == "00:00:00") existingTimeIn = null;
+                                
                                 var existingTimeOut = reader.IsDBNull("TimeOut") ? null : ((TimeSpan)reader.GetValue("TimeOut")).ToString(@"hh\:mm\:ss");
+                                if (existingTimeOut == "00:00:00") existingTimeOut = null;
                                 reader.Close();
                                 
                                 // Update the record with new values, but don't overwrite existing values with empty ones
