@@ -320,10 +320,11 @@ namespace ServerAtrrak.Controllers
                     {
                         _logger.LogInformation("TimeIn already exists for student: {StudentId} on date: {Date}, existing TimeIn: {ExistingTimeIn}", 
                             request.StudentId, request.Date.Date, existingTimeIn);
-                        return Ok(new DailyTimeInResponse
+                        // Return 409 Conflict so the client correctly shows "Already Timed In" instead of "Successful"
+                        return Conflict(new DailyTimeInResponse
                         {
-                            Success = true,
-                            Message = "SUCCESS: Time In already recorded for today. Please mark Time Out instead.",
+                            Success = false,
+                            Message = $"Time In already recorded today at {existingTimeIn}. Please scan for Time Out instead.",
                             Status = "Present",
                             TimeIn = existingTimeIn
                         });
@@ -489,10 +490,11 @@ namespace ServerAtrrak.Controllers
                 {
                     _logger.LogInformation("TimeOut already exists for student: {StudentId}, existing TimeOut: {ExistingTimeOut}", 
                         request.StudentId, existingTimeOut);
-                    return Ok(new DailyTimeOutResponse
+                    // Return 409 Conflict so the client shows "Already Timed Out" instead of "Successful"
+                    return Conflict(new DailyTimeOutResponse
                     {
-                        Success = true,
-                        Message = "SUCCESS: Time Out already recorded for today",
+                        Success = false,
+                        Message = $"Time Out already recorded today at {existingTimeOut}",
                         TimeOut = existingTimeOut
                     });
                 }

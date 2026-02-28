@@ -163,10 +163,12 @@ namespace NewscannerMAUI.Services
 
                         if (resolvedAttendanceType == "TimeIn")
                         {
+                            // FIX: Use DateTimeKind.Utc so the date is not shifted back a day by timezone
+                            // conversion when the Render server (UTC) deserializes the +08:00 offset.
                             var request = new DailyTimeInRequest
                             {
                                 StudentId = studentId,
-                                Date = currentTime.Date,
+                                Date = DateTime.SpecifyKind(currentTime.Date, DateTimeKind.Utc),
                                 TimeIn = currentTime.TimeOfDay,
                                 TeacherId = resolvedTeacherId
                             };
@@ -175,10 +177,11 @@ namespace NewscannerMAUI.Services
                         }
                         else
                         {
+                            // FIX: Same timezone fix for TimeOut requests.
                             var request = new DailyTimeOutRequest
                             {
                                 StudentId = studentId,
-                                Date = currentTime.Date,
+                                Date = DateTime.SpecifyKind(currentTime.Date, DateTimeKind.Utc),
                                 TimeOut = currentTime.TimeOfDay,
                                 TeacherId = resolvedTeacherId
                             };
@@ -540,14 +543,15 @@ namespace NewscannerMAUI.Services
         {
             try
             {
-                // Check if student has Time In for today
-                var today = DateTime.Today;
-                var statusUrl = _serverBaseUrl.EndsWith("/") ? $"{_serverBaseUrl}api/dailyattendance/daily-status/{studentId}?date={today:yyyy-MM-dd}" : $"{_serverBaseUrl}/api/dailyattendance/daily-status/{studentId}?date={today:yyyy-MM-dd}";
+                // FIX: Use local date string "yyyy-MM-dd" directly to avoid timezone shift.
+                // DateTime.Today with +08:00 offset would be converted to yesterday's UTC by the server.
+                var todayStr = DateTime.Now.ToString("yyyy-MM-dd");
+                var statusUrl = _serverBaseUrl.EndsWith("/") ? $"{_serverBaseUrl}api/dailyattendance/daily-status/{studentId}?date={todayStr}" : $"{_serverBaseUrl}/api/dailyattendance/daily-status/{studentId}?date={todayStr}";
                 var timeInResponse = await _httpClient.GetFromJsonAsync<DailyAttendanceStatus>(statusUrl);
                 var hasTimeIn = timeInResponse?.TimeIn != null;
 
                 // Check if student has Time Out for today
-                var todayUrl = _serverBaseUrl.EndsWith("/") ? $"{_serverBaseUrl}api/dailyattendance/today/{teacherId}?date={today:yyyy-MM-dd}" : $"{_serverBaseUrl}/api/dailyattendance/today/{teacherId}?date={today:yyyy-MM-dd}";
+                var todayUrl = _serverBaseUrl.EndsWith("/") ? $"{_serverBaseUrl}api/dailyattendance/today/{teacherId}?date={todayStr}" : $"{_serverBaseUrl}/api/dailyattendance/today/{teacherId}?date={todayStr}";
                 var todayResponse = await _httpClient.GetFromJsonAsync<List<DailyAttendanceRecord>>(todayUrl);
                 var hasTimeOut = todayResponse?.Any(r => r.StudentId == studentId && !string.IsNullOrEmpty(r.TimeOut)) == true;
 

@@ -1044,10 +1044,10 @@
                             
                             if (!string.IsNullOrEmpty(tIn))
                             {
-                                if (DateTime.TryParse(tIn, out DateTime dtIn))
-                                    timeIn = dtIn;
-                                else if (TimeSpan.TryParse(tIn, out TimeSpan tsIn))
+                                if (TimeSpan.TryParse(tIn, out TimeSpan tsIn))
                                     timeIn = recordWithTimeIn.Date.Add(tsIn);
+                                else if (DateTime.TryParse(tIn, out DateTime dtIn))
+                                    timeIn = new DateTime(recordWithTimeIn.Date.Year, recordWithTimeIn.Date.Month, recordWithTimeIn.Date.Day, dtIn.Hour, dtIn.Minute, dtIn.Second);
                             }
                         }
 
@@ -1059,10 +1059,10 @@
 
                             if (!string.IsNullOrEmpty(tOut))
                             {
-                                if (DateTime.TryParse(tOut, out DateTime dtOut))
-                                    timeOut = dtOut;
-                                else if (TimeSpan.TryParse(tOut, out TimeSpan tsOut))
+                                if (TimeSpan.TryParse(tOut, out TimeSpan tsOut))
                                     timeOut = recordWithTimeOut.Date.Add(tsOut);
+                                else if (DateTime.TryParse(tOut, out DateTime dtOut))
+                                    timeOut = new DateTime(recordWithTimeOut.Date.Year, recordWithTimeOut.Date.Month, recordWithTimeOut.Date.Day, dtOut.Hour, dtOut.Minute, dtOut.Second);
                             }
                         }
                         
