@@ -619,7 +619,7 @@ namespace NewscannerMAUI.Services
                 var query = @"
                     SELECT attendance_id, student_id, date, time_in, time_out, status, device_id, is_synced, attendance_type, created_at
                     FROM offline_daily_attendance 
-                    WHERE substr(date, 1, 10) = @date AND student_id = @studentId";
+                    WHERE date = @date AND student_id = @studentId";
 
                 if (!string.IsNullOrEmpty(teacherId))
                 {
@@ -1338,7 +1338,7 @@ namespace NewscannerMAUI.Services
             try
             {
                 using var httpClient = new HttpClient();
-                httpClient.BaseAddress = new Uri("https://attrack-sr9l.onrender.com/");
+                httpClient.BaseAddress = ApiConfig.BaseUri;
                 httpClient.Timeout = TimeSpan.FromSeconds(10);
 
                 // Try to get student info from your API

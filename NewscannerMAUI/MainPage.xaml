@@ -3,7 +3,9 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:local="clr-namespace:NewscannerMAUI"
              xmlns:components="clr-namespace:NewscannerMAUI.Components"
-             x:Class="NewscannerMAUI.MainPage">
+             x:Class="NewscannerMAUI.MainPage"
+             Title="Attrack Hub"
+             NavigationPage.HasNavigationBar="False">
 
     <BlazorWebView x:Name="blazorWebView" HostPage="wwwroot/index.html">
         <BlazorWebView.RootComponents>

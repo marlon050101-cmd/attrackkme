@@ -21,7 +21,7 @@ namespace NewscannerMAUI.Services
         public ConnectionStatusService(HttpClient httpClient)
         {
             _httpClient = httpClient;
-            _serverBaseUrl = "https://attrack-sr9l.onrender.com";
+            _serverBaseUrl = ApiConfig.BaseUrlNoTrailingSlash;
             
             // Subscribe to OS-level connectivity changes
             Connectivity.ConnectivityChanged += OnConnectivityChanged;

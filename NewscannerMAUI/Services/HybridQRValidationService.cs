@@ -22,7 +22,7 @@ namespace NewscannerMAUI.Services
             _offlineDataService = offlineDataService;
             _authService = authService;
             _connectionStatusService = connectionStatusService;
-            _serverBaseUrl = "https://attrack-sr9l.onrender.com";
+            _serverBaseUrl = ApiConfig.BaseUrlNoTrailingSlash;
         }
 
         public async Task<string> GetCurrentTeacherIdAsync()
@@ -163,12 +163,10 @@ namespace NewscannerMAUI.Services
 
                         if (resolvedAttendanceType == "TimeIn")
                         {
-                            // FIX: Use DateTimeKind.Utc so the date is not shifted back a day by timezone
-                            // conversion when the Render server (UTC) deserializes the +08:00 offset.
                             var request = new DailyTimeInRequest
                             {
                                 StudentId = studentId,
-                                Date = DateTime.SpecifyKind(currentTime.Date, DateTimeKind.Utc),
+                                Date = DateTime.SpecifyKind(currentTime.Date, DateTimeKind.Unspecified),
                                 TimeIn = currentTime.TimeOfDay,
                                 TeacherId = resolvedTeacherId
                             };
@@ -177,11 +175,10 @@ namespace NewscannerMAUI.Services
                         }
                         else
                         {
-                            // FIX: Same timezone fix for TimeOut requests.
                             var request = new DailyTimeOutRequest
                             {
                                 StudentId = studentId,
-                                Date = DateTime.SpecifyKind(currentTime.Date, DateTimeKind.Utc),
+                                Date = DateTime.SpecifyKind(currentTime.Date, DateTimeKind.Unspecified),
                                 TimeOut = currentTime.TimeOfDay,
                                 TeacherId = resolvedTeacherId
                             };
@@ -196,10 +193,6 @@ namespace NewscannerMAUI.Services
                         {
                             var responseData = await response.Content.ReadFromJsonAsync<dynamic>();
                             System.Diagnostics.Debug.WriteLine($"Online save successful: {responseData}");
-                            
-                            // Save backup to local SQLite for immediate display in dashboard
-                            // NOTE: Removing the first save here as it's duplicated below
-
                             
                             // Get student name for display - ID hidden as per user request
                             string studentName = "Student";
@@ -255,6 +248,29 @@ namespace NewscannerMAUI.Services
                                 }
                             };
                         }
+                        else if (response.StatusCode == System.Net.HttpStatusCode.Conflict)
+                        {
+                            System.Diagnostics.Debug.WriteLine("Duplicate scan detected by server (Conflict 409)");
+                            var errorContent = await response.Content.ReadAsStringAsync();
+                            string msg = "Already recorded for today";
+                            
+                            try
+                            {
+                                var errorData = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(errorContent);
+                                if (errorData != null && errorData.ContainsKey("message"))
+                                {
+                                    msg = errorData["message"].ToString();
+                                }
+                            }
+                            catch { }
+
+                            return new QRValidationResult
+                            {
+                                IsValid = false,
+                                Message = msg,
+                                ErrorType = QRValidationErrorType.ValidationError
+                            };
+                        }
                         else
                         {
                             var errorContent = await response.Content.ReadAsStringAsync();
@@ -276,7 +292,7 @@ namespace NewscannerMAUI.Services
                             catch { /* Ignore parsing errors and fallback to predefined checks */ }
 
                             // Check for specific error messages
-                            if (errorContent.Contains("already recorded") || errorContent.Contains("already timed in") || errorContent.Contains("already timed out"))
+                            if (errorContent.Contains("already recorded") || errorContent.Contains("Already Timed In") || errorContent.Contains("Already Timed Out"))
                             {
                                 return new QRValidationResult
                                 {
@@ -543,15 +559,14 @@ namespace NewscannerMAUI.Services
         {
             try
             {
-                // FIX: Use local date string "yyyy-MM-dd" directly to avoid timezone shift.
-                // DateTime.Today with +08:00 offset would be converted to yesterday's UTC by the server.
-                var todayStr = DateTime.Now.ToString("yyyy-MM-dd");
-                var statusUrl = _serverBaseUrl.EndsWith("/") ? $"{_serverBaseUrl}api/dailyattendance/daily-status/{studentId}?date={todayStr}" : $"{_serverBaseUrl}/api/dailyattendance/daily-status/{studentId}?date={todayStr}";
+                // Check if student has Time In for today
+                var today = DateTime.Today;
+                var statusUrl = _serverBaseUrl.EndsWith("/") ? $"{_serverBaseUrl}api/dailyattendance/daily-status/{studentId}?date={today:yyyy-MM-dd}" : $"{_serverBaseUrl}/api/dailyattendance/daily-status/{studentId}?date={today:yyyy-MM-dd}";
                 var timeInResponse = await _httpClient.GetFromJsonAsync<DailyAttendanceStatus>(statusUrl);
                 var hasTimeIn = timeInResponse?.TimeIn != null;
 
                 // Check if student has Time Out for today
-                var todayUrl = _serverBaseUrl.EndsWith("/") ? $"{_serverBaseUrl}api/dailyattendance/today/{teacherId}?date={todayStr}" : $"{_serverBaseUrl}/api/dailyattendance/today/{teacherId}?date={todayStr}";
+                var todayUrl = _serverBaseUrl.EndsWith("/") ? $"{_serverBaseUrl}api/dailyattendance/today/{teacherId}?date={today:yyyy-MM-dd}" : $"{_serverBaseUrl}/api/dailyattendance/today/{teacherId}?date={today:yyyy-MM-dd}";
                 var todayResponse = await _httpClient.GetFromJsonAsync<List<DailyAttendanceRecord>>(todayUrl);
                 var hasTimeOut = todayResponse?.Any(r => r.StudentId == studentId && !string.IsNullOrEmpty(r.TimeOut)) == true;
 

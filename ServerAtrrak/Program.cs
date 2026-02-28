@@ -82,6 +82,7 @@ namespace ServerAtrrak
 
             app.MapControllers();
             app.MapHub<Hubs.AttendanceHub>("/attendanceHub");
+            app.MapHub<Hubs.SmsQueueHub>("/hubs/smsqueue");
 
             app.Run();
         }

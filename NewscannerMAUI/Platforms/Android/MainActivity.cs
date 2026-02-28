@@ -8,17 +8,32 @@ using AndroidX.Core.OS;
 
 namespace NewscannerMAUI
 {
-    [Activity(Theme = "@style/Maui.SplashTheme", MainLauncher = true, ConfigurationChanges = ConfigChanges.ScreenSize | ConfigChanges.Orientation | ConfigChanges.UiMode | ConfigChanges.ScreenLayout | ConfigChanges.SmallestScreenSize | ConfigChanges.Density, WindowSoftInputMode = SoftInput.AdjustResize)]
+    // Use the main MAUI theme here instead of the splash theme so that
+    // the correct root layout (including the NavigationRootManager host views)
+    // is applied to this activity. This avoids "No view found for id ... id/left"
+    // when MAUI tries to attach its navigation fragment.
+    [Activity(Theme = "@style/Maui.MainTheme", MainLauncher = true, ConfigurationChanges = ConfigChanges.ScreenSize | ConfigChanges.Orientation | ConfigChanges.UiMode | ConfigChanges.ScreenLayout | ConfigChanges.SmallestScreenSize | ConfigChanges.Density, WindowSoftInputMode = SoftInput.AdjustResize)]
     public class MainActivity : MauiAppCompatActivity
     {
-        protected override void OnCreate(Bundle savedInstanceState)
+        protected override void OnCreate(Bundle? savedInstanceState)
         {
-            base.OnCreate(savedInstanceState);
-            
+            // Always start with a fresh fragment/navigation state to avoid
+            // 'No view found for id ... id/left' crashes after process recreation.
+            base.OnCreate(null);
+
+            // Hide the native Android action bar that shows the app title (black bar with "NewscannerMAUI")
+            try
+            {
+                SupportActionBar?.Hide();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error hiding action bar: {ex.Message}");
+            }
+
             // Fix keyboard lag on Android 14
             if (Build.VERSION.SdkInt >= BuildVersionCodes.UpsideDownCake) // Android 14+
             {
-                // Disable predictive text and auto-correction for better performance
                 Window?.SetSoftInputMode(SoftInput.AdjustResize | SoftInput.StateHidden);
             }
             
@@ -27,36 +42,13 @@ namespace NewscannerMAUI
             
             // Also request permissions when activity resumes
             RequestPermissionsOnResume();
-            
-            // Add error handling for navigation fragment issues
-            try
-            {
-                // Ensure proper fragment management
-                if (savedInstanceState != null)
-                {
-                    // Handle fragment restoration properly
-                    System.Diagnostics.Debug.WriteLine("Restoring fragments from savedInstanceState");
-                }
-                
-                // Fix for navigation fragment view ID issues
-                // Ensure the activity is properly initialized before any fragment operations
-                if (SupportFragmentManager != null)
-                {
-                    // Clear any existing fragments that might be causing issues
-                    var fragments = SupportFragmentManager.Fragments;
-                    if (fragments != null && fragments.Count > 0)
-                    {
-                        System.Diagnostics.Debug.WriteLine($"Found {fragments.Count} existing fragments");
-                        // Don't clear fragments here as it might cause other issues
-                        // Just ensure they're properly managed
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error in OnCreate: {ex.Message}");
-                System.Diagnostics.Debug.WriteLine($"Stack trace: {ex.StackTrace}");
-            }
+        }
+
+        protected override void OnSaveInstanceState(Bundle outState)
+        {
+            // Intentionally DO NOT call base.OnSaveInstanceState here.
+            // Saving fragment state is what leads to the NavigationRootManager
+            // trying to restore into the non-existent 'left' container.
         }
         
         protected override void OnResume()

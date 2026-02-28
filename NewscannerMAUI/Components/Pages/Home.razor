@@ -557,7 +557,7 @@
                 System.Diagnostics.Debug.WriteLine("Trying HTTP fallback...");
                 var httpFallbackClient = new HttpClient();
                 httpFallbackClient.Timeout = TimeSpan.FromSeconds(10);
-                var response = await httpFallbackClient.GetAsync("https://attrack-sr9l.onrender.com/", cts.Token);
+                var response = await httpFallbackClient.GetAsync(ApiConfig.BaseUrl, cts.Token);
                 System.Diagnostics.Debug.WriteLine($"HTTP fallback response: {response.StatusCode}");
                 
                 if (response.IsSuccessStatusCode || response.StatusCode == System.Net.HttpStatusCode.NotFound)
@@ -582,7 +582,7 @@
                 var customClient = new HttpClient(customHandler);
                 customClient.Timeout = TimeSpan.FromSeconds(10);
                 
-                var customResponse = await customClient.GetAsync("https://attrack-sr9l.onrender.com/", cts.Token);
+                var customResponse = await customClient.GetAsync(ApiConfig.BaseUrl, cts.Token);
                 System.Diagnostics.Debug.WriteLine($"Custom client response: {customResponse.StatusCode}");
                 
                 if (customResponse.IsSuccessStatusCode || customResponse.StatusCode == System.Net.HttpStatusCode.NotFound)

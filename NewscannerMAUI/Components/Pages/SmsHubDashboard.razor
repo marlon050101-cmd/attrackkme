@@ -43,6 +43,14 @@
                 <span>@DeviceInfo.Current.Name (@Platform)</span>
             </div>
         </header>
+        
+        <div style="font-size:12px; color:#94a3b8; margin-top:-10px;">
+            <div><strong>API:</strong> @SmsHubService.ApiBaseUrl</div>
+            <div><strong>Last poll:</strong> @(SmsHubService.LastPollAtLocal?.ToString("HH:mm:ss") ?? "Never")</div>
+            <div><strong>pending-sms:</strong> @SmsHubService.LastPendingFetchStatus</div>
+            <div><strong>SignalR:</strong> @SmsHubService.RealtimeStatus</div>
+            <div><strong>Last signal:</strong> @(SmsHubService.LastRealtimeSignalAtLocal?.ToString("HH:mm:ss") ?? "Never")</div>
+        </div>
 
         <div class="dashboard-grid">
             <div class="card terminal-card">
@@ -256,7 +264,7 @@
 @code {
     private int PendingCount => SmsHubService.PendingCount;
     private int TotalSentCount => SmsHubService.TotalSentCount;
-    private bool IsRunning = true;
+    private bool IsRunning => SmsHubService.IsRunning;
     private string? ModemPort => SmsHubService.ModemPort;
     private string Platform = DeviceInfo.Current.Platform.ToString();
     private List<SmsHubService.HubLogEntry> Logs => SmsHubService.Logs;

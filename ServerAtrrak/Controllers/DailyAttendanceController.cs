@@ -5,6 +5,8 @@ using ServerAtrrak.Models;
 using MySql.Data.MySqlClient;
 using ServerAtrrak.Data;
 using System.Data;
+using Microsoft.AspNetCore.SignalR;
+using ServerAtrrak.Hubs;
 
 namespace ServerAtrrak.Controllers
 {
@@ -15,12 +17,18 @@ namespace ServerAtrrak.Controllers
         private readonly Dbconnection _dbConnection;
         private readonly ILogger<DailyAttendanceController> _logger;
         private readonly GsmSmsService _smsService;
+        private readonly IHubContext<SmsQueueHub> _smsQueueHub;
 
-        public DailyAttendanceController(Dbconnection dbConnection, ILogger<DailyAttendanceController> logger, GsmSmsService smsService)
+        public DailyAttendanceController(
+            Dbconnection dbConnection,
+            ILogger<DailyAttendanceController> logger,
+            GsmSmsService smsService,
+            IHubContext<SmsQueueHub> smsQueueHub)
         {
             _dbConnection = dbConnection;
             _logger = logger;
             _smsService = smsService;
+            _smsQueueHub = smsQueueHub;
         }
 
 
@@ -53,6 +61,10 @@ namespace ServerAtrrak.Controllers
                     
                     await cmd.ExecuteNonQueryAsync();
                     _logger.LogInformation("[SMS-QUEUE] Queued message for {Name}", studentName);
+
+                    // Notify the Office PC dispatcher (SignalR) to fetch/send immediately
+                    await _smsQueueHub.Clients.Group(SmsQueueHub.GroupName)
+                        .SendAsync("SmsQueueChanged", new { Reason = "Queued", StudentName = studentName, AttendanceType = attendanceType });
                 }
                 catch (Exception ex)
                 {
@@ -108,6 +120,10 @@ namespace ServerAtrrak.Controllers
                 cmd.Parameters.AddWithValue("@Id", id);
                 
                 await cmd.ExecuteNonQueryAsync();
+
+                // Notify dashboard(s) to refresh counts
+                await _smsQueueHub.Clients.Group(SmsQueueHub.GroupName)
+                    .SendAsync("SmsQueueChanged", new { Reason = "Sent", Id = id });
                 return Ok();
             }
             catch (Exception ex)
@@ -175,7 +191,7 @@ namespace ServerAtrrak.Controllers
                 var query = @"
                     SELECT TimeIn, Status, Remarks 
                     FROM daily_attendance 
-                    WHERE StudentId = @StudentId AND DATE(Date) = DATE(@Date)";
+                    WHERE StudentId = @StudentId AND Date = @Date";
 
                 using var command = new MySqlCommand(query, connection);
                 command.Parameters.AddWithValue("@StudentId", studentId);
@@ -240,7 +256,7 @@ namespace ServerAtrrak.Controllers
                     request.StudentId, request.Date);
 
                 // Check if there's already a record for this student on the SAME date
-                var checkQuery = "SELECT AttendanceId, TimeIn, TimeOut, Date FROM daily_attendance WHERE StudentId = @StudentId AND DATE(Date) = DATE(@Date) ORDER BY CreatedAt DESC";
+                var checkQuery = "SELECT AttendanceId, TimeIn, TimeOut, Date FROM daily_attendance WHERE StudentId = @StudentId AND Date = @Date ORDER BY CreatedAt DESC";
                 using var checkCommand = new MySqlCommand(checkQuery, connection);
                 checkCommand.Parameters.AddWithValue("@StudentId", request.StudentId);
                 checkCommand.Parameters.AddWithValue("@Date", request.Date.Date);
@@ -288,7 +304,7 @@ namespace ServerAtrrak.Controllers
                 // If there are duplicates, delete all but the first one
                 if (hasMultipleRecords)
                 {
-                    var deleteQuery = "DELETE FROM daily_attendance WHERE StudentId = @StudentId AND DATE(Date) = DATE(@Date) AND AttendanceId != @KeepId";
+                    var deleteQuery = "DELETE FROM daily_attendance WHERE StudentId = @StudentId AND Date = @Date AND AttendanceId != @KeepId";
                     using var deleteCommand = new MySqlCommand(deleteQuery, connection);
                     deleteCommand.Parameters.AddWithValue("@StudentId", request.StudentId);
                     deleteCommand.Parameters.AddWithValue("@Date", request.Date.Date);
@@ -320,11 +336,10 @@ namespace ServerAtrrak.Controllers
                     {
                         _logger.LogInformation("TimeIn already exists for student: {StudentId} on date: {Date}, existing TimeIn: {ExistingTimeIn}", 
                             request.StudentId, request.Date.Date, existingTimeIn);
-                        // Return 409 Conflict so the client correctly shows "Already Timed In" instead of "Successful"
-                        return Conflict(new DailyTimeInResponse
+                        return Ok(new DailyTimeInResponse
                         {
-                            Success = false,
-                            Message = $"Time In already recorded today at {existingTimeIn}. Please scan for Time Out instead.",
+                            Success = true,
+                            Message = "SUCCESS: Time In already recorded for today. Please mark Time Out instead.",
                             Status = "Present",
                             TimeIn = existingTimeIn
                         });
@@ -446,7 +461,7 @@ namespace ServerAtrrak.Controllers
                 }
 
                 // Check if Time In exists for today - get the LATEST record to avoid duplicates
-                var checkQuery = "SELECT AttendanceId, TimeIn, Status, TimeOut FROM daily_attendance WHERE StudentId = @StudentId AND DATE(Date) = DATE(@Date) ORDER BY CreatedAt DESC LIMIT 1";
+                var checkQuery = "SELECT AttendanceId, TimeIn, Status, TimeOut FROM daily_attendance WHERE StudentId = @StudentId AND Date = @Date ORDER BY CreatedAt DESC LIMIT 1";
                 _logger.LogInformation("Executing query: {Query} with StudentId: {StudentId}, Date: {Date}", 
                     checkQuery, request.StudentId, request.Date.Date);
                 
@@ -490,11 +505,10 @@ namespace ServerAtrrak.Controllers
                 {
                     _logger.LogInformation("TimeOut already exists for student: {StudentId}, existing TimeOut: {ExistingTimeOut}", 
                         request.StudentId, existingTimeOut);
-                    // Return 409 Conflict so the client shows "Already Timed Out" instead of "Successful"
-                    return Conflict(new DailyTimeOutResponse
+                    return Ok(new DailyTimeOutResponse
                     {
-                        Success = false,
-                        Message = $"Time Out already recorded today at {existingTimeOut}",
+                        Success = true,
+                        Message = "SUCCESS: Time Out already recorded for today",
                         TimeOut = existingTimeOut
                     });
                 }
@@ -630,7 +644,7 @@ namespace ServerAtrrak.Controllers
                     SELECT da.StudentId, s.FullName, da.Date, da.TimeIn, da.TimeOut, da.Status, da.Remarks
                     FROM daily_attendance da
                     INNER JOIN student s ON da.StudentId = s.StudentId
-                    WHERE DATE(da.Date) = DATE(@Date) 
+                    WHERE da.Date = @Date 
                     ORDER BY da.Date DESC, da.TimeIn DESC";
 
                 using var command = new MySqlCommand(query, connection);

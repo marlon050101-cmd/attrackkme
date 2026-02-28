@@ -18,7 +18,9 @@ namespace NewscannerMAUI.Pages
         private DateTime _lastScanTime = DateTime.MinValue;
         private bool _isProcessing = false;
         private string _teacherId = string.Empty;
-        private readonly string _serverBaseUrl = "https://attrack-sr9l.onrender.com/";
+        private readonly string _serverBaseUrl = ApiConfig.BaseUrl;
+        private System.Threading.CancellationTokenSource _cts = new();
+        private readonly TimeSpan _scanCooldown = TimeSpan.FromMilliseconds(350);
 
         public event EventHandler<string>? QRCodeScanned;
         public event EventHandler<string>? AttendanceTypeSelected;
@@ -49,13 +51,26 @@ namespace NewscannerMAUI.Pages
         {
             try
             {
+                // Safety guard: don't process if page is disappearing or already processing
+                if (!_isScanning || _isProcessing)
+                {
+                    return;
+                }
+
                 if (e.Results?.Any() == true)
                 {
+                    var currentTime = DateTime.Now;
+
+                    // Global throttle: ignore frames that arrive too quickly after the last processed scan
+                    if ((currentTime - _lastScanTime) < _scanCooldown)
+                    {
+                        return;
+                    }
+
                     var result = e.Results.FirstOrDefault();
                     if (result != null && !string.IsNullOrEmpty(result.Value))
                     {
                         // Prevent duplicate processing of the same QR code (increased to 3.0s for stability)
-                        var currentTime = DateTime.Now;
                         if (result.Value == _lastScannedCode && 
                             (currentTime - _lastScanTime).TotalSeconds < 3.0)
                         {
@@ -130,6 +145,8 @@ namespace NewscannerMAUI.Pages
                                         _teacherId = await _qrValidationService.GetCurrentTeacherIdAsync();
                                     }
 
+                                    if (_cts.IsCancellationRequested || !_isScanning) return;
+
                                     // 1. Instant Local Check (Pre-Validation for speed)
                                     var localStatus = await _qrValidationService.CheckOfflineAttendanceStatusAsync(result.Value, _currentAttendanceType, _teacherId);
                                     bool isLocalDuplicate = (_currentAttendanceType == "TimeIn" && localStatus.HasTimeIn) || 
@@ -142,6 +159,7 @@ namespace NewscannerMAUI.Pages
                                         
                                         MainThread.BeginInvokeOnMainThread(() =>
                                         {
+                                            if (_cts.IsCancellationRequested) return;
                                             PlayErrorSound();
                                              string action = _currentAttendanceType == "TimeIn" ? "Timed In" : "Timed Out";
                                              resultLabel.Text = $"{studentName} - Already {action} at {time}";
@@ -154,6 +172,7 @@ namespace NewscannerMAUI.Pages
                                             
                                             Task.Delay(1500).ContinueWith(_ => {
                                                 MainThread.BeginInvokeOnMainThread(() => {
+                                                    if (_cts.IsCancellationRequested) return;
                                                     resultLabel.IsVisible = false;
                                                 });
                                             });
@@ -166,6 +185,7 @@ namespace NewscannerMAUI.Pages
                                     
                                     MainThread.BeginInvokeOnMainThread(() =>
                                     {
+                                        if (_cts.IsCancellationRequested) return;
                                         try
                                         {
                                             if (validationResult.IsValid)
@@ -187,6 +207,7 @@ namespace NewscannerMAUI.Pages
                                                 {
                                                     MainThread.BeginInvokeOnMainThread(() =>
                                                     {
+                                                        if (_cts.IsCancellationRequested) return;
                                                         resultLabel.IsVisible = false;
                                                         resultLabel.Text = "";
                                                         statusLabel.Text = "Ready to scan next QR code";
@@ -216,6 +237,7 @@ namespace NewscannerMAUI.Pages
                                                 {
                                                     MainThread.BeginInvokeOnMainThread(() =>
                                                     {
+                                                        if (_cts.IsCancellationRequested) return;
                                                         resultLabel.IsVisible = false;
                                                         resultLabel.Text = "";
                                                         statusLabel.Text = "Ready to scan next QR code";
@@ -367,10 +389,35 @@ namespace NewscannerMAUI.Pages
             }
         }
 
+        private bool _isClosing = false;
         private async void OnDoneClicked(object? sender, EventArgs e)
         {
-            ScannerClosed?.Invoke(this, EventArgs.Empty);
-            await Navigation.PopAsync();
+            if (_isClosing) return;
+            
+            try
+            {
+                _isClosing = true;
+                _isScanning = false;
+                
+                if (cameraView != null)
+                {
+                    cameraView.IsDetecting = false;
+                }
+                
+                ScannerClosed?.Invoke(this, EventArgs.Empty);
+                
+                await MainThread.InvokeOnMainThreadAsync(async () => {
+                    if (Navigation != null && Navigation.NavigationStack.Count > 0)
+                    {
+                        await Navigation.PopAsync();
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error closing scanner: {ex.Message}");
+                _isClosing = false;
+            }
         }
 
         private async void PlaySuccessSound()
@@ -429,6 +476,20 @@ namespace NewscannerMAUI.Pages
         protected override async void OnAppearing()
         {
             base.OnAppearing();
+            
+            // Re-create CTS if it was cancelled previously
+            if (_cts.IsCancellationRequested)
+            {
+                _cts.Dispose();
+                _cts = new System.Threading.CancellationTokenSource();
+            }
+
+            // Reset transient scan state on each appearance to avoid stale flags
+            _isProcessing = false;
+            _isClosing = false;
+            _lastScannedCode = string.Empty;
+            _lastScanTime = DateTime.MinValue;
+
             System.Diagnostics.Debug.WriteLine("NativeQRScannerPage OnAppearing called");
             
             try
@@ -514,11 +575,31 @@ namespace NewscannerMAUI.Pages
 
         protected override void OnDisappearing()
         {
-            base.OnDisappearing();
-            _isScanning = false;
-            cameraView.IsDetecting = false;
-            // Notify any Blazor components that the scanner has closed (e.g. Android back button)
-            ScannerClosed?.Invoke(this, EventArgs.Empty);
+            try
+            {
+                _isScanning = false;
+                
+                // Cancel all pending background tasks
+                _cts.Cancel();
+                
+                if (cameraView != null)
+                {
+                    cameraView.IsDetecting = false;
+                    cameraView.IsTorchOn = false;
+                    
+                    // Unsubscribe to prevent detections while page is dying
+                    cameraView.BarcodesDetected -= OnBarcodesDetected;
+                }
+                
+                base.OnDisappearing();
+                
+                // Notify any Blazor components that the scanner has closed
+                ScannerClosed?.Invoke(this, EventArgs.Empty);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error in OnDisappearing: {ex.Message}");
+            }
         }
 
         private async Task<AttendanceStatus> CheckAttendanceStatusAsync(string qrCodeData)

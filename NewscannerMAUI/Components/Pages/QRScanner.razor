@@ -34,7 +34,9 @@
 
     .header-section {
         background-color: white;
-        padding: 10px 15px;
+        padding: 6px 15px 10px;
+        /* Small baseline top padding + safe-area so it hugs the status bar but isn't covered */
+        padding-top: calc(6px + env(safe-area-inset-top, 0px));
         box-shadow: 0 2px 5px rgba(0,0,0,0.05);
         z-index: 10;
         display: flex;
@@ -1044,10 +1046,10 @@
                             
                             if (!string.IsNullOrEmpty(tIn))
                             {
-                                if (TimeSpan.TryParse(tIn, out TimeSpan tsIn))
+                                if (DateTime.TryParse(tIn, out DateTime dtIn))
+                                    timeIn = dtIn;
+                                else if (TimeSpan.TryParse(tIn, out TimeSpan tsIn))
                                     timeIn = recordWithTimeIn.Date.Add(tsIn);
-                                else if (DateTime.TryParse(tIn, out DateTime dtIn))
-                                    timeIn = new DateTime(recordWithTimeIn.Date.Year, recordWithTimeIn.Date.Month, recordWithTimeIn.Date.Day, dtIn.Hour, dtIn.Minute, dtIn.Second);
                             }
                         }
 
@@ -1059,10 +1061,10 @@
 
                             if (!string.IsNullOrEmpty(tOut))
                             {
-                                if (TimeSpan.TryParse(tOut, out TimeSpan tsOut))
+                                if (DateTime.TryParse(tOut, out DateTime dtOut))
+                                    timeOut = dtOut;
+                                else if (TimeSpan.TryParse(tOut, out TimeSpan tsOut))
                                     timeOut = recordWithTimeOut.Date.Add(tsOut);
-                                else if (DateTime.TryParse(tOut, out DateTime dtOut))
-                                    timeOut = new DateTime(recordWithTimeOut.Date.Year, recordWithTimeOut.Date.Month, recordWithTimeOut.Date.Day, dtOut.Hour, dtOut.Minute, dtOut.Second);
                             }
                         }
                         
@@ -1083,9 +1085,9 @@
                             AttendanceType = type,
                             Status = latestByUpdate.Status, // e.g., "Late"
                             Remarks = latestByUpdate.Remarks, // e.g., "Half Day"
+                            Timestamp = timeOut ?? timeIn ?? DateTime.Now
                         };
                     })
-                    .Where(a => a.Timestamp.Date == DateTime.Today.Date || (a.TimeIn.HasValue && a.TimeIn.Value.Date == DateTime.Today.Date) || (a.TimeOut.HasValue && a.TimeOut.Value.Date == DateTime.Today.Date))
                     .OrderByDescending(a => a.Timestamp)
                     .ToList();
             }

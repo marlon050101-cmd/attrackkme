@@ -8,44 +8,31 @@ namespace NewscannerMAUI
         public MainPage()
         {
             InitializeComponent();
+
+            // Ensure the native navigation bar is fully hidden for this page
+            NavigationPage.SetHasNavigationBar(this, false);
         }
 
         public static async Task NavigateToCameraPage()
         {
             try
             {
-                var cameraPage = new NativeQRScannerPage();
-                
-                // Use NavigationPage for proper navigation
-                if (Application.Current?.MainPage is NavigationPage navPage)
+                // Use the service-based approach for consistency and lock management
+                var scannerService = IPlatformApplication.Current?.Services.GetService<QRScannerService>();
+                if (scannerService != null)
                 {
-                    await navPage.PushAsync(cameraPage);
+                    await scannerService.OpenNativeQRScanner();
                 }
                 else
                 {
-                    // Fallback: create a new navigation page
-                    var navigationPage = new NavigationPage(cameraPage);
-                    Application.Current!.MainPage = navigationPage;
+                    // Fallback if service resolution fails
+                    var cameraPage = new NativeQRScannerPage();
+                    if (Application.Current?.MainPage is NavigationPage navPage)
+                    {
+                        await navPage.PushAsync(cameraPage);
+                    }
                 }
             }
-#if ANDROID
-            catch (Java.Lang.IllegalArgumentException ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Navigation fragment error: {ex.Message}");
-                System.Diagnostics.Debug.WriteLine("This is likely the line1 view ID error - attempting recovery...");
-                
-                // Try to recover by recreating the main page
-                try
-                {
-                    Application.Current!.MainPage = new MainPage();
-                    System.Diagnostics.Debug.WriteLine("Recovery: Recreated MainPage");
-                }
-                catch (Exception recoveryEx)
-                {
-                    System.Diagnostics.Debug.WriteLine($"Recovery failed: {recoveryEx.Message}");
-                }
-            }
-#endif
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"Error navigating to camera: {ex.Message}");

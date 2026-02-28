@@ -1,6 +1,8 @@
 using System.Net.Http.Json;
 using Microsoft.Extensions.Logging;
 using AttrackSharedClass.Models;
+using Microsoft.Extensions.Http;
+using Microsoft.AspNetCore.SignalR.Client;
 
 namespace NewscannerMAUI.Services
 {
@@ -11,23 +13,33 @@ namespace NewscannerMAUI.Services
     /// </summary>
     public class SmsHubService
     {
-        private readonly HttpClient _httpClient;
+        private readonly IHttpClientFactory _httpClientFactory;
         private readonly GsmSmsService _gsmService;
         private readonly ILogger<SmsHubService> _logger;
-        private readonly string _serverBaseUrl = "https://attrack-sr9l.onrender.com";
+        private readonly SemaphoreSlim _dispatchLock = new SemaphoreSlim(1, 1);
+        private HubConnection? _hubConnection;
         private bool _isRunning = false;
         private CancellationTokenSource? _cts;
+        private DateTime _lastHeartbeatLogAtUtc = DateTime.MinValue;
 
         // Stats for Dashboard
         public int PendingCount { get; private set; }
         public int TotalSentCount { get; private set; }
         public string? ModemPort => _gsmService.DetectedPort;
         public List<HubLogEntry> Logs { get; } = new();
+        public bool IsRunning => _isRunning;
         public event Action? OnStatusChanged;
 
-        public SmsHubService(HttpClient httpClient, GsmSmsService gsmService, ILogger<SmsHubService> logger)
+        // Diagnostics (helps confirm polling is working)
+        public DateTime? LastPollAtLocal { get; private set; }
+        public string LastPendingFetchStatus { get; private set; } = "Never";
+        public string ApiBaseUrl => ApiConfig.BaseUrl;
+        public string RealtimeStatus { get; private set; } = "Not connected";
+        public DateTime? LastRealtimeSignalAtLocal { get; private set; }
+
+        public SmsHubService(IHttpClientFactory httpClientFactory, GsmSmsService gsmService, ILogger<SmsHubService> logger)
         {
-            _httpClient = httpClient;
+            _httpClientFactory = httpClientFactory;
             _gsmService = gsmService;
             _logger = logger;
         }
@@ -64,10 +76,13 @@ namespace NewscannerMAUI.Services
             _isRunning = true;
             _cts = new CancellationTokenSource();
             
-            AddHubLog("SmsHubService started. Polling Render for pending SMS...");
+            AddHubLog("SmsHubService started. Realtime (SignalR) + fallback polling enabled...");
             _logger.LogInformation("SmsHubService started. Polling Render for pending SMS...");
+            OnStatusChanged?.Invoke();
             
-            Task.Run(() => PollLoop(_cts.Token));
+            Task.Run(() => StartRealtimeAsync(_cts.Token));
+            Task.Run(() => FallbackPollLoop(_cts.Token));
+            _ = Task.Run(() => DispatchPendingOnceAsync("startup", _cts.Token));
         }
 
         public void Stop()
@@ -76,71 +91,194 @@ namespace NewscannerMAUI.Services
             _isRunning = false;
             AddHubLog("SmsHubService stopped.", "WARN");
             _logger.LogInformation("SmsHubService stopped.");
+            OnStatusChanged?.Invoke();
+
+            _ = Task.Run(async () =>
+            {
+                try { if (_hubConnection != null) await _hubConnection.StopAsync(); } catch { }
+                try { if (_hubConnection != null) await _hubConnection.DisposeAsync(); } catch { }
+            });
         }
 
-        private async Task PollLoop(CancellationToken ct)
+        private async Task StartRealtimeAsync(CancellationToken ct)
         {
+            try
+            {
+                var hubUrl = new Uri(ApiConfig.BaseUri, "hubs/smsqueue");
+
+                _hubConnection = new HubConnectionBuilder()
+                    .WithUrl(hubUrl, options =>
+                    {
+                        // Keep same "SSL bypass" behavior as your HttpClient handler
+                        options.HttpMessageHandlerFactory = _ =>
+                        {
+                            var handler = new HttpClientHandler();
+                            handler.ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true;
+                            return handler;
+                        };
+                    })
+                    .WithAutomaticReconnect()
+                    .Build();
+
+                _hubConnection.Reconnecting += error =>
+                {
+                    RealtimeStatus = "Reconnecting...";
+                    OnStatusChanged?.Invoke();
+                    AddHubLog($"SignalR reconnecting: {error?.Message}", "WARN");
+                    return Task.CompletedTask;
+                };
+
+                _hubConnection.Reconnected += async _ =>
+                {
+                    RealtimeStatus = "Connected";
+                    OnStatusChanged?.Invoke();
+                    AddHubLog("SignalR reconnected.", "SUCCESS");
+                    try { await _hubConnection.InvokeAsync("JoinSmsHub", ct); } catch { }
+                };
+
+                _hubConnection.Closed += error =>
+                {
+                    RealtimeStatus = "Disconnected";
+                    OnStatusChanged?.Invoke();
+                    AddHubLog($"SignalR closed: {error?.Message}", "WARN");
+                    return Task.CompletedTask;
+                };
+
+                _hubConnection.On<object>("SmsQueueChanged", payload =>
+                {
+                    LastRealtimeSignalAtLocal = DateTime.Now;
+                    RealtimeStatus = "Connected";
+                    OnStatusChanged?.Invoke();
+                    _ = DispatchPendingOnceAsync("signalr", ct);
+                });
+
+                RealtimeStatus = "Connecting...";
+                OnStatusChanged?.Invoke();
+                await _hubConnection.StartAsync(ct);
+                RealtimeStatus = "Connected";
+                OnStatusChanged?.Invoke();
+
+                AddHubLog($"SignalR connected: {hubUrl}", "SUCCESS");
+                try { await _hubConnection.InvokeAsync("JoinSmsHub", ct); } catch { }
+            }
+            catch (Exception ex)
+            {
+                RealtimeStatus = $"Failed: {ex.Message}";
+                OnStatusChanged?.Invoke();
+                AddHubLog($"SignalR start failed: {ex.Message}", "ERROR");
+            }
+        }
+
+        private async Task FallbackPollLoop(CancellationToken ct)
+        {
+            // If SignalR is blocked by hosting/proxy, this still guarantees delivery.
             while (!ct.IsCancellationRequested)
             {
                 try
                 {
-                    // 0. Ensure Modem is detected (Proactive detection for Dashboard)
-                    if (string.IsNullOrEmpty(ModemPort))
-                    {
-                        var port = await _gsmService.DetectModemAsync();
-                        if (port != null)
-                        {
-                            AddHubLog($"GSM Modem detected on {port}", "SUCCESS");
-                        }
-                    }
-
-                    // 1. Fetch pending SMS from Render
-                    var response = await _httpClient.GetAsync($"{_serverBaseUrl}/api/dailyattendance/pending-sms", ct);
-                    if (response.IsSuccessStatusCode)
-                    {
-                        var pendingItems = await response.Content.ReadFromJsonAsync<List<SmsQueueItem>>(cancellationToken: ct);
-                        
-                        PendingCount = pendingItems?.Count ?? 0;
-                        OnStatusChanged?.Invoke();
-
-                        if (pendingItems != null && pendingItems.Count > 0)
-                        {
-                            AddHubLog($"Found {pendingItems.Count} pending messages.");
-                            
-                            foreach (var item in pendingItems)
-                            {
-                                if (ct.IsCancellationRequested) break;
-
-                                AddHubLog($"Sending to {item.PhoneNumber}...");
-                                
-                                // 2. Send via local GSM hardware
-                                await _gsmService.SendSmsAsync(item.PhoneNumber, item.Message);
-                                
-                                // 3. Mark as sent on the server
-                                try 
-                                {
-                                    var markResponse = await _httpClient.PostAsJsonAsync($"{_serverBaseUrl}/api/dailyattendance/mark-sms-sent", item.Id, ct);
-                                    if (markResponse.IsSuccessStatusCode)
-                                    {
-                                        TotalSentCount++;
-                                        AddHubLog($"Sent successfully to {item.PhoneNumber}.", "SUCCESS");
-                                    }
-                                }
-                                catch (Exception ex)
-                                {
-                                    AddHubLog($"Failed to mark ID {item.Id}: {ex.Message}", "ERROR");
-                                }
-                            }
-                        }
-                    }
+                    await DispatchPendingOnceAsync("fallback", ct);
                 }
-                catch (Exception ex)
+                catch { }
+
+                // Slow fallback to reduce load; SignalR should handle realtime.
+                await Task.Delay(TimeSpan.FromSeconds(30), ct);
+            }
+        }
+
+        private async Task DispatchPendingOnceAsync(string reason, CancellationToken ct)
+        {
+            if (ct.IsCancellationRequested) return;
+            if (!await _dispatchLock.WaitAsync(0, ct)) return;
+
+            try
+            {
+                LastPollAtLocal = DateTime.Now;
+                OnStatusChanged?.Invoke();
+
+                // Ensure Modem is detected (Proactive detection for Dashboard)
+                if (string.IsNullOrEmpty(ModemPort))
                 {
-                    AddHubLog($"Polling error: {ex.Message}", "WARN");
+                    var port = await _gsmService.DetectModemAsync();
+                    if (port != null)
+                    {
+                        AddHubLog($"GSM Modem detected on {port}", "SUCCESS");
+                    }
                 }
 
-                // Poll every 10 seconds
-                await Task.Delay(10000, ct);
+                var client = _httpClientFactory.CreateClient("AttrakAPI");
+                var pendingUrl = new Uri(ApiConfig.BaseUri, "api/dailyattendance/pending-sms");
+                var response = await client.GetAsync(pendingUrl, ct);
+                if (!response.IsSuccessStatusCode)
+                {
+                    var body = await SafeReadBodyAsync(response, ct);
+                    LastPendingFetchStatus = $"HTTP {(int)response.StatusCode}: {body}";
+                    OnStatusChanged?.Invoke();
+                    AddHubLog($"pending-sms HTTP {(int)response.StatusCode}: {body}", "WARN");
+                    return;
+                }
+
+                var pendingItems = await response.Content.ReadFromJsonAsync<List<SmsQueueItem>>(cancellationToken: ct);
+                PendingCount = pendingItems?.Count ?? 0;
+                LastPendingFetchStatus = $"OK ({(int)response.StatusCode}) Count={PendingCount} via {reason}";
+                OnStatusChanged?.Invoke();
+
+                if (PendingCount == 0)
+                {
+                    var nowUtc = DateTime.UtcNow;
+                    if ((nowUtc - _lastHeartbeatLogAtUtc) > TimeSpan.FromSeconds(60))
+                    {
+                        _lastHeartbeatLogAtUtc = nowUtc;
+                        AddHubLog("No pending messages.", "INFO");
+                    }
+                    return;
+                }
+
+                AddHubLog($"Dispatch ({reason}): Found {PendingCount} pending.", "INFO");
+
+                foreach (var item in pendingItems!)
+                {
+                    if (ct.IsCancellationRequested) break;
+                    AddHubLog($"Sending to {item.PhoneNumber}...");
+                    await _gsmService.SendSmsAsync(item.PhoneNumber, item.Message);
+
+                    try
+                    {
+                        var markUrl = new Uri(ApiConfig.BaseUri, "api/dailyattendance/mark-sms-sent");
+                        var markResponse = await client.PostAsJsonAsync(markUrl, item.Id, ct);
+                        if (markResponse.IsSuccessStatusCode)
+                        {
+                            TotalSentCount++;
+                            AddHubLog($"Sent successfully to {item.PhoneNumber}.", "SUCCESS");
+                        }
+                        else
+                        {
+                            var body = await SafeReadBodyAsync(markResponse, ct);
+                            AddHubLog($"Mark-sent failed ({(int)markResponse.StatusCode}): {body}", "WARN");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        AddHubLog($"Failed to mark ID {item.Id}: {ex.Message}", "ERROR");
+                    }
+                }
+            }
+            finally
+            {
+                _dispatchLock.Release();
+            }
+        }
+
+        private static async Task<string> SafeReadBodyAsync(HttpResponseMessage response, CancellationToken ct)
+        {
+            try
+            {
+                var text = await response.Content.ReadAsStringAsync(ct);
+                if (string.IsNullOrWhiteSpace(text)) return "(empty)";
+                return text.Length > 200 ? text.Substring(0, 200) + "..." : text;
+            }
+            catch
+            {
+                return "(unreadable body)";
             }
         }
     }

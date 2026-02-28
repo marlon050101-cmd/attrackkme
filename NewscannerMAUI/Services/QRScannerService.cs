@@ -7,6 +7,7 @@ namespace NewscannerMAUI.Services
         private readonly OfflineDataService _offlineDataService;
         private readonly HybridQRValidationService _qrValidationService;
         private string _currentAttendanceType = string.Empty;
+        private static readonly System.Threading.SemaphoreSlim _navLock = new(1, 1);
 
         public event EventHandler<string>? QRCodeScanned;
         public event EventHandler<string>? OfflineDataSaved;
@@ -21,9 +22,32 @@ namespace NewscannerMAUI.Services
 
         public async Task OpenNativeQRScanner(string attendanceType = "")
         {
+            if (!await _navLock.WaitAsync(500)) 
+            {
+                System.Diagnostics.Debug.WriteLine("Navigation lock busy. Ignoring scan request.");
+                return;
+            }
+
             try
             {
                 _currentAttendanceType = attendanceType;
+
+                // Sync check on UI thread
+                bool alreadyOpen = false;
+                await MainThread.InvokeOnMainThreadAsync(() => {
+                    var mainPage = Application.Current?.MainPage;
+                    if (mainPage == null) return;
+                    
+                    var navStack = mainPage.Navigation.NavigationStack;
+                    alreadyOpen = navStack.Any(p => p is NativeQRScannerPage);
+                });
+
+                if (alreadyOpen)
+                {
+                    System.Diagnostics.Debug.WriteLine("Native QR scanner is already open. Preventing duplicate.");
+                    return;
+                }
+
                 var scannerPage = new NativeQRScannerPage(_qrValidationService);
                 
                 // Set the attendance type if provided
@@ -36,21 +60,39 @@ namespace NewscannerMAUI.Services
                 scannerPage.QRCodeScanned += OnQRCodeScanned;
                 scannerPage.ScannerClosed += OnScannerClosed;
                 
-                // Check if the current page is already a NativeQRScannerPage to prevent duplicates
-                var navStack = Application.Current!.MainPage!.Navigation.NavigationStack;
-                if (!navStack.Any(p => p is NativeQRScannerPage))
-                {
-                    await Application.Current!.MainPage!.Navigation.PushAsync(scannerPage);
-                    System.Diagnostics.Debug.WriteLine($"Opened native QR scanner with attendance type: {attendanceType}");
-                }
-                else
-                {
-                    System.Diagnostics.Debug.WriteLine($"Native QR scanner is already open. Preventing duplicate.");
-                }
+                await MainThread.InvokeOnMainThreadAsync(async () => {
+                    try 
+                    {
+                        var mainPage = Application.Current?.MainPage;
+                        var navigation = mainPage?.Navigation;
+                        
+                        if (navigation != null)
+                        {
+                            await navigation.PushAsync(scannerPage);
+                            System.Diagnostics.Debug.WriteLine($"Opened native QR scanner with attendance type: {attendanceType}");
+                            
+                            // Increased delay (1000ms) to ensure Android fragment manager 
+                            // has fully finished the layout transition before releasing the lock.
+                            await Task.Delay(1000);
+                        }
+                        else
+                        {
+                            System.Diagnostics.Debug.WriteLine("CRITICAL: Navigation is null. Cannot open scanner.");
+                        }
+                    }
+                    catch (Exception pushEx)
+                    {
+                         System.Diagnostics.Debug.WriteLine($"PushAsync Error: {pushEx.Message}");
+                    }
+                });
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"Error opening QR scanner: {ex.Message}");
+            }
+            finally
+            {
+                _navLock.Release();
             }
         }
         
@@ -83,7 +125,7 @@ namespace NewscannerMAUI.Services
             try
             {
                 // Get API base URL from configuration or use default
-                var apiBaseUrl = "https://attrack-sr9l.onrender.com/"; // Production server URL
+                var apiBaseUrl = ApiConfig.BaseUrl; // Configured server URL
                 
                 // Get current teacher ID (you'll need to implement this)
                 var teacherId = "current_teacher_id"; // Replace with actual teacher ID

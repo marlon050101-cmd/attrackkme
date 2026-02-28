@@ -4,7 +4,8 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:zxing="clr-namespace:ZXing.Net.Maui.Controls;assembly=ZXing.Net.Maui.Controls"
              Title="QR Scanner"
-             BackgroundColor="Black">
+             BackgroundColor="Black"
+             NavigationPage.HasNavigationBar="False">
     
     <Grid>
         <Grid.RowDefinitions>
