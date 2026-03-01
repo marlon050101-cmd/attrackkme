@@ -429,7 +429,7 @@ namespace ServerAtrrak.Services
                 using var connection = new MySqlConnection(_dbConnection.GetConnection());
                 await connection.OpenAsync();
 
-                var query = "SELECT UserId FROM user WHERE TeacherId = @TeacherId AND UserType = 'Teacher' LIMIT 1";
+                var query = "SELECT UserId FROM user WHERE TeacherId = @TeacherId AND UserType = 'SubjectTeacher' LIMIT 1";
 
                 using var command = new MySqlCommand(query, connection);
                 command.Parameters.AddWithValue("@TeacherId", teacherId);

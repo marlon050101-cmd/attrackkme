@@ -1,0 +1,200 @@
+@page "/pick-classes-to-teach"
+@using AttrackSharedClass.Models
+@using Attrak.Services
+@inject HttpClient Http
+@inject IAuthService AuthService
+@layout Layoutall
+<PageTitle>Pick classes to teach</PageTitle>
+
+<div class="container-fluid">
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">
+                <i class="fas fa-hand-pointer me-2"></i>
+                Pick classes to teach
+            </h3>
+            <p class="text-muted mb-0">Advisors set section, subject, and class time. You only pick which class you will teach.</p>
+        </div>
+        <div class="card-body">
+            @if (!string.IsNullOrEmpty(errorMessage))
+            {
+                <div class="alert alert-danger">@errorMessage</div>
+            }
+            @if (!string.IsNullOrEmpty(successMessage))
+            {
+                <div class="alert alert-success">@successMessage</div>
+            }
+
+            <h5 class="mb-3">My classes</h5>
+            @if (myClasses.Any())
+            {
+                <div class="table-responsive mb-4">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Subject</th>
+                                <th>Grade / Section / Strand</th>
+                                <th>Time</th>
+                                <th>Advisor</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var c in myClasses)
+                            {
+                                <tr>
+                                    <td>@c.SubjectName</td>
+                                    <td>G@c.GradeLevel @c.Section @(string.IsNullOrEmpty(c.Strand) ? "" : c.Strand)</td>
+                                    <td>@c.ScheduleStart.ToString("hh\\:mm") - @c.ScheduleEnd.ToString("hh\\:mm")</td>
+                                    <td>@(c.AdvisorName ?? "-")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+            else
+            {
+                <p class="text-muted mb-4">You have not picked any class yet. Choose from available classes below.</p>
+            }
+
+            <h5 class="mb-3">Available classes (pick to teach)</h5>
+            @if (isLoading)
+            {
+                <p class="text-muted">Loading...</p>
+            }
+            else if (!availableClasses.Any())
+            {
+                <p class="text-muted">No available classes. Advisors must add section classes first.</p>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Subject</th>
+                                <th>Grade / Section / Strand</th>
+                                <th>Time</th>
+                                <th>Advisor</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var c in availableClasses)
+                            {
+                                <tr>
+                                    <td>@c.SubjectName</td>
+                                    <td>G@c.GradeLevel @c.Section @(string.IsNullOrEmpty(c.Strand) ? "" : c.Strand)</td>
+                                    <td>@c.ScheduleStart.ToString("hh\\:mm") - @c.ScheduleEnd.ToString("hh\\:mm")</td>
+                                    <td>@(c.AdvisorName ?? "-")</td>
+                                    <td>
+                                        <button class="btn btn-sm btn-success" @onclick="() => AssignMe(c)" disabled="@isAssigning">
+                                            @if (isAssigning) { <span class="spinner-border spinner-border-sm"></span> } else { <i class="fas fa-check me-1"></i><text> Pick to teach</text> }
+                                        </button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    private string? teacherId;
+    private string? schoolId;
+    private List<ClassOffering> myClasses = new();
+    private List<ClassOffering> availableClasses = new();
+    private bool isLoading = true;
+    private bool isAssigning = false;
+    private string errorMessage = "";
+    private string successMessage = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var user = await AuthService.GetCurrentUserAsync();
+        if (user?.UserType != UserType.Teacher)
+        {
+            errorMessage = "Teacher only.";
+            isLoading = false;
+            return;
+        }
+        teacherId = user.TeacherId;
+        if (string.IsNullOrEmpty(teacherId))
+        {
+            errorMessage = "Teacher profile not found.";
+            isLoading = false;
+            return;
+        }
+        schoolId = await GetTeacherSchoolIdAsync();
+        await LoadMyClasses();
+        await LoadAvailable();
+        isLoading = false;
+    }
+
+    private async Task<string?> GetTeacherSchoolIdAsync()
+    {
+        try
+        {
+            var t = await Http.GetFromJsonAsync<TeacherInfo>($"{ApiConfig.BaseUrl}api/TeacherSubject/teacher-info/{teacherId}");
+            return t?.SchoolId;
+        }
+        catch { return null; }
+    }
+
+    private async Task LoadMyClasses()
+    {
+        if (string.IsNullOrEmpty(teacherId)) return;
+        try
+        {
+            var list = await Http.GetFromJsonAsync<List<ClassOffering>>($"{ApiConfig.BaseUrl}api/ClassOffering/teacher/{teacherId}");
+            myClasses = list ?? new List<ClassOffering>();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = "Failed to load my classes: " + ex.Message;
+        }
+    }
+
+    private async Task LoadAvailable()
+    {
+        try
+        {
+            var q = string.IsNullOrEmpty(schoolId) ? "" : $"?schoolId={Uri.EscapeDataString(schoolId)}";
+            var list = await Http.GetFromJsonAsync<List<ClassOffering>>($"{ApiConfig.BaseUrl}api/ClassOffering/available{q}");
+            availableClasses = list ?? new List<ClassOffering>();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = "Failed to load available: " + ex.Message;
+        }
+    }
+
+    private async Task AssignMe(ClassOffering c)
+    {
+        if (string.IsNullOrEmpty(teacherId)) return;
+        isAssigning = true;
+        errorMessage = "";
+        successMessage = "";
+        try
+        {
+            var response = await Http.PutAsJsonAsync($"{ApiConfig.BaseUrl}api/ClassOffering/{c.ClassOfferingId}/assign", new { TeacherId = teacherId });
+            if (response.IsSuccessStatusCode)
+            {
+                successMessage = "You are now assigned to this class.";
+                await LoadMyClasses();
+                await LoadAvailable();
+            }
+            else
+                errorMessage = "Failed to assign.";
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+        isAssigning = false;
+        StateHasChanged();
+    }
+}

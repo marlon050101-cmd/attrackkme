@@ -40,6 +40,9 @@ namespace AttrackSharedClass.Models
         public string Gender { get; set; } = string.Empty;
         
         public string? QRImage { get; set; }
+
+        /// <summary>TeacherId of the GuidanceCounselor (advisor) assigned to this student.</summary>
+        public string? AdvisorId { get; set; }
         
         public DateTime CreatedAt { get; set; } = DateTime.Now;
         

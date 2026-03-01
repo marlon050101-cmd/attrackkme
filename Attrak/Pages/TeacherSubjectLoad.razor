@@ -514,6 +514,17 @@
                     <button type="button" class="btn-close" @onclick="HideSectionSelectionModal"></button>
                 </div>
                 <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Advisor (optional)</label>
+                        <InputSelect class="form-select" @bind-Value="selectedAdvisorIdForAssignment">
+                            <option value="">-- No advisor --</option>
+                            @foreach (var adv in advisorsBySchool)
+                            {
+                                <option value="@adv.TeacherId">@adv.FullName</option>
+                            }
+                        </InputSelect>
+                        <small class="text-muted">Select the advisor for this class (Grade level, Section, and Strand are from the subject).</small>
+                    </div>
                     @if (isLoadingAvailableSections)
                     {
                         <div class="text-center py-4">
@@ -664,6 +675,8 @@
     private bool isLoadingAvailableSections = false;
     private TeacherSubjectAssignment? selectedSubjectForAssignment;
     private List<SubjectSectionInfo> availableSectionsForAssignment = new();
+    private List<AdvisorInfo> advisorsBySchool = new();
+    private string? selectedAdvisorIdForAssignment = null;
 
     // Confirmation Modal
     private bool showConfirmationModal = false;
@@ -1272,15 +1285,22 @@
 
         try
         {
-            // Get teacher's school name
+            // Get teacher's school name and load advisors
             var teacher = teachers.FirstOrDefault(t => t.TeacherId == selectedTeacherId);
             if (teacher == null)
             {
                 Console.WriteLine($"Teacher not found in teachers list. SelectedTeacherId: {selectedTeacherId}");
-                Console.WriteLine($"Available teachers: {string.Join(", ", teachers.Select(t => $"{t.TeacherId}: {t.FullName}"))}");
                 errorMessage = $"Teacher information not found for ID: {selectedTeacherId}. Please refresh the page.";
                 return;
             }
+            if (!string.IsNullOrEmpty(teacher.SchoolId))
+            {
+                var advisorsResponse = await Http.GetFromJsonAsync<List<AdvisorInfo>>($"{ApiConfig.BaseUrl}api/guidance/advisors-by-school/{teacher.SchoolId}");
+                advisorsBySchool = advisorsResponse ?? new List<AdvisorInfo>();
+            }
+            else
+                advisorsBySchool = new List<AdvisorInfo>();
+            selectedAdvisorIdForAssignment = null;
 
             // Load available sections for this subject's grade level and teacher's school
             var response = await Http.GetFromJsonAsync<List<SubjectSectionInfo>>($"{ApiConfig.BaseUrl}api/teachersubject/available-sections/{subject.SubjectId}/{teacher.SchoolName}");
@@ -1334,7 +1354,10 @@
                 SubjectId = selectedSubjectForAssignment.SubjectId,
                 ScheduleStart = selectedSubjectForAssignment.ScheduleStart,
                 ScheduleEnd = selectedSubjectForAssignment.ScheduleEnd,
-                Section = section.SectionName
+                Section = section.SectionName,
+                AdvisorId = selectedAdvisorIdForAssignment,
+                GradeLevel = selectedSubjectForAssignment.GradeLevel,
+                Strand = selectedSubjectForAssignment.Strand
             };
 
             var response = await Http.PostAsJsonAsync($"{ApiConfig.BaseUrl}api/teachersubject/assign", request);

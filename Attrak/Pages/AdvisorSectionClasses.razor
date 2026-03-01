@@ -1,0 +1,311 @@
+@page "/advisor-section-classes"
+@using AttrackSharedClass.Models
+@using Attrak.Services
+@inject HttpClient Http
+@inject IAuthService AuthService
+@layout Layoutall
+<PageTitle>My Section Classes</PageTitle>
+
+<div class="container-fluid">
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">
+                <i class="fas fa-chalkboard me-2"></i>
+                My Section Classes
+            </h3>
+            <p class="text-muted mb-0">Set subjects and class time for your section. Subject teachers will see these and pick which to teach.</p>
+        </div>
+        <div class="card-body">
+            @if (!string.IsNullOrEmpty(errorMessage))
+            {
+                <div class="alert alert-danger">@errorMessage</div>
+            }
+            @if (!string.IsNullOrEmpty(successMessage))
+            {
+                <div class="alert alert-success">@successMessage</div>
+            }
+
+            <div class="mb-3">
+                <button class="btn btn-primary" @onclick="ShowAddModal" disabled="@IsAddDisabled">
+                    <i class="fas fa-plus me-1"></i>Add subject & class time
+                </button>
+            </div>
+
+            @if (isLoading)
+            {
+                <p class="text-muted">Loading...</p>
+            }
+            else if (!classes.Any())
+            {
+                <p class="text-muted">No classes yet. Add a subject and class time for your section.</p>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Subject</th>
+                                <th>Grade</th>
+                                <th>Section</th>
+                                <th>Strand</th>
+                                <th>Time</th>
+                                <th>Assigned teacher</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var c in classes)
+                            {
+                                <tr>
+                                    <td>@c.SubjectName</td>
+                                    <td>@c.GradeLevel</td>
+                                    <td>@c.Section</td>
+                                    <td>@(c.Strand ?? "-")</td>
+                                    <td>@c.ScheduleStart.ToString("hh\\:mm") - @c.ScheduleEnd.ToString("hh\\:mm")</td>
+                                    <td>@(c.TeacherName ?? "—")</td>
+                                    <td>
+                                        <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteClass(c)" disabled="@isDeleting">Remove</button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@if (showAddModal)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Add subject & class time</h5>
+                    <button type="button" class="btn-close" @onclick="HideAddModal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row mb-2">
+                        <div class="col-md-4">
+                            <label class="form-label">Grade level</label>
+                            <select class="form-select" @bind="newGrade" @bind:after="LoadSubjectsForGrade">
+                                @for (var i = 7; i <= 12; i++)
+                                {
+                                    <option value="@i">Grade @i</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Section</label>
+                            <input type="text" class="form-control" @bind="newSection" placeholder="e.g. A" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Strand (Grade 11–12)</label>
+                            <select class="form-select" @bind="newStrand" @bind:after="LoadSubjectsForGrade">
+                                <option value="">—</option>
+                                <option value="ABM">ABM</option>
+                                <option value="HUMSS">HUMSS</option>
+                                <option value="STEM">STEM</option>
+                                <option value="GAS">GAS</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="row mb-2">
+                        <div class="col-md-6">
+                            <label class="form-label">Subject</label>
+                            <select class="form-select" @bind="newSubjectId">
+                                <option value="">-- Select subject --</option>
+                                @foreach (var sub in subjectsForGrade)
+                                {
+                                    <option value="@sub.SubjectId">@sub.SubjectName</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Start time</label>
+                            <input type="time" class="form-control" value="@newStartTime" @onchange="OnStartTimeChanged" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">End time</label>
+                            <input type="time" class="form-control" value="@newEndTime" @onchange="OnEndTimeChanged" />
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="HideAddModal">Cancel</button>
+                    <button type="button" class="btn btn-primary" @onclick="AddClass" disabled="@isSaving">
+                        @if (isSaving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                        Add class
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private string? advisorId;
+    private bool IsAddDisabled => string.IsNullOrEmpty(advisorId);
+    private List<ClassOffering> classes = new();
+    private List<TeacherSubjectAssignment> subjectsForGrade = new();
+    private bool isLoading = true;
+    private bool isSaving = false;
+    private bool isDeleting = false;
+    private string errorMessage = "";
+    private string successMessage = "";
+
+    private bool showAddModal = false;
+    private int newGrade = 11;
+    private string newSection = "A";
+    private string? newStrand = "";
+    private string? newSubjectId = "";
+    private string newStartTime = "07:30";
+    private string newEndTime = "08:30";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var user = await AuthService.GetCurrentUserAsync();
+        if (user?.UserType != UserType.Advisor && user?.UserType != UserType.GuidanceCounselor)
+        {
+            errorMessage = "Access denied. Advisor only.";
+            isLoading = false;
+            return;
+        }
+        advisorId = user.TeacherId;
+        if (string.IsNullOrEmpty(advisorId))
+        {
+            errorMessage = "Advisor profile not found.";
+            isLoading = false;
+            return;
+        }
+        await LoadClasses();
+        await LoadSubjectsForGrade();
+        isLoading = false;
+    }
+
+    private async Task LoadClasses()
+    {
+        if (string.IsNullOrEmpty(advisorId)) return;
+        try
+        {
+            var list = await Http.GetFromJsonAsync<List<ClassOffering>>($"{ApiConfig.BaseUrl}api/ClassOffering/advisor/{advisorId}");
+            classes = list ?? new List<ClassOffering>();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = "Failed to load classes: " + ex.Message;
+        }
+    }
+
+    private async Task LoadSubjectsForGrade()
+    {
+        try
+        {
+            var strandParam = string.IsNullOrEmpty(newStrand) ? "" : $"&strand={Uri.EscapeDataString(newStrand)}";
+            var list = await Http.GetFromJsonAsync<List<TeacherSubjectAssignment>>($"{ApiConfig.BaseUrl}api/ClassOffering/subjects-for-grade?gradeLevel={newGrade}{strandParam}");
+            subjectsForGrade = list ?? new List<TeacherSubjectAssignment>();
+            if (string.IsNullOrEmpty(newSubjectId) && subjectsForGrade.Any())
+                newSubjectId = subjectsForGrade[0].SubjectId;
+        }
+        catch
+        {
+            subjectsForGrade = new List<TeacherSubjectAssignment>();
+        }
+    }
+
+    private void ShowAddModal()
+    {
+        newGrade = 11;
+        newSection = "A";
+        newStrand = "";
+        newSubjectId = "";
+        newStartTime = "07:30";
+        newEndTime = "08:30";
+        showAddModal = true;
+    }
+
+    private void HideAddModal()
+    {
+        showAddModal = false;
+    }
+
+    private void OnStartTimeChanged(ChangeEventArgs e)
+    {
+        var v = e.Value?.ToString();
+        if (!string.IsNullOrEmpty(v)) newStartTime = v;
+    }
+
+    private void OnEndTimeChanged(ChangeEventArgs e)
+    {
+        var v = e.Value?.ToString();
+        if (!string.IsNullOrEmpty(v)) newEndTime = v;
+    }
+
+    private async Task AddClass()
+    {
+        if (string.IsNullOrEmpty(advisorId) || string.IsNullOrEmpty(newSubjectId)) return;
+        if (!TimeSpan.TryParse(newStartTime, out var start) || !TimeSpan.TryParse(newEndTime, out var end) || end <= start)
+        {
+            errorMessage = "Invalid time. End must be after start.";
+            return;
+        }
+        isSaving = true;
+        errorMessage = "";
+        successMessage = "";
+        try
+        {
+            var request = new CreateClassOfferingRequest
+            {
+                AdvisorId = advisorId,
+                SubjectId = newSubjectId,
+                GradeLevel = newGrade,
+                Section = newSection,
+                Strand = string.IsNullOrEmpty(newStrand) ? null : newStrand,
+                ScheduleStart = start,
+                ScheduleEnd = end
+            };
+            var response = await Http.PostAsJsonAsync($"{ApiConfig.BaseUrl}api/ClassOffering", request);
+            if (response.IsSuccessStatusCode)
+            {
+                successMessage = "Class added. Subject teachers can now pick this class.";
+                await LoadClasses();
+                HideAddModal();
+            }
+            else
+            {
+                errorMessage = "Failed to add class.";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+        isSaving = false;
+        StateHasChanged();
+    }
+
+    private async Task DeleteClass(ClassOffering c)
+    {
+        if (string.IsNullOrEmpty(advisorId)) return;
+        isDeleting = true;
+        try
+        {
+            var response = await Http.DeleteAsync($"{ApiConfig.BaseUrl}api/ClassOffering/{c.ClassOfferingId}?advisorId={Uri.EscapeDataString(advisorId)}");
+            if (response.IsSuccessStatusCode)
+            {
+                successMessage = "Class removed.";
+                await LoadClasses();
+            }
+            else
+                errorMessage = "Failed to remove.";
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+        isDeleting = false;
+        StateHasChanged();
+    }
+}

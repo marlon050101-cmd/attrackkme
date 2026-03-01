@@ -33,12 +33,15 @@ namespace ServerAtrrak.Services
                         s.GradeLevel,
                         s.Strand,
                         ts.Section,
-                        TIME_FORMAT(s.ScheduleStart, '%H:%i:%s') as ScheduleStart,
-                        TIME_FORMAT(s.ScheduleEnd, '%H:%i:%s') as ScheduleEnd
+                        ts.AdvisorId,
+                        adv.FullName as AdvisorName,
+                        TIME_FORMAT(ts.ScheduleStart, '%H:%i:%s') as ScheduleStart,
+                        TIME_FORMAT(ts.ScheduleEnd, '%H:%i:%s') as ScheduleEnd
                     FROM teachersubject ts
                     INNER JOIN subject s ON ts.SubjectId = s.SubjectId
+                    LEFT JOIN teacher adv ON ts.AdvisorId = adv.TeacherId
                     WHERE ts.TeacherId = @TeacherId
-                    ORDER BY s.GradeLevel, s.Strand, s.ScheduleStart";
+                    ORDER BY s.GradeLevel, s.Strand, COALESCE(ts.ScheduleStart, '00:00:00')";
 
                 using var command = new MySqlCommand(query, connection);
                 command.Parameters.AddWithValue("@TeacherId", teacherId);
@@ -46,6 +49,8 @@ namespace ServerAtrrak.Services
                 using var reader = await command.ExecuteReaderAsync();
                 while (await reader.ReadAsync())
                 {
+                    var scheduleStartIdx = 9;
+                    var scheduleEndIdx = 10;
                     assignments.Add(new TeacherSubjectAssignment
                     {
                         TeacherSubjectId = reader.GetString(0),
@@ -55,9 +60,11 @@ namespace ServerAtrrak.Services
                         GradeLevel = reader.GetInt32(4),
                         Strand = reader.IsDBNull(5) ? null : reader.GetString(5),
                         Section = reader.IsDBNull(6) ? null : reader.GetString(6),
-                        ScheduleStart = TimeSpan.Parse(reader.GetString(7)),
-                        ScheduleEnd = TimeSpan.Parse(reader.GetString(8)),
-                        CreatedAt = DateTime.Now // Set default value since not in database
+                        AdvisorId = reader.IsDBNull(7) ? null : reader.GetString(7),
+                        AdvisorName = reader.IsDBNull(8) ? null : reader.GetString(8),
+                        ScheduleStart = reader.IsDBNull(scheduleStartIdx) ? TimeSpan.Zero : TimeSpan.Parse(reader.GetString(scheduleStartIdx)),
+                        ScheduleEnd = reader.IsDBNull(scheduleEndIdx) ? TimeSpan.Zero : TimeSpan.Parse(reader.GetString(scheduleEndIdx)),
+                        CreatedAt = DateTime.Now
                     });
                 }
 
@@ -88,9 +95,7 @@ namespace ServerAtrrak.Services
                         s.SubjectId,
                         s.SubjectName,
                         s.GradeLevel,
-                        s.Strand,
-                        TIME_FORMAT(s.ScheduleStart, '%H:%i:%s') as ScheduleStart,
-                        TIME_FORMAT(s.ScheduleEnd, '%H:%i:%s') as ScheduleEnd
+                        s.Strand
                     FROM subject s
                     WHERE s.SubjectId NOT IN (
                         SELECT DISTINCT ts.SubjectId 
@@ -117,7 +122,7 @@ namespace ServerAtrrak.Services
                     parameters.Add(new MySqlParameter("@SearchTerm", $"%{filter.SearchTerm}%"));
                 }
 
-                query += " ORDER BY s.GradeLevel, s.Strand, s.ScheduleStart";
+                query += " ORDER BY s.GradeLevel, s.Strand, s.SubjectName";
 
                 using var command = new MySqlCommand(query, connection);
                 command.Parameters.AddRange(parameters.ToArray());
@@ -131,8 +136,8 @@ namespace ServerAtrrak.Services
                         SubjectName = reader.GetString(1),
                         GradeLevel = reader.GetInt32(2),
                         Strand = reader.IsDBNull(3) ? null : reader.GetString(3),
-                        ScheduleStart = TimeSpan.Parse(reader.GetString(4)),
-                        ScheduleEnd = TimeSpan.Parse(reader.GetString(5))
+                        ScheduleStart = TimeSpan.Zero,
+                        ScheduleEnd = TimeSpan.Zero
                     });
                 }
 
@@ -183,54 +188,47 @@ namespace ServerAtrrak.Services
                     };
                 }
 
-                // Try to insert with Section column first, fallback to without if it doesn't exist
+                var teacherSubjectId = Guid.NewGuid().ToString();
+                // Insert with Section, AdvisorId, and Schedule (schedule stored in teachersubject, not subject)
                 try
                 {
                     var insertQuery = @"
-                        INSERT INTO teachersubject (TeacherSubjectId, TeacherId, SubjectId, Section)
-                        VALUES (@TeacherSubjectId, @TeacherId, @SubjectId, @Section)";
+                        INSERT INTO teachersubject (TeacherSubjectId, TeacherId, SubjectId, Section, AdvisorId, ScheduleStart, ScheduleEnd)
+                        VALUES (@TeacherSubjectId, @TeacherId, @SubjectId, @Section, @AdvisorId, @ScheduleStart, @ScheduleEnd)";
 
                     using var insertCommand = new MySqlCommand(insertQuery, connection);
-                    insertCommand.Parameters.AddWithValue("@TeacherSubjectId", Guid.NewGuid().ToString());
+                    insertCommand.Parameters.AddWithValue("@TeacherSubjectId", teacherSubjectId);
                     insertCommand.Parameters.AddWithValue("@TeacherId", request.TeacherId);
                     insertCommand.Parameters.AddWithValue("@SubjectId", request.SubjectId);
                     insertCommand.Parameters.AddWithValue("@Section", request.Section ?? "");
+                    insertCommand.Parameters.AddWithValue("@AdvisorId", string.IsNullOrEmpty(request.AdvisorId) ? (object)DBNull.Value : request.AdvisorId);
+                    insertCommand.Parameters.AddWithValue("@ScheduleStart", request.ScheduleStart != TimeSpan.Zero && request.ScheduleEnd != TimeSpan.Zero ? request.ScheduleStart : (object)DBNull.Value);
+                    insertCommand.Parameters.AddWithValue("@ScheduleEnd", request.ScheduleStart != TimeSpan.Zero && request.ScheduleEnd != TimeSpan.Zero ? request.ScheduleEnd : (object)DBNull.Value);
 
                     await insertCommand.ExecuteNonQueryAsync();
-                    _logger.LogInformation("Successfully assigned subject with section: {Section}", request.Section);
+                    _logger.LogInformation("Successfully assigned subject with section: {Section}, advisor: {AdvisorId}", request.Section, request.AdvisorId);
                 }
                 catch (MySqlException ex) when (ex.Number == 1054) // Column doesn't exist
                 {
-                    _logger.LogWarning("Section column doesn't exist, inserting without section. Please add Section column to TeacherSubject table.");
-                    
-                    // Fallback: insert without Section column
-                    var fallbackQuery = @"
-                        INSERT INTO teachersubject (TeacherSubjectId, TeacherId, SubjectId)
-                        VALUES (@TeacherSubjectId, @TeacherId, @SubjectId)";
-
-                    using var fallbackCommand = new MySqlCommand(fallbackQuery, connection);
-                    fallbackCommand.Parameters.AddWithValue("@TeacherSubjectId", Guid.NewGuid().ToString());
-                    fallbackCommand.Parameters.AddWithValue("@TeacherId", request.TeacherId);
-                    fallbackCommand.Parameters.AddWithValue("@SubjectId", request.SubjectId);
-
-                    await fallbackCommand.ExecuteNonQueryAsync();
-                    _logger.LogInformation("Successfully assigned subject without section column");
-                }
-
-                // Update subject schedule if provided
-                if (request.ScheduleStart != TimeSpan.Zero && request.ScheduleEnd != TimeSpan.Zero)
-                {
-                    var updateQuery = @"
-                        UPDATE subject 
-                        SET ScheduleStart = @ScheduleStart, ScheduleEnd = @ScheduleEnd 
-                        WHERE SubjectId = @SubjectId";
-
-                    using var updateCommand = new MySqlCommand(updateQuery, connection);
-                    updateCommand.Parameters.AddWithValue("@ScheduleStart", request.ScheduleStart);
-                    updateCommand.Parameters.AddWithValue("@ScheduleEnd", request.ScheduleEnd);
-                    updateCommand.Parameters.AddWithValue("@SubjectId", request.SubjectId);
-
-                    await updateCommand.ExecuteNonQueryAsync();
+                    var insertQuery = @"
+                        INSERT INTO teachersubject (TeacherSubjectId, TeacherId, SubjectId, Section, AdvisorId)
+                        VALUES (@TeacherSubjectId, @TeacherId, @SubjectId, @Section, @AdvisorId)";
+                    using var insertCommand = new MySqlCommand(insertQuery, connection);
+                    insertCommand.Parameters.AddWithValue("@TeacherSubjectId", teacherSubjectId);
+                    insertCommand.Parameters.AddWithValue("@TeacherId", request.TeacherId);
+                    insertCommand.Parameters.AddWithValue("@SubjectId", request.SubjectId);
+                    insertCommand.Parameters.AddWithValue("@Section", request.Section ?? "");
+                    insertCommand.Parameters.AddWithValue("@AdvisorId", string.IsNullOrEmpty(request.AdvisorId) ? (object)DBNull.Value : request.AdvisorId);
+                    await insertCommand.ExecuteNonQueryAsync();
+                    if (request.ScheduleStart != TimeSpan.Zero && request.ScheduleEnd != TimeSpan.Zero)
+                    {
+                        var updateQuery = "UPDATE teachersubject SET ScheduleStart = @ScheduleStart, ScheduleEnd = @ScheduleEnd WHERE TeacherSubjectId = @TeacherSubjectId";
+                        using var updateCommand = new MySqlCommand(updateQuery, connection);
+                        updateCommand.Parameters.AddWithValue("@ScheduleStart", request.ScheduleStart);
+                        updateCommand.Parameters.AddWithValue("@ScheduleEnd", request.ScheduleEnd);
+                        updateCommand.Parameters.AddWithValue("@TeacherSubjectId", teacherSubjectId);
+                        await updateCommand.ExecuteNonQueryAsync();
+                    }
                 }
 
                 _logger.LogInformation("Successfully assigned subject {SubjectId} to teacher {TeacherId}", request.SubjectId, request.TeacherId);
@@ -260,10 +258,9 @@ namespace ServerAtrrak.Services
                 await connection.OpenAsync();
 
                 var query = @"
-                    UPDATE subject s
-                    INNER JOIN teachersubject ts ON s.SubjectId = ts.SubjectId
-                    SET s.ScheduleStart = @ScheduleStart, s.ScheduleEnd = @ScheduleEnd
-                    WHERE ts.TeacherSubjectId = @TeacherSubjectId";
+                    UPDATE teachersubject
+                    SET ScheduleStart = @ScheduleStart, ScheduleEnd = @ScheduleEnd
+                    WHERE TeacherSubjectId = @TeacherSubjectId";
 
                 using var command = new MySqlCommand(query, connection);
                 command.Parameters.AddWithValue("@ScheduleStart", scheduleStart);
@@ -460,7 +457,7 @@ namespace ServerAtrrak.Services
                     FROM teacher t
                     INNER JOIN school s ON t.SchoolId = s.SchoolId
                     INNER JOIN user u ON t.TeacherId = u.TeacherId
-                    WHERE t.TeacherId = @TeacherId AND u.UserType = 'Teacher' AND u.IsActive = TRUE";
+                    WHERE t.TeacherId = @TeacherId AND u.UserType = 'SubjectTeacher' AND u.IsActive = TRUE";
 
                 using var command = new MySqlCommand(query, connection);
                 command.Parameters.AddWithValue("@TeacherId", teacherId);
@@ -516,28 +513,16 @@ namespace ServerAtrrak.Services
                     };
                 }
 
-                // Validate that end time is after start time
-                if (request.ScheduleEnd <= request.ScheduleStart)
-                {
-                    return new TeacherSubjectResponse
-                    {
-                        Success = false,
-                        Message = "End time must be after start time"
-                    };
-                }
-
-                // Insert new subject
+                // Insert new subject (no schedule in subject table; schedule is in class_offering or teachersubject)
                 var insertQuery = @"
-                    INSERT INTO subject (SubjectId, SubjectName, GradeLevel, Strand, ScheduleStart, ScheduleEnd)
-                    VALUES (@SubjectId, @SubjectName, @GradeLevel, @Strand, @ScheduleStart, @ScheduleEnd)";
+                    INSERT INTO subject (SubjectId, SubjectName, GradeLevel, Strand)
+                    VALUES (@SubjectId, @SubjectName, @GradeLevel, @Strand)";
 
                 using var insertCommand = new MySqlCommand(insertQuery, connection);
                 insertCommand.Parameters.AddWithValue("@SubjectId", Guid.NewGuid().ToString());
                 insertCommand.Parameters.AddWithValue("@SubjectName", request.SubjectName);
                 insertCommand.Parameters.AddWithValue("@GradeLevel", request.GradeLevel);
                 insertCommand.Parameters.AddWithValue("@Strand", request.Strand ?? (object)DBNull.Value);
-                insertCommand.Parameters.AddWithValue("@ScheduleStart", request.ScheduleStart);
-                insertCommand.Parameters.AddWithValue("@ScheduleEnd", request.ScheduleEnd);
 
                 await insertCommand.ExecuteNonQueryAsync();
 
@@ -598,15 +583,15 @@ namespace ServerAtrrak.Services
                     }
                 }
 
-                // Get subjects for the student's grade level and strand that have assigned teachers
+                // Get subjects for the student's grade level and strand that have assigned teachers (schedule from teachersubject)
                 var subjectsQuery = @"
                     SELECT 
                         s.SubjectId,
                         s.SubjectName,
                         s.GradeLevel,
                         s.Strand,
-                        TIME_FORMAT(s.ScheduleStart, '%H:%i:%s') as ScheduleStart,
-                        TIME_FORMAT(s.ScheduleEnd, '%H:%i:%s') as ScheduleEnd,
+                        TIME_FORMAT(ts.ScheduleStart, '%H:%i:%s') as ScheduleStart,
+                        TIME_FORMAT(ts.ScheduleEnd, '%H:%i:%s') as ScheduleEnd,
                         t.FullName as TeacherName,
                         t.TeacherId,
                         1 as HasTeacher
@@ -615,7 +600,7 @@ namespace ServerAtrrak.Services
                     INNER JOIN teacher t ON ts.TeacherId = t.TeacherId
                     WHERE s.GradeLevel = @GradeLevel
                     AND (s.Strand = @Strand OR (s.Strand IS NULL AND @Strand IS NULL))
-                    ORDER BY s.ScheduleStart, s.SubjectName";
+                    ORDER BY COALESCE(ts.ScheduleStart, '00:00:00'), s.SubjectName";
 
                 using var command = new MySqlCommand(subjectsQuery, connection);
                 command.Parameters.AddWithValue("@GradeLevel", studentGradeLevel);
@@ -630,8 +615,8 @@ namespace ServerAtrrak.Services
                         SubjectName = reader.GetString(1),
                         GradeLevel = reader.GetInt32(2),
                         Strand = reader.IsDBNull(3) ? null : reader.GetString(3),
-                        ScheduleStart = TimeSpan.Parse(reader.GetString(4)),
-                        ScheduleEnd = TimeSpan.Parse(reader.GetString(5)),
+                        ScheduleStart = reader.IsDBNull(4) ? TimeSpan.Zero : TimeSpan.Parse(reader.GetString(4)),
+                        ScheduleEnd = reader.IsDBNull(5) ? TimeSpan.Zero : TimeSpan.Parse(reader.GetString(5)),
                         TeacherName = reader.IsDBNull(6) ? null : reader.GetString(6),
                         TeacherId = reader.IsDBNull(7) ? null : reader.GetString(7),
                         HasTeacher = reader.GetInt32(8) == 1
@@ -816,7 +801,7 @@ namespace ServerAtrrak.Services
                         NOW()
                     FROM user u
                     LEFT JOIN teacher t ON u.TeacherId = t.TeacherId
-                    WHERE u.UserType = 2 AND t.TeacherId IS NULL";
+                    WHERE u.UserType = 'SubjectTeacher' AND t.TeacherId IS NULL";
                 
                 using var createTeachersCommand = new MySqlCommand(createTeachersQuery, connection);
                 createTeachersCommand.Parameters.AddWithValue("@SchoolId", defaultSchoolId);
@@ -830,9 +815,9 @@ namespace ServerAtrrak.Services
                 // Step 4: Update user records to have correct TeacherId
                 var updateUsersQuery = @"
                     UPDATE user u
-                    INNER JOIN teacher t ON u.Email = t.Email AND u.UserType = 2
+                    INNER JOIN teacher t ON u.Email = t.Email AND u.UserType = 'SubjectTeacher'
                     SET u.TeacherId = t.TeacherId
-                    WHERE u.UserType = 2 AND u.TeacherId IS NULL";
+                    WHERE u.UserType = 'SubjectTeacher' AND u.TeacherId IS NULL";
                 
                 using var updateUsersCommand = new MySqlCommand(updateUsersQuery, connection);
                 var userRowsAffected = await updateUsersCommand.ExecuteNonQueryAsync();
@@ -900,74 +885,72 @@ namespace ServerAtrrak.Services
                 {
                     _logger.LogInformation("Subject table is empty. Initializing with sample data...");
 
-                    // Insert sample subjects for different grades
+                    // Insert sample subjects (subject table has no schedule; schedule is in class_offering/teachersubject)
                     var sampleSubjects = new[]
                     {
-                        ("English 7", 7, null, "07:30:00", "08:30:00"),
-                        ("Mathematics 7", 7, null, "08:30:00", "09:30:00"),
-                        ("Science 7", 7, null, "09:30:00", "10:30:00"),
-                        ("Filipino 7", 7, null, "10:30:00", "11:30:00"),
-                        ("Araling Panlipunan 7", 7, null, "11:30:00", "12:30:00"),
-                        ("English 8", 8, null, "07:30:00", "08:30:00"),
-                        ("Mathematics 8", 8, null, "08:30:00", "09:30:00"),
-                        ("Science 8", 8, null, "09:30:00", "10:30:00"),
-                        ("Filipino 8", 8, null, "10:30:00", "11:30:00"),
-                        ("Araling Panlipunan 8", 8, null, "11:30:00", "12:30:00"),
-                        ("English 9", 9, null, "07:30:00", "08:30:00"),
-                        ("Mathematics 9", 9, null, "08:30:00", "09:30:00"),
-                        ("Science 9", 9, null, "09:30:00", "10:30:00"),
-                        ("Filipino 9", 9, null, "10:30:00", "11:30:00"),
-                        ("Araling Panlipunan 9", 9, null, "11:30:00", "12:30:00"),
-                        ("English 10", 10, null, "07:30:00", "08:30:00"),
-                        ("Mathematics 10", 10, null, "08:30:00", "09:30:00"),
-                        ("Science 10", 10, null, "09:30:00", "10:30:00"),
-                        ("Filipino 10", 10, null, "10:30:00", "11:30:00"),
-                        ("Araling Panlipunan 10", 10, null, "11:30:00", "12:30:00"),
-                        ("Oral Communication", 11, "ABM", "07:30:00", "08:30:00"),
-                        ("General Mathematics", 11, "ABM", "08:30:00", "09:30:00"),
-                        ("Earth and Life Science", 11, "ABM", "09:30:00", "10:30:00"),
-                        ("Personal Development", 11, "ABM", "10:30:00", "11:30:00"),
-                        ("Fundamentals of Accountancy, Business and Management 1", 11, "ABM", "11:30:00", "12:30:00"),
-                        ("Oral Communication", 11, "HUMSS", "07:30:00", "08:30:00"),
-                        ("General Mathematics", 11, "HUMSS", "08:30:00", "09:30:00"),
-                        ("Earth and Life Science", 11, "HUMSS", "09:30:00", "10:30:00"),
-                        ("Personal Development", 11, "HUMSS", "10:30:00", "11:30:00"),
-                        ("Introduction to World Religions and Belief Systems", 11, "HUMSS", "11:30:00", "12:30:00"),
-                        ("Oral Communication", 11, "STEM", "07:30:00", "08:30:00"),
-                        ("General Mathematics", 11, "STEM", "08:30:00", "09:30:00"),
-                        ("Earth and Life Science", 11, "STEM", "09:30:00", "10:30:00"),
-                        ("Personal Development", 11, "STEM", "10:30:00", "11:30:00"),
-                        ("Pre-Calculus", 11, "STEM", "11:30:00", "12:30:00"),
-                        ("Reading and Writing Skills", 12, "ABM", "07:30:00", "08:30:00"),
-                        ("Statistics and Probability", 12, "ABM", "08:30:00", "09:30:00"),
-                        ("Physical Science", 12, "ABM", "09:30:00", "10:30:00"),
-                        ("Fundamentals of Accountancy, Business and Management 2", 12, "ABM", "10:30:00", "11:30:00"),
-                        ("Business Finance", 12, "ABM", "11:30:00", "12:30:00"),
-                        ("Reading and Writing Skills", 12, "HUMSS", "07:30:00", "08:30:00"),
-                        ("Statistics and Probability", 12, "HUMSS", "08:30:00", "09:30:00"),
-                        ("Physical Science", 12, "HUMSS", "09:30:00", "10:30:00"),
-                        ("Creative Nonfiction", 12, "HUMSS", "10:30:00", "11:30:00"),
-                        ("Trends, Networks, and Critical Thinking in the 21st Century", 12, "HUMSS", "11:30:00", "12:30:00"),
-                        ("Reading and Writing Skills", 12, "STEM", "07:30:00", "08:30:00"),
-                        ("Statistics and Probability", 12, "STEM", "08:30:00", "09:30:00"),
-                        ("Physical Science", 12, "STEM", "09:30:00", "10:30:00"),
-                        ("Basic Calculus", 12, "STEM", "10:30:00", "11:30:00"),
-                        ("General Physics 2", 12, "STEM", "11:30:00", "12:30:00")
+                        ("English 7", 7, null),
+                        ("Mathematics 7", 7, null),
+                        ("Science 7", 7, null),
+                        ("Filipino 7", 7, null),
+                        ("Araling Panlipunan 7", 7, null),
+                        ("English 8", 8, null),
+                        ("Mathematics 8", 8, null),
+                        ("Science 8", 8, null),
+                        ("Filipino 8", 8, null),
+                        ("Araling Panlipunan 8", 8, null),
+                        ("English 9", 9, null),
+                        ("Mathematics 9", 9, null),
+                        ("Science 9", 9, null),
+                        ("Filipino 9", 9, null),
+                        ("Araling Panlipunan 9", 9, null),
+                        ("English 10", 10, null),
+                        ("Mathematics 10", 10, null),
+                        ("Science 10", 10, null),
+                        ("Filipino 10", 10, null),
+                        ("Araling Panlipunan 10", 10, null),
+                        ("Oral Communication", 11, "ABM"),
+                        ("General Mathematics", 11, "ABM"),
+                        ("Earth and Life Science", 11, "ABM"),
+                        ("Personal Development", 11, "ABM"),
+                        ("Fundamentals of Accountancy, Business and Management 1", 11, "ABM"),
+                        ("Oral Communication", 11, "HUMSS"),
+                        ("General Mathematics", 11, "HUMSS"),
+                        ("Earth and Life Science", 11, "HUMSS"),
+                        ("Personal Development", 11, "HUMSS"),
+                        ("Introduction to World Religions and Belief Systems", 11, "HUMSS"),
+                        ("Oral Communication", 11, "STEM"),
+                        ("General Mathematics", 11, "STEM"),
+                        ("Earth and Life Science", 11, "STEM"),
+                        ("Personal Development", 11, "STEM"),
+                        ("Pre-Calculus", 11, "STEM"),
+                        ("Reading and Writing Skills", 12, "ABM"),
+                        ("Statistics and Probability", 12, "ABM"),
+                        ("Physical Science", 12, "ABM"),
+                        ("Fundamentals of Accountancy, Business and Management 2", 12, "ABM"),
+                        ("Business Finance", 12, "ABM"),
+                        ("Reading and Writing Skills", 12, "HUMSS"),
+                        ("Statistics and Probability", 12, "HUMSS"),
+                        ("Physical Science", 12, "HUMSS"),
+                        ("Creative Nonfiction", 12, "HUMSS"),
+                        ("Trends, Networks, and Critical Thinking in the 21st Century", 12, "HUMSS"),
+                        ("Reading and Writing Skills", 12, "STEM"),
+                        ("Statistics and Probability", 12, "STEM"),
+                        ("Physical Science", 12, "STEM"),
+                        ("Basic Calculus", 12, "STEM"),
+                        ("General Physics 2", 12, "STEM")
                     };
 
                     var insertQuery = @"
-                        INSERT INTO subject (SubjectId, SubjectName, GradeLevel, Strand, ScheduleStart, ScheduleEnd)
-                        VALUES (@SubjectId, @SubjectName, @GradeLevel, @Strand, @ScheduleStart, @ScheduleEnd)";
+                        INSERT INTO subject (SubjectId, SubjectName, GradeLevel, Strand)
+                        VALUES (@SubjectId, @SubjectName, @GradeLevel, @Strand)";
 
-                    foreach (var (subjectName, gradeLevel, strand, scheduleStart, scheduleEnd) in sampleSubjects)
+                    foreach (var (subjectName, gradeLevel, strand) in sampleSubjects)
                     {
                         using var insertCommand = new MySqlCommand(insertQuery, connection);
                         insertCommand.Parameters.AddWithValue("@SubjectId", Guid.NewGuid().ToString());
                         insertCommand.Parameters.AddWithValue("@SubjectName", subjectName);
                         insertCommand.Parameters.AddWithValue("@GradeLevel", gradeLevel);
                         insertCommand.Parameters.AddWithValue("@Strand", strand);
-                        insertCommand.Parameters.AddWithValue("@ScheduleStart", scheduleStart);
-                        insertCommand.Parameters.AddWithValue("@ScheduleEnd", scheduleEnd);
 
                         await insertCommand.ExecuteNonQueryAsync();
                     }

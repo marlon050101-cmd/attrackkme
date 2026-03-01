@@ -44,6 +44,48 @@ namespace NewscannerMAUI.Services
             _logger = logger;
         }
 
+        /// <summary>
+        /// Manually trigger a modem rescan. This allows the operator to
+        /// move the GSM device to another USB/COM port without restarting
+        /// the entire app.
+        /// </summary>
+        public async Task<string?> RefreshModemAsync()
+        {
+            var port = await _gsmService.RefreshAndDetectModemAsync();
+
+            if (port != null)
+            {
+                AddHubLog($"GSM Modem re-detected on {port}", "SUCCESS");
+            }
+            else
+            {
+                AddHubLog("GSM Modem not detected on any COM port.", "WARN");
+            }
+
+            OnStatusChanged?.Invoke();
+            return port;
+        }
+
+        /// <summary>
+        /// Force an immediate check to the server (pending-sms endpoint)
+        /// using the existing SmsHubService pipeline. Helpful when the
+        /// server was temporarily slow or unreachable and the user wants
+        /// to retry without waiting for the next automatic poll.
+        /// </summary>
+        public async Task ManualRefreshAsync()
+        {
+            if (!_isRunning)
+            {
+                AddHubLog("Manual refresh ignored because service is stopped.", "WARN");
+                OnStatusChanged?.Invoke();
+                return;
+            }
+
+            AddHubLog("Manual server refresh requested...", "INFO");
+            var token = _cts?.Token ?? CancellationToken.None;
+            await DispatchPendingOnceAsync("manual", token);
+        }
+
         private void AddHubLog(string message, string type = "INFO")
         {
             var entry = new HubLogEntry { Message = message, Type = type, Timestamp = DateTime.Now };
@@ -261,6 +303,12 @@ namespace NewscannerMAUI.Services
                         AddHubLog($"Failed to mark ID {item.Id}: {ex.Message}", "ERROR");
                     }
                 }
+            }
+            catch (Exception ex)
+            {
+                LastPendingFetchStatus = $"EX ({reason}): {ex.Message}";
+                OnStatusChanged?.Invoke();
+                AddHubLog($"Dispatch error ({reason}): {ex.Message}", "ERROR");
             }
             finally
             {

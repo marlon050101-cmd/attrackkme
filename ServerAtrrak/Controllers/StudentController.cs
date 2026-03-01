@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using AttrackSharedClass.Models;
 using MySql.Data.MySqlClient;
 using System.Data;
+using ServerAtrrak.Data;
 
 namespace ServerAtrrak.Controllers
 {
@@ -10,11 +11,13 @@ namespace ServerAtrrak.Controllers
     public class StudentController : ControllerBase
     {
         private readonly IConfiguration _configuration;
+        private readonly Dbconnection _dbConnection;
         private readonly ILogger<StudentController> _logger;
 
-        public StudentController(IConfiguration configuration, ILogger<StudentController> logger)
+        public StudentController(IConfiguration configuration, Dbconnection dbConnection, ILogger<StudentController> logger)
         {
             _configuration = configuration;
+            _dbConnection = dbConnection;
             _logger = logger;
         }
 
@@ -28,7 +31,7 @@ namespace ServerAtrrak.Controllers
                 await connection.OpenAsync();
 
                 var query = @"
-                    SELECT StudentId, FullName, Email, GradeLevel, Section, Strand, SchoolId, ParentsNumber, QRImage, CreatedAt, UpdatedAt, IsActive
+                    SELECT StudentId, FullName, Email, GradeLevel, Section, Strand, SchoolId, ParentsNumber, QRImage, AdvisorId, CreatedAt, UpdatedAt, IsActive
                     FROM student 
                     WHERE StudentId = @StudentId AND IsActive = 1";
 
@@ -50,6 +53,7 @@ namespace ServerAtrrak.Controllers
                         SchoolId = reader.GetString("SchoolId"),
                         ParentsNumber = reader.GetString("ParentsNumber"),
                         QRImage = reader.IsDBNull("QRImage") ? null : reader.GetString("QRImage"),
+                        AdvisorId = reader.IsDBNull("AdvisorId") ? null : reader.GetString("AdvisorId"),
                         CreatedAt = reader.GetDateTime("CreatedAt"),
                         UpdatedAt = reader.GetDateTime("UpdatedAt"),
                         IsActive = reader.GetBoolean("IsActive")
@@ -77,7 +81,7 @@ namespace ServerAtrrak.Controllers
                 await connection.OpenAsync();
 
                 var query = @"
-                    SELECT StudentId, FullName, Email, GradeLevel, Section, Strand, SchoolId, ParentsNumber, QRImage, CreatedAt, UpdatedAt, IsActive
+                    SELECT StudentId, FullName, Email, GradeLevel, Section, Strand, SchoolId, ParentsNumber, QRImage, AdvisorId, CreatedAt, UpdatedAt, IsActive
                     FROM student 
                     WHERE (FullName LIKE @SearchName OR StudentId LIKE @SearchName) AND IsActive = 1
                     ORDER BY FullName
@@ -102,6 +106,7 @@ namespace ServerAtrrak.Controllers
                         SchoolId = reader.GetString("SchoolId"),
                         ParentsNumber = reader.GetString("ParentsNumber"),
                         QRImage = reader.IsDBNull("QRImage") ? null : reader.GetString("QRImage"),
+                        AdvisorId = reader.IsDBNull("AdvisorId") ? null : reader.GetString("AdvisorId"),
                         CreatedAt = reader.GetDateTime("CreatedAt"),
                         UpdatedAt = reader.GetDateTime("UpdatedAt"),
                         IsActive = reader.GetBoolean("IsActive")
@@ -116,6 +121,36 @@ namespace ServerAtrrak.Controllers
                 return StatusCode(500, "Error searching students");
             }
         }
+
+        [HttpPut("{studentId}/advisor")]
+        public async Task<IActionResult> SetStudentAdvisor(string studentId, [FromBody] SetAdvisorRequest request)
+        {
+            if (request == null || string.IsNullOrEmpty(studentId))
+                return BadRequest();
+            try
+            {
+                using var connection = new MySqlConnection(_dbConnection.GetConnection());
+                await connection.OpenAsync();
+                var sql = "UPDATE student SET AdvisorId = @AdvisorId, UpdatedAt = NOW() WHERE StudentId = @StudentId AND IsActive = 1";
+                using var cmd = new MySqlCommand(sql, connection);
+                cmd.Parameters.AddWithValue("@AdvisorId", string.IsNullOrEmpty(request.AdvisorId) ? (object)DBNull.Value : request.AdvisorId);
+                cmd.Parameters.AddWithValue("@StudentId", studentId);
+                var rows = await cmd.ExecuteNonQueryAsync();
+                if (rows == 0)
+                    return NotFound("Student not found");
+                return Ok(new { success = true, message = "Advisor updated." });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error setting advisor for student {StudentId}", studentId);
+                return StatusCode(500, "Error updating advisor");
+            }
+        }
+    }
+
+    public class SetAdvisorRequest
+    {
+        public string? AdvisorId { get; set; }
     }
 }
 

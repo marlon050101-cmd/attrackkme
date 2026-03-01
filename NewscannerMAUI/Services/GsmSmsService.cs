@@ -16,6 +16,26 @@ namespace NewscannerMAUI.Services
             _logger = logger;
         }
 
+        /// <summary>
+        /// Clears the cached modem port so that the next detection
+        /// will probe all COM ports again. Use this if the USB modem
+        /// was unplugged and reinserted on another COM port.
+        /// </summary>
+        public void ClearCachedPort()
+        {
+            _detectedPort = null;
+        }
+
+        /// <summary>
+        /// Force a fresh detection cycle, ignoring any previously
+        /// remembered COM port.
+        /// </summary>
+        public async Task<string?> RefreshAndDetectModemAsync()
+        {
+            ClearCachedPort();
+            return await GetDetectedPortAsync();
+        }
+
         public async Task<string?> DetectModemAsync()
         {
             return await GetDetectedPortAsync();
@@ -102,32 +122,68 @@ namespace NewscannerMAUI.Services
         private async Task<string?> GetDetectedPortAsync()
         {
             if (_detectedPort != null) return _detectedPort;
+
             await _detectionLock.WaitAsync();
             try
             {
                 if (_detectedPort != null) return _detectedPort;
+
+                // 1) Respect explicit configuration first (no probing needed)
+                if (!string.IsNullOrWhiteSpace(ApiConfig.ModemPort))
+                {
+                    _detectedPort = ApiConfig.ModemPort;
+                    _logger.LogInformation("[SMS] Using configured modem port: {Port}", _detectedPort);
+                    return _detectedPort;
+                }
+
+                // 2) Use the SAME robust probing logic as the server (which we know works)
+                _logger.LogInformation("[SMS] Probing all COM ports for GSM modem...");
                 var availablePorts = SerialPort.GetPortNames();
+
+                if (availablePorts.Length == 0)
+                {
+                    _logger.LogWarning("[SMS] No serial ports found on this machine.");
+                }
+
                 foreach (var portName in availablePorts)
                 {
                     try
                     {
-                        using var testPort = new SerialPort(portName, 9600, Parity.None, 8, StopBits.One) { ReadTimeout = 1500 };
+                        using var testPort = new SerialPort(portName, 9600, Parity.None, 8, StopBits.One)
+                        {
+                            ReadTimeout = 2000,
+                            WriteTimeout = 2000
+                        };
+
                         testPort.Open();
                         testPort.Write("AT\r");
-                        await Task.Delay(500);
+                        await Task.Delay(800);
+                        testPort.Write("AT\r"); // Second probe for stability
+                        await Task.Delay(800);
+
                         var response = testPort.ReadExisting();
                         testPort.Close();
+
                         if (response.Contains("OK"))
                         {
+                            _logger.LogInformation("[SMS] GSM modem FOUND on {Port}", portName);
                             _detectedPort = portName;
                             return _detectedPort;
                         }
                     }
-                    catch { }
+                    catch (Exception ex)
+                    {
+                        _logger.LogDebug("[SMS] Failed probing {Port}: {Msg}", portName, ex.Message);
+                    }
                 }
+
+                _logger.LogWarning("[SMS] GSM modem not detected on any COM port.");
                 return null;
             }
-            finally { _detectionLock.Release(); }
+            finally
+            {
+                _detectionLock.Release();
+            }
         }
 
         private async Task SendAtCommandAsync(SerialPort port, string command, int waitMs)

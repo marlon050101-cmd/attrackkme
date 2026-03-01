@@ -85,6 +85,10 @@
                                         <button class="btn btn-outline-primary">My Schedule</button>
                                         <button class="btn btn-outline-primary">Profile</button>
                                     }
+                                    else if (currentUser.UserType == UserType.Advisor)
+                                    {
+                                        <button class="btn btn-outline-primary" @onclick='() => Navigation.NavigateTo("/advisor-section-classes")'>My Section Classes</button>
+                                    }
                                     else if (currentUser.UserType == UserType.GuidanceCounselor)
                                     {
                                         <button class="btn btn-outline-primary" @onclick="NavigateToGuidance">Guidance Dashboard</button>
@@ -136,9 +140,10 @@
         return userType switch
         {
             UserType.Admin => "Administrator",
-            UserType.Teacher => "Teacher",
+            UserType.Teacher => "Subject Teacher",
             UserType.Student => "Student",
             UserType.GuidanceCounselor => "Guidance Counselor",
+            UserType.Advisor => "Advisor",
             _ => "Unknown"
         };
     }

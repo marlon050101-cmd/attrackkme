@@ -1,4 +1,4 @@
-﻿@page "/home"
+@page "/home"
 @using Attrak.Services
 @inject IAuthService AuthService
 @inject NavigationManager Navigation
@@ -35,6 +35,10 @@
             if (currentUser.UserType == UserType.Student)
             {
                 Navigation.NavigateTo("/student-portal");
+            }
+            else if (currentUser.UserType == UserType.Advisor)
+            {
+                Navigation.NavigateTo("/advisor-section-classes");
             }
             else if (currentUser.UserType == UserType.GuidanceCounselor)
             {

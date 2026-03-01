@@ -19,7 +19,7 @@ namespace ServerAtrrak.Services
             try
             {
                 Console.WriteLine($"DEBUG: Looking for teacher with ID: {teacherId}");
-                Console.WriteLine($"DEBUG: Query: SELECT u.UserId, u.Username, u.Email, u.UserType, u.TeacherId, t.FullName FROM user u LEFT JOIN teacher t ON u.TeacherId = t.TeacherId WHERE u.UserId = @teacherId AND u.UserType = 'Teacher'");
+                Console.WriteLine($"DEBUG: Query: SELECT u.UserId, u.Username, u.Email, u.UserType, u.TeacherId, t.FullName FROM user u LEFT JOIN teacher t ON u.TeacherId = t.TeacherId WHERE u.UserId = @teacherId AND u.UserType = 'SubjectTeacher'");
                 using var connection = await _dbConnection.GetConnectionAsync();
                 
                 // Get teacher information
@@ -27,7 +27,7 @@ namespace ServerAtrrak.Services
                     SELECT u.UserId, u.Username, u.Email, u.UserType, u.TeacherId, t.FullName 
                     FROM user u
                     LEFT JOIN teacher t ON u.TeacherId = t.TeacherId
-                    WHERE u.UserId = @teacherId AND u.UserType = 'Teacher'";
+                    WHERE u.UserId = @teacherId AND u.UserType = 'SubjectTeacher'";
                 
                 UserInfo? teacherInfo = null;
                 string? actualTeacherId = null;
@@ -38,14 +38,16 @@ namespace ServerAtrrak.Services
                     using var reader = await command.ExecuteReaderAsync();
                     if (await reader.ReadAsync())
                     {
-                        var userTypeString = reader.IsDBNull("UserType") ? "Teacher" : reader.GetString("UserType");
+                        var userTypeString = reader.IsDBNull("UserType") ? "SubjectTeacher" : reader.GetString("UserType");
                         var userType = userTypeString switch
                         {
                             "Admin" => UserType.Admin,
-                            "Teacher" => UserType.Teacher,
+                            "SubjectTeacher" => UserType.Teacher,
+                            "Teacher" => UserType.Teacher, // legacy fallback
                             "Student" => UserType.Student,
                             "GuidanceCounselor" => UserType.GuidanceCounselor,
-                            _ => UserType.Admin // Default fallback
+                            "Advisor" => UserType.Advisor,
+                            _ => UserType.Admin
                         };
                         
                         actualTeacherId = reader.IsDBNull("TeacherId") ? null : reader.GetString("TeacherId");
@@ -356,7 +358,7 @@ namespace ServerAtrrak.Services
                 var userQuery = @"
                         SELECT TeacherId 
                         FROM user 
-                        WHERE UserId = @userId AND UserType = 'Teacher'";
+                        WHERE UserId = @userId AND UserType = 'SubjectTeacher'";
                 
                 string? actualTeacherId = null;
                 using (var userCommand = new MySqlCommand(userQuery, connection))
@@ -491,7 +493,7 @@ namespace ServerAtrrak.Services
                     SELECT u.UserId, u.TeacherId, t.FullName 
                     FROM user u
                     LEFT JOIN teacher t ON u.TeacherId = t.TeacherId
-                    WHERE u.UserId = @teacherId AND u.UserType = 'Teacher'";
+                    WHERE u.UserId = @teacherId AND u.UserType = 'SubjectTeacher'";
                 
                 string? fullName = null;
                 string? actualTeacherId = null;
@@ -582,7 +584,7 @@ namespace ServerAtrrak.Services
                 var userQuery = @"
                     SELECT TeacherId 
                     FROM user 
-                    WHERE UserId = @userId AND UserType = 'Teacher'";
+                    WHERE UserId = @userId AND UserType = 'SubjectTeacher'";
                 
                 string? actualTeacherId = null;
                 using (var userCommand = new MySqlCommand(userQuery, connection))
@@ -636,7 +638,7 @@ namespace ServerAtrrak.Services
                 var userQuery = @"
                     SELECT TeacherId 
                     FROM user 
-                    WHERE UserId = @userId AND UserType = 'Teacher'";
+                    WHERE UserId = @userId AND UserType = 'SubjectTeacher'";
                 
                 string? actualTeacherId = null;
                 using (var userCommand = new MySqlCommand(userQuery, connection))

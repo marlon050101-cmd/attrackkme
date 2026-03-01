@@ -120,10 +120,12 @@ namespace ServerAtrrak.Services
                     var userType = userTypeString switch
                     {
                         "Admin" => UserType.Admin,
-                        "Teacher" => UserType.Teacher,
+                        "SubjectTeacher" => UserType.Teacher,
+                        "Teacher" => UserType.Teacher, // legacy fallback
                         "Student" => UserType.Student,
                         "GuidanceCounselor" => UserType.GuidanceCounselor,
-                        _ => UserType.Admin // Default fallback
+                        "Advisor" => UserType.Advisor,
+                        _ => UserType.Admin
                     };
 
                     var user = new User

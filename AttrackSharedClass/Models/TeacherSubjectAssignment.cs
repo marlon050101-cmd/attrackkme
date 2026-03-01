@@ -16,6 +16,9 @@ namespace AttrackSharedClass.Models
         public int GradeLevel { get; set; }
         public string? Strand { get; set; }
         public string? Section { get; set; }
+        /// <summary>TeacherId of the advisor (GuidanceCounselor) for this class.</summary>
+        public string? AdvisorId { get; set; }
+        public string? AdvisorName { get; set; }
         public TimeSpan ScheduleStart { get; set; }
         public TimeSpan ScheduleEnd { get; set; }
         public DateTime CreatedAt { get; set; }
@@ -37,6 +40,10 @@ namespace AttrackSharedClass.Models
         
         [Required]
         public string Section { get; set; } = string.Empty;
+        /// <summary>Optional. TeacherId of the advisor (GuidanceCounselor) for this class.</summary>
+        public string? AdvisorId { get; set; }
+        public int GradeLevel { get; set; }
+        public string? Strand { get; set; }
     }
 
     public class TeacherSubjectResponse

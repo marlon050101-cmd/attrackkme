@@ -111,8 +111,9 @@
                                         <div class="col-md-4 mb-3">
                                             <label for="reg-usertype" class="form-label">User Type</label>
                                             <InputSelect id="reg-usertype" class="form-select" @bind-Value="registerRequest.UserType" @bind-Value:after="OnUserTypeChanged">
-                                                <option value="@UserType.Teacher">Teacher</option>
-                                                <option value="@UserType.GuidanceCounselor">Guidance Counselor</option>
+                                                <option value="2">Subject Teacher</option>
+                                                <option value="5">Advisor</option>
+                                                <option value="4">Guidance Counselor</option>
                                             </InputSelect>
                                             <ValidationMessage For="@(() => registerRequest.UserType)" class="text-danger" />
                                         </div>
@@ -242,13 +243,24 @@
                                             </div>
                                         </div>
                                     }
+                                    else if (registerRequest.UserType == UserType.Advisor)
+                                    {
+                                        <div class="row">
+                                            <div class="col-12 mb-3">
+                                                <div class="alert alert-info">
+                                                    <i class="fas fa-info-circle me-2"></i>
+                                                    <strong>Advisor Registration:</strong> You will be registered as an Advisor. You can create section classes (subject + schedule) that Subject Teachers will pick to teach.
+                                                </div>
+                                            </div>
+                                        </div>
+                                    }
                                     else if (registerRequest.UserType == UserType.GuidanceCounselor)
                                     {
                                         <div class="row">
                                             <div class="col-12 mb-3">
                                                 <div class="alert alert-info">
                                                     <i class="fas fa-info-circle me-2"></i>
-                                                    <strong>Guidance Counselor Registration:</strong> You will be registered as a Guidance Counselor with access to student monitoring and attendance tracking.
+                                                    <strong>Guidance Counselor Registration:</strong> You will be registered as a Guidance Counselor with access to student monitoring and counseling records.
                                                 </div>
                                             </div>
                                         </div>
@@ -279,7 +291,7 @@
                                     }
                                     else
                                     {
-                                        <span>Register as @(registerRequest.UserType == UserType.GuidanceCounselor ? "Guidance Counselor" : "Teacher")</span>
+                                        <span>Register as @(registerRequest.UserType == UserType.Advisor ? "Advisor" : registerRequest.UserType == UserType.GuidanceCounselor ? "Guidance Counselor" : "Subject Teacher")</span>
                                     }
                                 </button>
                             </div>
@@ -323,6 +335,10 @@
             if (currentUser.UserType == UserType.Student)
             {
                 Navigation.NavigateTo("/student-portal");
+            }
+            else if (currentUser.UserType == UserType.Advisor)
+            {
+                Navigation.NavigateTo("/advisor-section-classes");
             }
             else if (currentUser.UserType == UserType.GuidanceCounselor)
             {
@@ -391,8 +407,8 @@
 
     private void OnUserTypeChanged()
     {
-        // Clear values when switching to guidance counselor
-        if (registerRequest.UserType == UserType.GuidanceCounselor)
+        if (registerRequest.UserType == UserType.GuidanceCounselor ||
+            registerRequest.UserType == UserType.Advisor)
         {
             registerRequest.GradeLevel = null;
             registerRequest.Section = null;
@@ -431,6 +447,10 @@
                 {
                     await AuthService.LogoutAsync();
                     errorMessage = "Student accounts must log in through the Student Portal.";
+                }
+                else if (response.User?.UserType == UserType.Advisor)
+                {
+                    Navigation.NavigateTo("/advisor-section-classes");
                 }
                 else if (response.User?.UserType == UserType.GuidanceCounselor)
                 {
@@ -486,7 +506,12 @@
                 registerRequest.District = manualDistrict;
             }
 
-            var endpoint = registerRequest.UserType == UserType.GuidanceCounselor ? "api/register/guidance" : "api/register/teacher";
+            var endpoint = registerRequest.UserType switch
+            {
+                UserType.GuidanceCounselor => "api/register/guidance",
+                UserType.Advisor => "api/register/advisor",
+                _ => "api/register/teacher"
+            };
             var response = await Http.PostAsJsonAsync($"{ApiConfig.BaseUrl}{endpoint}", registerRequest);
             
             if (response.IsSuccessStatusCode)

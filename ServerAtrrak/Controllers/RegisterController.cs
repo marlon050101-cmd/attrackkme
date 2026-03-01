@@ -503,7 +503,7 @@ namespace ServerAtrrak.Controllers
                         SELECT u.TeacherId, t.SchoolId, t.Gradelvl as GradeLevel, t.Section 
                         FROM user u
                         LEFT JOIN teacher t ON u.TeacherId = t.TeacherId
-                        WHERE u.UserId = @UserId AND u.UserType = 'Teacher'",
+                        WHERE u.UserId = @UserId AND u.UserType = 'SubjectTeacher'",
                     
                     SchoolCheckQuery = "SELECT StudentId, FullName, GradeLevel, Section, SchoolId FROM student WHERE SchoolId = @SchoolId AND IsActive = 1",
                     
@@ -676,27 +676,38 @@ namespace ServerAtrrak.Controllers
 
         private async Task<string> CreateUserAsync(RegisterRequest request, string teacherId)
         {
-            using var connection = new MySqlConnection(_dbConnection.GetConnection());
-            await connection.OpenAsync();
-
             var userId = Guid.NewGuid().ToString();
             var query = @"
                 INSERT INTO user (UserId, Username, Email, Password, UserType, IsActive, CreatedAt, UpdatedAt, TeacherId)
                 VALUES (@UserId, @Username, @Email, @Password, @UserType, @IsActive, @CreatedAt, @UpdatedAt, @TeacherId)";
 
-            using var command = new MySqlCommand(query, connection);
-            command.Parameters.AddWithValue("@UserId", userId);
-            command.Parameters.AddWithValue("@Username", request.Username);
-            command.Parameters.AddWithValue("@Email", request.Email);
-            command.Parameters.AddWithValue("@Password", request.Password);
-            command.Parameters.AddWithValue("@UserType", "Teacher");
-            command.Parameters.AddWithValue("@IsActive", true);
-            command.Parameters.AddWithValue("@CreatedAt", DateTime.Now);
-            command.Parameters.AddWithValue("@UpdatedAt", DateTime.Now);
-            command.Parameters.AddWithValue("@TeacherId", teacherId);
-
-            await command.ExecuteNonQueryAsync();
-            return userId;
+            // Try new ENUM value (after migration); fall back to legacy if ENUM not yet updated
+            foreach (var userTypeValue in new[] { "SubjectTeacher", "Teacher" })
+            {
+                try
+                {
+                    using var connection = new MySqlConnection(_dbConnection.GetConnection());
+                    await connection.OpenAsync();
+                    using var command = new MySqlCommand(query, connection);
+                    command.Parameters.AddWithValue("@UserId", userId);
+                    command.Parameters.AddWithValue("@Username", request.Username);
+                    command.Parameters.AddWithValue("@Email", request.Email);
+                    command.Parameters.AddWithValue("@Password", request.Password);
+                    command.Parameters.AddWithValue("@UserType", userTypeValue);
+                    command.Parameters.AddWithValue("@IsActive", true);
+                    command.Parameters.AddWithValue("@CreatedAt", DateTime.Now);
+                    command.Parameters.AddWithValue("@UpdatedAt", DateTime.Now);
+                    command.Parameters.AddWithValue("@TeacherId", teacherId);
+                    await command.ExecuteNonQueryAsync();
+                    _logger.LogInformation("Teacher user created with UserType={UserType}", userTypeValue);
+                    return userId;
+                }
+                catch (MySqlException ex) when (ex.Message.Contains("Data truncated") || ex.Message.Contains("incorrect") || ex.Number == 1265)
+                {
+                    _logger.LogWarning("UserType '{UserType}' not in ENUM yet, trying fallback.", userTypeValue);
+                }
+            }
+            throw new InvalidOperationException("Failed to insert teacher user: ENUM does not accept 'SubjectTeacher' or 'Teacher'.");
         }
 
         private async Task<string?> FindSchoolByNameAsync(string schoolName)
@@ -1112,6 +1123,105 @@ namespace ServerAtrrak.Controllers
             }
 
             return null;
+        }
+
+        [HttpPost("advisor")]
+        public async Task<ActionResult<RegisterResponse>> RegisterAdvisor([FromBody] RegisterRequest request)
+        {
+            try
+            {
+                _logger.LogInformation("Advisor registration attempt for user: {Username}", request.Username);
+
+                if (!ModelState.IsValid)
+                {
+                    var errors = ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage);
+                    return BadRequest(new RegisterResponse { Success = false, Message = $"Invalid request: {string.Join(", ", errors)}" });
+                }
+
+                var existingUser = await _authService.GetUserByUsernameAsync(request.Username);
+                if (existingUser != null)
+                    return BadRequest(new RegisterResponse { Success = false, Message = "Username already exists" });
+
+                if (await EmailExistsAsync(request.Email))
+                    return BadRequest(new RegisterResponse { Success = false, Message = "Email already exists" });
+
+                var schoolId = await _schoolService.GetOrCreateSchoolAsync(request);
+
+                // Advisor has no fixed grade/section (they manage a section dynamically via class_offering)
+                request.GradeLevel = null;
+                request.Section = null;
+                request.Strand = null;
+
+                var advisorTeacherId = await CreateAdvisorTeacherRecordAsync(request, schoolId);
+                var userId = await CreateUserForAdvisorAsync(request, advisorTeacherId);
+
+                _logger.LogInformation("Advisor registered successfully: {Username}", request.Username);
+                return Ok(new RegisterResponse
+                {
+                    Success = true,
+                    Message = "Advisor registered successfully",
+                    UserId = userId,
+                    TeacherId = advisorTeacherId
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error during advisor registration for user: {Username}", request.Username);
+                return StatusCode(500, new RegisterResponse { Success = false, Message = "An error occurred during registration" });
+            }
+        }
+
+        private async Task<string> CreateAdvisorTeacherRecordAsync(RegisterRequest request, string schoolId)
+        {
+            using var connection = new MySqlConnection(_dbConnection.GetConnection());
+            await connection.OpenAsync();
+            var teacherId = Guid.NewGuid().ToString();
+            var query = @"
+                INSERT INTO teacher (TeacherId, FullName, Email, SchoolId, Gradelvl, Section, Strand)
+                VALUES (@TeacherId, @FullName, @Email, @SchoolId, NULL, NULL, NULL)";
+            using var command = new MySqlCommand(query, connection);
+            command.Parameters.AddWithValue("@TeacherId", teacherId);
+            command.Parameters.AddWithValue("@FullName", request.FullName);
+            command.Parameters.AddWithValue("@Email", request.Email);
+            command.Parameters.AddWithValue("@SchoolId", schoolId);
+            await command.ExecuteNonQueryAsync();
+            return teacherId;
+        }
+
+        private async Task<string> CreateUserForAdvisorAsync(RegisterRequest request, string teacherId)
+        {
+            var userId = Guid.NewGuid().ToString();
+            var query = @"
+                INSERT INTO user (UserId, Username, Email, Password, UserType, IsActive, CreatedAt, UpdatedAt, TeacherId)
+                VALUES (@UserId, @Username, @Email, @Password, @UserType, @IsActive, @CreatedAt, @UpdatedAt, @TeacherId)";
+
+            // Try new ENUM value (after migration); fall back to GuidanceCounselor if ENUM not yet updated
+            foreach (var userTypeValue in new[] { "Advisor", "GuidanceCounselor" })
+            {
+                try
+                {
+                    using var connection = new MySqlConnection(_dbConnection.GetConnection());
+                    await connection.OpenAsync();
+                    using var command = new MySqlCommand(query, connection);
+                    command.Parameters.AddWithValue("@UserId", userId);
+                    command.Parameters.AddWithValue("@Username", request.Username);
+                    command.Parameters.AddWithValue("@Email", request.Email);
+                    command.Parameters.AddWithValue("@Password", request.Password);
+                    command.Parameters.AddWithValue("@UserType", userTypeValue);
+                    command.Parameters.AddWithValue("@IsActive", true);
+                    command.Parameters.AddWithValue("@CreatedAt", DateTime.Now);
+                    command.Parameters.AddWithValue("@UpdatedAt", DateTime.Now);
+                    command.Parameters.AddWithValue("@TeacherId", teacherId);
+                    await command.ExecuteNonQueryAsync();
+                    _logger.LogInformation("Advisor user created with UserType={UserType}", userTypeValue);
+                    return userId;
+                }
+                catch (MySqlException ex) when (ex.Message.Contains("Data truncated") || ex.Message.Contains("incorrect") || ex.Number == 1265)
+                {
+                    _logger.LogWarning("UserType '{UserType}' not in ENUM yet, trying fallback.", userTypeValue);
+                }
+            }
+            throw new InvalidOperationException("Failed to insert advisor user: ENUM does not accept 'Advisor' or 'GuidanceCounselor'.");
         }
 
         private async Task<string> CreateGuidanceCounselorAsync(RegisterRequest request, string schoolId)
