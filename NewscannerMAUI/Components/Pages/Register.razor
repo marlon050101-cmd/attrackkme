@@ -1,0 +1,645 @@
+@page "/register"
+@using AttrackSharedClass.Models
+@using NewscannerMAUI.Services
+@using System.Text.Json
+
+@layout Layout.AuthLayout
+
+@inject IHttpClientFactory HttpClientFactory
+@inject NavigationManager Navigation
+
+<PageTitle>Sardo-TrackCare — Register</PageTitle>
+
+<style>
+    .register-card {
+        background: rgba(255, 255, 255, 0.97);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 20px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+        width: 100%;
+        max-width: 540px;
+        padding: 2rem;
+    }
+
+    .form-control, .form-select {
+        font-size: 15px;
+        padding: 11px 14px;
+        border: 2px solid #dee2e6;
+        border-radius: 10px;
+        background-color: white;
+        transition: border-color 0.3s ease;
+        -webkit-appearance: none;
+        width: 100%;
+    }
+
+    .form-control:focus, .form-select:focus {
+        border-color: #0d6efd;
+        box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.20);
+        outline: none;
+    }
+
+    .text-uppercase-input {
+        text-transform: uppercase;
+    }
+
+    .form-control:disabled, .form-select:disabled {
+        background-color: #f8f9fa;
+        cursor: not-allowed;
+        opacity: 0.7;
+    }
+
+    .btn-primary {
+        padding: 12px 30px;
+        font-size: 16px;
+        border-radius: 10px;
+        border: none;
+        transition: all 0.3s ease;
+    }
+
+    .btn-primary:hover:not(:disabled) {
+        background-color: #0b5ed7;
+        transform: translateY(-2px);
+    }
+
+    .section-divider {
+        border: 0;
+        border-top: 1px solid #e9ecef;
+        margin: 1.25rem 0;
+    }
+
+    .field-section-label {
+        font-size: 0.78rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #6c757d;
+        font-weight: 600;
+        margin-bottom: 0.75rem;
+    }
+
+    .success-box {
+        text-align: center;
+        padding: 2rem 1rem;
+    }
+
+    .success-icon {
+        font-size: 4rem;
+        color: #198754;
+        margin-bottom: 1rem;
+    }
+
+    .search-result-list {
+        position: absolute;
+        z-index: 1000;
+        background: white;
+        border: 2px solid #0d6efd;
+        border-top: none;
+        border-radius: 0 0 10px 10px;
+        width: 100%;
+        max-height: 250px;
+        overflow-y: auto;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+
+    .search-result-item {
+        padding: 12px 14px;
+        cursor: pointer;
+        font-size: 14px;
+        border-bottom: 1px solid #f0f0f0;
+        transition: background 0.15s;
+    }
+
+    .search-result-item:hover {
+        background-color: #e9f0ff;
+        color: #0d6efd;
+    }
+
+    .search-subtext {
+        font-size: 0.75rem;
+        color: #6c757d;
+        display: block;
+        margin-top: 2px;
+    }
+
+    .search-wrapper {
+        position: relative;
+    }
+
+    .school-selected-card {
+        background: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 12px;
+        padding: 12px 16px;
+    }
+
+    .school-info-row {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 4px;
+        font-size: 0.85rem;
+    }
+
+    .school-info-label {
+        color: #6c757d;
+        font-weight: 500;
+    }
+
+    .school-info-value {
+        color: #212529;
+        font-weight: 600;
+    }
+
+    .spinner-sm {
+        width: 14px;
+        height: 14px;
+        border-width: 2px;
+    }
+
+    @@media (max-width: 768px) {
+        .register-card {
+            padding: 1.25rem;
+            margin: 0;
+        }
+    }
+</style>
+
+<div class="register-card">
+    @if (registrationSuccess)
+    {
+        <div class="success-box">
+            <div class="success-icon">
+                <i class="fas fa-check-circle"></i>
+            </div>
+            <h4 class="fw-bold text-success mb-2">Registration Successful!</h4>
+            <p class="text-muted mb-1">@successMessage</p>
+            <p class="text-muted mb-4" style="font-size:0.9rem;">You can now log in with your account.</p>
+            <a href="/" class="btn btn-primary w-100">
+                <i class="fas fa-sign-in-alt me-2"></i>Go to Login
+            </a>
+        </div>
+    }
+    else
+    {
+        <!-- Header -->
+        <div class="text-center mb-4">
+            <div class="mb-2">
+                <i class="fas fa-user-plus fa-2x text-primary"></i>
+            </div>
+            <h4 class="fw-bold text-primary mb-0">Sardo-TrackCare</h4>
+            <p class="text-muted" style="font-size:0.85rem;">Create a New Account</p>
+        </div>
+
+        @if (!string.IsNullOrEmpty(errorMessage))
+        {
+            <div class="alert alert-danger d-flex align-items-center mb-3" role="alert">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                <div style="font-size: 0.9rem;">@errorMessage</div>
+            </div>
+        }
+
+        <!-- User Type -->
+        <div class="mb-3">
+            <label class="form-label fw-semibold">
+                <i class="fas fa-id-badge me-2 text-primary"></i>User Type
+            </label>
+            <select class="form-select" @onchange="OnUserTypeChanged" value="@selectedUserType">
+                <option value="">— Select user type —</option>
+                <option value="Admin">Admin</option>
+                <option value="SubjectTeacher">Subject Teacher</option>
+                <option value="Student">Student</option>
+                <option value="GuidanceCounselor">Guidance Counselor</option>
+                <option value="Advisor">Advisor</option>
+            </select>
+        </div>
+
+        @if (!string.IsNullOrEmpty(selectedUserType))
+        {
+            <hr class="section-divider" />
+
+            <!-- Account Information -->
+            <p class="field-section-label"><i class="fas fa-user me-1"></i> Account Information</p>
+
+            <div class="mb-2">
+                <label class="form-label">Full Name</label>
+                <input class="form-control text-uppercase-input" type="text" placeholder="E.G. JUAN DELA CRUZ" 
+                       value="@fullName" @oninput="(e) => fullName = e.Value?.ToString()?.ToUpper() ?? string.Empty" />
+            </div>
+
+            <div class="row g-2 mb-2">
+                <div class="col-6">
+                    <label class="form-label">Username</label>
+                    <input class="form-control" type="text" placeholder="username" @bind="username" autocomplete="username" />
+                </div>
+                <div class="col-6">
+                    <label class="form-label">Email</label>
+                    <input class="form-control" type="email" placeholder="email@school.edu" @bind="email" autocomplete="email" />
+                </div>
+            </div>
+
+            <div class="row g-2 mb-3">
+                <div class="col-6">
+                    <label class="form-label">Password</label>
+                    <input class="form-control" type="password" placeholder="Min. 6 characters" @bind="password" autocomplete="new-password" />
+                </div>
+                <div class="col-6">
+                    <label class="form-label">Confirm Password</label>
+                    <input class="form-control" type="password" placeholder="Repeat password" @bind="confirmPassword" autocomplete="new-password" />
+                </div>
+            </div>
+
+            <!-- School fields (for all except Admin) -->
+            @if (selectedUserType != "Admin")
+            {
+                <hr class="section-divider" />
+                <p class="field-section-label"><i class="fas fa-school me-1"></i> School Information</p>
+
+                <div class="mb-2">
+                    <label class="form-label">Search School Name</label>
+                    @if (string.IsNullOrEmpty(selectedSchoolName))
+                    {
+                        <div class="search-wrapper">
+                            <div class="d-flex gap-2 align-items-center">
+                                <span class="position-absolute ms-3 text-muted" style="z-index: 5;">
+                                    <i class="fas fa-search"></i>
+                                </span>
+                                <input class="form-control ps-5"
+                                       type="text"
+                                       placeholder="Start typing school name..."
+                                       value="@schoolSearchText"
+                                       @oninput="OnSchoolSearchInput" />
+                                @if (isLoadingSchools)
+                                {
+                                    <span class="spinner-border spinner-border-sm spinner-sm text-primary position-absolute end-0 me-3" role="status"></span>
+                                }
+                            </div>
+
+                            @if (schoolSearchResults.Count > 0)
+                            {
+                                <div class="search-result-list">
+                                    @foreach (var school in schoolSearchResults)
+                                    {
+                                        <div class="search-result-item" @onclick="() => SelectSchool(school)">
+                                            <div class="fw-bold">@school.SchoolName</div>
+                                            <div class="search-subtext">@school.Division • @school.Region</div>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                            else if (!string.IsNullOrEmpty(schoolSearchText) && schoolSearchText.Length >= 2 && !isLoadingSchools)
+                            {
+                                <div class="search-result-list">
+                                    <div class="search-result-item text-muted text-center">No schools found in the database.</div>
+                                </div>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="school-selected-card">
+                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                <div class="fw-bold text-primary pe-4">
+                                    <i class="fas fa-school me-2"></i>@selectedSchoolName
+                                </div>
+                                <button type="button" class="btn btn-sm btn-outline-secondary border-0 p-0" @onclick="ClearSchool" title="Change school">
+                                    <i class="fas fa-sync-alt me-1"></i>Change
+                                </button>
+                            </div>
+                            <div class="school-info-row">
+                                <span class="school-info-label">Division:</span>
+                                <span class="school-info-value">@selectedDivision</span>
+                            </div>
+                            <div class="school-info-row">
+                                <span class="school-info-label">Region:</span>
+                                <span class="school-info-value">@selectedRegion</span>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+
+            <!-- Grade/Section/Strand for Teacher, Advisor, Student -->
+            @if (selectedUserType == "SubjectTeacher" || selectedUserType == "Advisor" || selectedUserType == "Student")
+            {
+                <div class="row g-2 mb-2 mt-1">
+                    <div class="col-4">
+                        <label class="form-label">Grade</label>
+                        <select class="form-select" @bind="gradeLevel">
+                            <option value="0">Select</option>
+                            @for (int g = 7; g <= 12; g++)
+                            {
+                                <option value="@g">@g</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-4">
+                        <label class="form-label">Section</label>
+                        <input class="form-control text-uppercase-input" type="text" placeholder="E.G. STEM-A" 
+                               value="@userSection" @oninput="(e) => userSection = e.Value?.ToString()?.ToUpper() ?? string.Empty" />
+                    </div>
+                    <div class="col-4">
+                        @if (gradeLevel >= 11)
+                        {
+                            <label class="form-label">Strand</label>
+                            <select class="form-select" @bind="strand">
+                                <option value="">— Select —</option>
+                                <option value="Academic Track">Academic Track</option>
+                                <option value="Technical-Professional (TechPro)">Technical-Professional (TechPro)</option>
+                            </select>
+                        }
+                    </div>
+                </div>
+            }
+
+            <!-- Student-only extra fields -->
+            @if (selectedUserType == "Student")
+            {
+                <hr class="section-divider" />
+                <p class="field-section-label"><i class="fas fa-graduation-cap me-1"></i> Additional </p>
+
+                <div class="row g-2 mb-2">
+                    <div class="col-6">
+                        <label class="form-label">Gender</label>
+                        <select class="form-select" @bind="gender">
+                            <option value="">— Select —</option>
+                            <option value="Male">Male</option>
+                            <option value="Female">Female</option>
+                        </select>
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label">Parent's Number</label>
+                        <input class="form-control" type="tel" placeholder="09XXXXXXXXX" @bind="parentsNumber" />
+                    </div>
+                </div>
+            }
+
+            <!-- Submit -->
+            <div class="d-grid mt-4">
+                <button class="btn btn-primary" @onclick="HandleRegister" disabled="@isLoading">
+                    @if (isLoading)
+                    {
+                        <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                        <span>Processing...</span>
+                    }
+                    else
+                    {
+                        <i class="fas fa-user-plus me-2"></i>
+                        <span>Create Account</span>
+                    }
+                </button>
+            </div>
+        }
+
+        <div class="text-center mt-3">
+            <small class="text-muted">
+                Already have an account? <a href="/" class="text-primary fw-semibold">Login</a>
+            </small>
+        </div>
+    }
+</div>
+
+@code {
+    // --- Form State ---
+    private string selectedUserType = string.Empty;
+    private string fullName = string.Empty;
+    private string username = string.Empty;
+    private string email = string.Empty;
+    private string password = string.Empty;
+    private string confirmPassword = string.Empty;
+
+    // --- School State ---
+    private List<SchoolInfo> schoolSearchResults = new();
+    private string selectedRegion = string.Empty;
+    private string selectedDivision = string.Empty;
+    private string selectedDistrict = string.Empty;
+    private string selectedSchoolAddress = string.Empty;
+    private string selectedSchoolName = string.Empty;
+    private string selectedSchoolId = string.Empty;
+    private string schoolSearchText = string.Empty;
+    private bool isLoadingSchools = false;
+    private System.Threading.CancellationTokenSource? schoolSearchCts;
+
+    // --- Role-specific Shared ---
+    private int gradeLevel = 0;
+    private string userSection = string.Empty;
+    private string strand = string.Empty;
+
+    // --- Student-only ---
+    private string gender = string.Empty;
+    private string parentsNumber = string.Empty;
+
+    // --- UI State ---
+    private bool isLoading = false;
+    private bool registrationSuccess = false;
+    private string errorMessage = string.Empty;
+    private string successMessage = string.Empty;
+
+    private async Task OnSchoolSearchInput(ChangeEventArgs e)
+    {
+        schoolSearchText = e.Value?.ToString() ?? string.Empty;
+        schoolSearchResults.Clear();
+
+        if (schoolSearchText.Length < 2) { StateHasChanged(); return; }
+
+        schoolSearchCts?.Cancel();
+        schoolSearchCts = new System.Threading.CancellationTokenSource();
+        var token = schoolSearchCts.Token;
+
+        await Task.Delay(300, token).ContinueWith(_ => { }, TaskContinuationOptions.None);
+        if (token.IsCancellationRequested) return;
+
+        isLoadingSchools = true;
+        StateHasChanged();
+
+        try
+        {
+            var http = HttpClientFactory.CreateClient("AttrakAPI");
+            var encoded = Uri.EscapeDataString(schoolSearchText);
+            
+            var result = await http.GetFromJsonAsync<List<SchoolInfo>>($"api/register/schools/search?name={encoded}", token);
+
+            if (!token.IsCancellationRequested && result != null)
+            {
+                schoolSearchResults = result;
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"School search error: {ex.Message}");
+        }
+        finally
+        {
+            if (!token.IsCancellationRequested)
+            {
+                isLoadingSchools = false;
+                StateHasChanged();
+            }
+        }
+    }
+
+    private void SelectSchool(SchoolInfo school)
+    {
+        selectedSchoolName = school.SchoolName ?? string.Empty;
+        selectedSchoolId = school.SchoolId ?? string.Empty;
+        selectedRegion = school.Region ?? string.Empty;
+        selectedDivision = school.Division ?? string.Empty;
+        selectedDistrict = school.District ?? string.Empty;
+        selectedSchoolAddress = school.SchoolAddress ?? string.Empty;
+        
+        schoolSearchResults.Clear();
+        schoolSearchText = string.Empty;
+        StateHasChanged();
+    }
+
+    private void ClearSchool()
+    {
+        selectedSchoolName = string.Empty;
+        selectedSchoolId = string.Empty;
+        selectedRegion = string.Empty;
+        selectedDivision = string.Empty;
+        selectedDistrict = string.Empty;
+        selectedSchoolAddress = string.Empty;
+        schoolSearchResults.Clear();
+        schoolSearchText = string.Empty;
+    }
+
+    private void OnUserTypeChanged(ChangeEventArgs e)
+    {
+        selectedUserType = e.Value?.ToString() ?? string.Empty;
+        errorMessage = string.Empty;
+        StateHasChanged();
+    }
+
+    private async Task HandleRegister()
+    {
+        if (isLoading) return;
+        errorMessage = string.Empty;
+
+        // --- Basic Validation ---
+        if (string.IsNullOrWhiteSpace(selectedUserType))
+        { errorMessage = "Please select a user type."; return; }
+
+        if (string.IsNullOrWhiteSpace(fullName) || string.IsNullOrWhiteSpace(username) ||
+            string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password))
+        { errorMessage = "Please fill in all account fields."; return; }
+
+        if (password != confirmPassword)
+        { errorMessage = "Passwords do not match."; return; }
+
+        if (password.Length < 6)
+        { errorMessage = "Password must be at least 6 characters."; return; }
+
+        // School Validation (conditional)
+        if (selectedUserType != "Admin")
+        {
+            if (string.IsNullOrWhiteSpace(selectedSchoolId) || string.IsNullOrWhiteSpace(selectedSchoolName))
+            { errorMessage = "Please search and select your school."; return; }
+        }
+
+        // Student/Teacher/Advisor Validation
+        if (selectedUserType == "Student" || selectedUserType == "SubjectTeacher" || selectedUserType == "Advisor")
+        {
+            if (gradeLevel < 7 || gradeLevel > 12)
+            { errorMessage = "Please select a grade level."; return; }
+            if (string.IsNullOrWhiteSpace(userSection))
+            { errorMessage = "Please enter your section."; return; }
+            
+            // Only require strand for Senior High (11-12)
+            if (gradeLevel >= 11 && string.IsNullOrWhiteSpace(strand))
+            { errorMessage = "Please select your strand."; return; }
+        }
+
+        if (selectedUserType == "Student")
+        {
+            if (string.IsNullOrWhiteSpace(gender))
+            { errorMessage = "Please select gender."; return; }
+            if (!System.Text.RegularExpressions.Regex.IsMatch(parentsNumber, @"^09\d{9}$"))
+            { errorMessage = "Parent's number must be a valid 11-digit number starting with 09."; return; }
+        }
+
+        isLoading = true;
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            var http = HttpClientFactory.CreateClient("AttrakAPI");
+            using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(30));
+            HttpResponseMessage response;
+
+            // Ensure strand is null if not applicable
+            string? finalStrand = (gradeLevel >= 11) ? strand : null;
+
+            if (selectedUserType == "Student")
+            {
+                response = await http.PostAsJsonAsync("api/register/student", new
+                {
+                    Username = username.Trim(),
+                    Email = email.Trim(),
+                    Password = password,
+                    FullName = fullName.Trim().ToUpper(),
+                    GradeLevel = gradeLevel,
+                    Section = userSection.Trim().ToUpper(),
+                    Strand = finalStrand,
+                    SchoolName = selectedSchoolName,
+                    SchoolId = selectedSchoolId,
+                    ParentsNumber = parentsNumber.Trim(),
+                    Gender = gender
+                }, cts.Token);
+            }
+            else if (selectedUserType == "GuidanceCounselor" || selectedUserType == "Admin")
+            {
+                response = await http.PostAsJsonAsync("api/register/guidance", BuildPayload(selectedUserType, finalStrand), cts.Token);
+            }
+            else if (selectedUserType == "Advisor")
+            {
+                response = await http.PostAsJsonAsync("api/register/advisor", BuildPayload(selectedUserType, finalStrand), cts.Token);
+            }
+            else // SubjectTeacher
+            {
+                response = await http.PostAsJsonAsync("api/register/teacher", BuildPayload(selectedUserType, finalStrand), cts.Token);
+            }
+
+            var responseContent = await response.Content.ReadAsStringAsync();
+
+            if (response.IsSuccessStatusCode)
+            {
+                successMessage = $"Your {selectedUserType} account has been created.";
+                registrationSuccess = true;
+            }
+            else
+            {
+                try
+                {
+                    using var doc = JsonDocument.Parse(responseContent);
+                    errorMessage = doc.RootElement.TryGetProperty("message", out var m) 
+                        ? m.GetString() ?? "Registration failed." 
+                        : "Registration failed. Check your data.";
+                }
+                catch { errorMessage = "Registration failed. Check your data."; }
+            }
+        }
+        catch (Exception ex) { errorMessage = $"Error: {ex.Message}"; }
+        finally
+        {
+            isLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private object BuildPayload(string t, string? finalStrand) => new
+    {
+        Username = username.Trim(),
+        Email = email.Trim(),
+        Password = password,
+        FullName = fullName.Trim().ToUpper(),
+        Region = selectedRegion,
+        Division = selectedDivision,
+        District = string.IsNullOrWhiteSpace(selectedDistrict) ? null : selectedDistrict,
+        SchoolName = selectedSchoolName,
+        SchoolAddress = string.IsNullOrWhiteSpace(selectedSchoolAddress) ? null : selectedSchoolAddress,
+        GradeLevel = gradeLevel > 0 ? (int?)gradeLevel : null,
+        Section = string.IsNullOrWhiteSpace(userSection) ? null : userSection.Trim().ToUpper(),
+        Strand = finalStrand,
+        UserType = t switch { "Admin"=>1, "SubjectTeacher"=>2, "Student"=>3, "GuidanceCounselor"=>4, "Advisor"=>5, _ =>2 }
+    };
+}

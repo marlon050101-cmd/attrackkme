@@ -166,11 +166,11 @@ namespace ServerAtrrak.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error during teacher registration for user: {Username}", request.Username);
+                _logger.LogError(ex, "Error during teacher registration for user: {Username}. Message: {Message}", request.Username, ex.Message);
                 return StatusCode(500, new RegisterResponse
                 {
                     Success = false,
-                    Message = "An error occurred during registration"
+                    Message = $"An error occurred during registration: {ex.Message}"
                 });
             }
         }
@@ -243,11 +243,11 @@ namespace ServerAtrrak.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error during guidance counselor registration for user: {Username}", request.Username);
+                _logger.LogError(ex, "Error during guidance counselor registration for user: {Username}. Message: {Message}", request.Username, ex.Message);
                 return StatusCode(500, new RegisterResponse
                 {
                     Success = false,
-                    Message = "An error occurred during registration"
+                    Message = $"An error occurred during registration: {ex.Message}"
                 });
             }
         }
@@ -666,9 +666,9 @@ namespace ServerAtrrak.Controllers
             command.Parameters.AddWithValue("@FullName", request.FullName);
             command.Parameters.AddWithValue("@Email", request.Email);
             command.Parameters.AddWithValue("@SchoolId", schoolId);
-            command.Parameters.AddWithValue("@Gradelvl", request.GradeLevel);
-            command.Parameters.AddWithValue("@Section", request.Section);
-            command.Parameters.AddWithValue("@Strand", request.Strand ?? (object)DBNull.Value);
+            command.Parameters.AddWithValue("@Gradelvl", (object?)request.GradeLevel ?? DBNull.Value);
+            command.Parameters.AddWithValue("@Section", (object?)request.Section ?? DBNull.Value);
+            command.Parameters.AddWithValue("@Strand", (object?)request.Strand ?? DBNull.Value);
 
             await command.ExecuteNonQueryAsync();
             return teacherId;
@@ -1166,8 +1166,8 @@ namespace ServerAtrrak.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error during advisor registration for user: {Username}", request.Username);
-                return StatusCode(500, new RegisterResponse { Success = false, Message = "An error occurred during registration" });
+                _logger.LogError(ex, "Error during advisor registration for user: {Username}. Message: {Message}", request.Username, ex.Message);
+                return StatusCode(500, new RegisterResponse { Success = false, Message = $"An error occurred during registration: {ex.Message}" });
             }
         }
 
@@ -1241,12 +1241,12 @@ namespace ServerAtrrak.Controllers
                 command.Parameters.AddWithValue("@FullName", request.FullName);
                 command.Parameters.AddWithValue("@Email", request.Email);
                 command.Parameters.AddWithValue("@SchoolId", schoolId);
-                command.Parameters.AddWithValue("@Gradelvl", request.GradeLevel ?? (object)DBNull.Value);
-                command.Parameters.AddWithValue("@Section", request.Section ?? (object)DBNull.Value);
-                command.Parameters.AddWithValue("@Strand", request.Strand ?? (object)DBNull.Value);
+                command.Parameters.AddWithValue("@Gradelvl", (object?)request.GradeLevel ?? DBNull.Value);
+                command.Parameters.AddWithValue("@Section", (object?)request.Section ?? DBNull.Value);
+                command.Parameters.AddWithValue("@Strand", (object?)request.Strand ?? DBNull.Value);
 
                 await command.ExecuteNonQueryAsync();
-                _logger.LogInformation("Guidance counselor record created successfully: {GuidanceId}", guidanceId);
+                _logger.LogInformation("Guidance counselor/Admin record created successfully: {GuidanceId}", guidanceId);
                 return guidanceId;
             }
             catch (Exception ex)
@@ -1273,7 +1273,7 @@ namespace ServerAtrrak.Controllers
                 command.Parameters.AddWithValue("@Username", request.Username);
                 command.Parameters.AddWithValue("@Email", request.Email);
                 command.Parameters.AddWithValue("@Password", request.Password);
-                command.Parameters.AddWithValue("@UserType", UserType.GuidanceCounselor.ToString());
+                command.Parameters.AddWithValue("@UserType", request.UserType.ToString());
                 command.Parameters.AddWithValue("@IsActive", true);
                 command.Parameters.AddWithValue("@CreatedAt", DateTime.Now);
                 command.Parameters.AddWithValue("@UpdatedAt", DateTime.Now);

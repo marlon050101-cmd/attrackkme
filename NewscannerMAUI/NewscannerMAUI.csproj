@@ -21,7 +21,7 @@
         <Nullable>enable</Nullable>
 
         <!-- Display name -->
-        <ApplicationTitle>NewscannerMAUI</ApplicationTitle>
+        <ApplicationTitle>Sardo-TrackCare</ApplicationTitle>
 
         <!-- App Identifier -->
         <ApplicationId>com.companyname.newscannermaui</ApplicationId>
