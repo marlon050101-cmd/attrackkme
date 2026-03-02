@@ -12,6 +12,20 @@
         <p class="text-muted">Review and accept students who have selected you as their advisor.</p>
     </div>
 
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="alert alert-danger mb-3">
+            <strong>Debug Error:</strong> @errorMessage
+        </div>
+    }
+    
+    @if (!string.IsNullOrEmpty(debugMessage))
+    {
+        <div class="alert alert-info mb-3 small">
+            <strong>Debug Info:</strong> @debugMessage
+        </div>
+    }
+
     @if (isLoading)
     {
         <div class="d-flex justify-content-center align-items-center" style="height: 300px;">
@@ -74,22 +88,22 @@
                             <div class="d-flex gap-2">
                                 @if (student.EnrollmentStatus == "Pending")
                                 {
-                                    <button class="btn btn-success flex-grow-1 rounded-pill" @onclick="() => UpdateStatus(student, "Approved")">
+                                    <button class="btn btn-success flex-grow-1 rounded-pill" @onclick='() => UpdateStatus(student, "Approved")'>
                                         <i class="fas fa-check me-2"></i>Approve
                                     </button>
-                                    <button class="btn btn-outline-danger flex-grow-1 rounded-pill" @onclick="() => UpdateStatus(student, "Rejected")">
+                                    <button class="btn btn-outline-danger flex-grow-1 rounded-pill" @onclick='() => UpdateStatus(student, "Rejected")'>
                                         <i class="fas fa-times me-2"></i>Reject
                                     </button>
                                 }
                                 else if (student.EnrollmentStatus == "Approved")
                                 {
-                                    <button class="btn btn-outline-secondary w-100 rounded-pill" @onclick="() => UpdateStatus(student, "Pending")">
+                                    <button class="btn btn-outline-secondary w-100 rounded-pill" @onclick='() => UpdateStatus(student, "Pending")'>
                                         <i class="fas fa-undo me-2"></i>Move back to Pending
                                     </button>
                                 }
                                 else
                                 {
-                                    <button class="btn btn-primary w-100 rounded-pill" @onclick="() => UpdateStatus(student, "Pending")">
+                                    <button class="btn btn-primary w-100 rounded-pill" @onclick='() => UpdateStatus(student, "Pending")'>
                                         <i class="fas fa-redo me-2"></i>Review Again
                                     </button>
                                 }
@@ -167,20 +181,47 @@
         await LoadStudents();
     }
 
+    private string? debugMessage;
+    private string? errorMessage;
+
     private async Task LoadStudents()
     {
         isLoading = true;
+        errorMessage = null;
         try
         {
             var currentUser = await AuthService.GetCurrentUserAsync();
+            Console.WriteLine($"DEBUG AdvisorApprovals: currentUser={currentUser?.Username}, TeacherId={currentUser?.TeacherId}, UserType={currentUser?.UserType}");
+            debugMessage = $"User: {currentUser?.Username} | TeacherId: {currentUser?.TeacherId} | Type: {currentUser?.UserType}";
+
             if (currentUser != null && !string.IsNullOrEmpty(currentUser.TeacherId))
             {
                 var http = HttpClientFactory.CreateClient("AttrakAPI");
-                students = await http.GetFromJsonAsync<List<StudentDisplayInfo>>($"api/register/advisor/{currentUser.TeacherId}/students");
+                var url = $"api/register/advisor/{currentUser.TeacherId}/students";
+                Console.WriteLine($"DEBUG AdvisorApprovals: Calling URL: {url}");
+                var response = await http.GetAsync(url);
+                Console.WriteLine($"DEBUG AdvisorApprovals: Response status: {response.StatusCode}");
+                if (response.IsSuccessStatusCode)
+                {
+                    students = await response.Content.ReadFromJsonAsync<List<StudentDisplayInfo>>();
+                    Console.WriteLine($"DEBUG AdvisorApprovals: Loaded {students?.Count} students");
+                }
+                else
+                {
+                    var body = await response.Content.ReadAsStringAsync();
+                    errorMessage = $"API Error ({response.StatusCode}): {body}";
+                    Console.WriteLine($"DEBUG AdvisorApprovals: API Error: {body}");
+                }
+            }
+            else
+            {
+                errorMessage = $"No TeacherId found in current user session. User: {currentUser?.Username}, Type: {currentUser?.UserType}";
+                Console.WriteLine($"DEBUG AdvisorApprovals: {errorMessage}");
             }
         }
         catch (Exception ex)
         {
+            errorMessage = $"Exception: {ex.Message}";
             Console.WriteLine($"Error loading students: {ex.Message}");
         }
         finally

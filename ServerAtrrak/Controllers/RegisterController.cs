@@ -1189,13 +1189,15 @@ namespace ServerAtrrak.Controllers
         {
             try
             {
+                Console.WriteLine($"DEBUG GetStudentsByAdvisor: Called with advisorId={advisorId}");
                 using var connection = new MySqlConnection(_dbConnection.GetConnection());
                 await connection.OpenAsync();
 
                 var query = @"
-                    SELECT s.StudentId, s.FullName, s.GradeLevel, s.Section, s.Strand, s.SchoolId, s.ParentsNumber, s.Gender, sch.SchoolName, s.QRImage, s.AdvisorId, s.Status, s.EnrollmentStatus
+                    SELECT s.StudentId, s.FullName, s.GradeLevel, s.Section, s.Strand, s.SchoolId, s.ParentsNumber, s.Gender, 
+                           COALESCE(sch.SchoolName, '') AS SchoolName, s.QRImage, s.AdvisorId, s.EnrollmentStatus
                     FROM student s
-                    INNER JOIN school sch ON s.SchoolId = sch.SchoolId
+                    LEFT JOIN school sch ON s.SchoolId = sch.SchoolId
                     WHERE s.AdvisorId = @AdvisorId
                     ORDER BY s.EnrollmentStatus DESC, s.FullName ASC";
 
@@ -1204,29 +1206,35 @@ namespace ServerAtrrak.Controllers
 
                 var students = new List<StudentDisplayInfo>();
                 using var reader = await command.ExecuteReaderAsync();
+                int count = 0;
                 while (await reader.ReadAsync())
                 {
-                    students.Add(new StudentDisplayInfo
+                    count++;
+                    var student = new StudentDisplayInfo
                     {
                         StudentId = reader.GetString("StudentId"),
                         FullName = reader.GetString("FullName"),
                         GradeLevel = reader.GetInt32("GradeLevel"),
                         Section = reader.GetString("Section"),
                         Strand = reader.IsDBNull("Strand") ? null : reader.GetString("Strand"),
-                        ParentsNumber = reader.GetString("ParentsNumber"),
-                        Gender = reader.GetString("Gender"),
-                        SchoolName = reader.GetString("SchoolName"),
+                        ParentsNumber = reader.IsDBNull("ParentsNumber") ? "" : reader.GetString("ParentsNumber"),
+                        Gender = reader.IsDBNull("Gender") ? "" : reader.GetString("Gender"),
+                        SchoolName = reader.IsDBNull("SchoolName") ? "" : reader.GetString("SchoolName"),
                         QRImage = reader.IsDBNull("QRImage") ? "" : reader.GetString("QRImage"),
                         AdvisorId = reader.IsDBNull("AdvisorId") ? null : reader.GetString("AdvisorId"),
-                        Status = reader.IsDBNull("Status") ? "Good" : reader.GetString("Status"),
+                        Status = "Good",
                         EnrollmentStatus = reader.IsDBNull("EnrollmentStatus") ? "Pending" : reader.GetString("EnrollmentStatus"),
                         IsValid = true
-                    });
+                    };
+                    Console.WriteLine($"DEBUG GetStudentsByAdvisor: Found student #{count}: {student.FullName} | Status={student.EnrollmentStatus}");
+                    students.Add(student);
                 }
+                Console.WriteLine($"DEBUG GetStudentsByAdvisor: Total students found = {count}");
                 return Ok(students);
             }
             catch (Exception ex)
             {
+                Console.WriteLine($"DEBUG GetStudentsByAdvisor ERROR: {ex.Message}");
                 return StatusCode(500, $"Internal server error: {ex.Message}");
             }
         }
