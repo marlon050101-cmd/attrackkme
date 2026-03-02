@@ -1,0 +1,203 @@
+@page "/student-dashboard"
+@using AttrackSharedClass.Models
+@using NewscannerMAUI.Services
+@layout StudentLayout
+
+@inject AuthService AuthService
+@inject IHttpClientFactory HttpClientFactory
+@inject NavigationManager Navigation
+
+<div class="student-dashboard">
+    <div class="dashboard-header mb-4">
+        <h2 class="fw-bold text-primary">My Dashboard</h2>
+        <p class="text-muted">Welcome back, @studentName!</p>
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="d-flex flex-column align-items-center justify-content-center p-5">
+            <div class="spinner-border text-primary mb-3" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="text-muted">Fetching your information...</p>
+        </div>
+    }
+    else if (studentData == null)
+    {
+        <div class="alert alert-warning">
+            <i class="fas fa-exclamation-circle me-2"></i>
+            Unable to load student information. Please try again later.
+        </div>
+    }
+    else
+    {
+        <div class="row g-4">
+            <!-- QR Code Card -->
+            <div class="col-md-5">
+                <div class="card qr-card border-0 shadow-sm h-100">
+                    <div class="card-body text-center d-flex flex-column align-items-center justify-content-center p-4">
+                        <h5 class="card-title fw-bold mb-4">My Attendance QR Code</h5>
+                        <div class="qr-container p-3 bg-white rounded-3 shadow-sm mb-4">
+                            @if (!string.IsNullOrEmpty(studentData.QRImage))
+                            {
+                                <img src="data:image/png;base64,@studentData.QRImage" alt="QR Code" class="img-fluid" style="max-width: 250px;" />
+                            }
+                            else
+                            {
+                                <div class="qr-placeholder d-flex align-items-center justify-content-center" style="width: 200px; height: 200px; background: #f8f9fa; border: 2px dashed #dee2e6;">
+                                    <i class="fas fa-qrcode fa-4x text-light"></i>
+                                </div>
+                                <p class="text-muted mt-2 small">QR Code not generated</p>
+                            }
+                        </div>
+                        <p class="small text-muted mb-0">Present this QR code to your teacher for attendance.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Student Info Card -->
+            <div class="col-md-7">
+                <div class="card info-card border-0 shadow-sm h-100">
+                    <div class="card-header bg-white border-0 pt-4 px-4">
+                        <h5 class="fw-bold mb-0">Personal Information</h5>
+                    </div>
+                    <div class="card-body p-4">
+                        <div class="info-grid">
+                            <div class="info-item mb-3">
+                                <label class="text-muted small text-uppercase fw-bold">Full Name</label>
+                                <div class="fw-bold fs-5">@studentData.FullName</div>
+                            </div>
+                            
+                            <div class="row mb-3">
+                                <div class="col-6">
+                                    <label class="text-muted small text-uppercase fw-bold">Student ID</label>
+                                    <div class="fw-semibold">@studentData.StudentId</div>
+                                </div>
+                                <div class="col-6">
+                                    <label class="text-muted small text-uppercase fw-bold">Gender</label>
+                                    <div class="fw-semibold">@studentData.Gender</div>
+                                </div>
+                            </div>
+
+                            <div class="row mb-3">
+                                <div class="col-6">
+                                    <label class="text-muted small text-uppercase fw-bold">Grade Level</label>
+                                    <div class="fw-semibold">Grade @studentData.GradeLevel</div>
+                                </div>
+                                <div class="col-6">
+                                    <label class="text-muted small text-uppercase fw-bold">Section</label>
+                                    <div class="fw-semibold">@studentData.Section</div>
+                                </div>
+                            </div>
+
+                            @if (!string.IsNullOrEmpty(studentData.Strand))
+                            {
+                                <div class="info-item mb-3">
+                                    <label class="text-muted small text-uppercase fw-bold">Strand</label>
+                                    <div class="fw-semibold">@studentData.Strand</div>
+                                </div>
+                            }
+
+                            <div class="info-item mb-3">
+                                <label class="text-muted small text-uppercase fw-bold">Email Address</label>
+                                <div class="fw-semibold text-primary">@studentData.Email</div>
+                            </div>
+
+                            <div class="info-item">
+                                <label class="text-muted small text-uppercase fw-bold">Parent's/Guardian's Contact</label>
+                                <div class="fw-semibold">@studentData.ParentsNumber</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private string studentName = "Student";
+    private Student? studentData;
+    private bool isLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadStudentData();
+    }
+
+    private async Task LoadStudentData()
+    {
+        isLoading = true;
+        try
+        {
+            var user = await AuthService.GetCurrentUserAsync();
+            if (user != null)
+            {
+                studentName = user.Username;
+                
+                if (!string.IsNullOrEmpty(user.StudentId))
+                {
+                    var httpClient = HttpClientFactory.CreateClient("AttrakAPI");
+                    // Fetch full student details including QR image
+                    studentData = await httpClient.GetFromJsonAsync<Student>($"api/register/student/{user.StudentId}");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Error loading student data: {ex.Message}");
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+}
+
+<style>
+    .student-dashboard {
+        max-width: 1000px;
+        margin: 0 auto;
+        padding: 1rem;
+    }
+
+    .qr-card {
+        border-radius: 20px;
+        background: linear-gradient(145deg, #ffffff, #f0f4ff);
+    }
+
+    .info-card {
+        border-radius: 20px;
+    }
+
+    .qr-container {
+        border: 1px solid #e3e6f0;
+        display: inline-block;
+        transition: transform 0.3s ease;
+    }
+
+    .qr-container:hover {
+        transform: scale(1.02);
+    }
+
+    .info-item label {
+        display: block;
+        margin-bottom: 2px;
+        letter-spacing: 0.05em;
+    }
+
+    .card {
+        transition: box-shadow 0.3s ease;
+    }
+
+    .card:hover {
+        box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.1) !important;
+    }
+
+    @@media (max-width: 768px) {
+        .student-dashboard {
+            padding: 0.5rem;
+        }
+    }
+</style>

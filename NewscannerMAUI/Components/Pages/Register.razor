@@ -323,7 +323,7 @@
                 <div class="row g-2 mb-2 mt-1">
                     <div class="col-4">
                         <label class="form-label">Grade</label>
-                        <select class="form-select" @bind="gradeLevel">
+                        <select class="form-select" @bind="gradeLevel" @bind:after="OnGradeLevelChanged">
                             <option value="0">Select</option>
                             @for (int g = 7; g <= 12; g++)
                             {
@@ -333,8 +333,31 @@
                     </div>
                     <div class="col-4">
                         <label class="form-label">Section</label>
-                        <input class="form-control text-uppercase-input" type="text" placeholder="E.G. STEM-A" 
-                               value="@userSection" @oninput="(e) => userSection = e.Value?.ToString()?.ToUpper() ?? string.Empty" />
+                        <div class="search-wrapper">
+                            <input class="form-control text-uppercase-input" 
+                                   type="text" 
+                                   placeholder="E.G. ZEUS" 
+                                   @bind="userSection" 
+                                   @oninput="OnSectionSearchInput"
+                                   @onfocus="OnSectionSearchFocus" />
+                            
+                            @if (isLoadingSections)
+                            {
+                                <span class="spinner-border spinner-border-sm spinner-sm text-primary position-absolute end-0 me-2" style="top: 12px;" role="status"></span>
+                            }
+
+                            @if (sectionSearchResults.Count > 0)
+                            {
+                                <div class="search-result-list">
+                                    @foreach (var sec in sectionSearchResults)
+                                    {
+                                        <div class="search-result-item" @onclick="() => SelectSection(sec)">
+                                            @sec
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
                     </div>
                     <div class="col-4">
                         @if (gradeLevel >= 11)
@@ -423,6 +446,11 @@
     private string userSection = string.Empty;
     private string strand = string.Empty;
 
+    // --- Section State ---
+    private List<string> sectionSearchResults = new();
+    private bool isLoadingSections = false;
+    private System.Threading.CancellationTokenSource? sectionSearchCts;
+
     // --- Student-only ---
     private string gender = string.Empty;
     private string parentsNumber = string.Empty;
@@ -501,7 +529,81 @@
         selectedSchoolAddress = string.Empty;
         schoolSearchResults.Clear();
         schoolSearchText = string.Empty;
+        ClearSection();
     }
+
+    private async Task OnGradeLevelChanged()
+    {
+        userSection = string.Empty;
+        if (gradeLevel > 0 && (!string.IsNullOrEmpty(selectedSchoolId) || !string.IsNullOrEmpty(selectedSchoolName)))
+        {
+            await FetchSections();
+        }
+    }
+
+    private void OnSectionSearchFocus()
+    {
+        if (sectionSearchResults.Count == 0 && !isLoadingSections)
+        {
+            _ = FetchSections();
+        }
+    }
+
+    private async Task OnSectionSearchInput(ChangeEventArgs e)
+    {
+        userSection = e.Value?.ToString() ?? string.Empty;
+        if (string.IsNullOrEmpty(userSection))
+        {
+            await FetchSections();
+            return;
+        }
+
+        // Fetch sections on every few chars? Or just wait for focus?
+        // For now, let's keep it simple: if empty or certain length, fetch.
+         if (userSection.Length >= 2)
+         {
+             await FetchSections();
+         }
+    }
+
+    private async Task FetchSections()
+    {
+        if (gradeLevel <= 0 || (string.IsNullOrEmpty(selectedSchoolId) && string.IsNullOrEmpty(selectedSchoolName))) return;
+
+        isLoadingSections = true;
+        StateHasChanged();
+
+        try
+        {
+            var http = HttpClientFactory.CreateClient("AttrakAPI");
+            var url = $"api/register/sections?gradeLevel={gradeLevel}";
+            if (!string.IsNullOrEmpty(selectedSchoolId)) url += $"&schoolId={selectedSchoolId}";
+            if (!string.IsNullOrEmpty(selectedSchoolName)) url += $"&schoolName={Uri.EscapeDataString(selectedSchoolName)}";
+
+            var result = await http.GetFromJsonAsync<List<string>>(url);
+            if (result != null)
+            {
+                sectionSearchResults = result;
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Error fetching sections: {ex.Message}");
+        }
+        finally
+        {
+            isLoadingSections = false;
+            StateHasChanged();
+        }
+    }
+
+    private void SelectSection(string section)
+    {
+        userSection = section;
+        sectionSearchResults.Clear();
+        StateHasChanged();
+    }
+
 
     private void OnUserTypeChanged(ChangeEventArgs e)
     {

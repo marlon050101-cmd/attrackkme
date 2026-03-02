@@ -12,14 +12,24 @@
         <p class="text-muted small">Manage subjects and class schedule for your section.</p>
     </div>
 
-    @if (!string.IsNullOrEmpty(errorMessage))
-    {
-        <div class="alert alert-danger mx-3">@errorMessage</div>
-    }
-    @if (!string.IsNullOrEmpty(successMessage))
-    {
-        <div class="alert alert-success mx-3">@successMessage</div>
-    }
+    <div class="toast-container">
+        @if (!string.IsNullOrEmpty(errorMessage))
+        {
+            <div class="toast toast-danger">
+                <i class="fas fa-exclamation-circle text-danger"></i>
+                <div class="toast-content">@errorMessage</div>
+                <button class="toast-close" @onclick='() => errorMessage = ""'>&times;</button>
+            </div>
+        }
+        @if (!string.IsNullOrEmpty(successMessage))
+        {
+            <div class="toast toast-success">
+                <i class="fas fa-check-circle text-success"></i>
+                <div class="toast-content">@successMessage</div>
+                <button class="toast-close" @onclick='() => successMessage = ""'>&times;</button>
+            </div>
+        }
+    </div>
 
     <div class="px-3 mb-3">
         <button class="btn-add" @onclick="ShowAddModal" disabled="@IsAddDisabled">
@@ -80,6 +90,30 @@
     </div>
 </div>
 
+@if (showDeleteConfirm && classToDelete != null)
+{
+    <div class="modal-overlay">
+        <div class="modal-card mini-modal">
+            <div class="modal-header">
+                <h5 class="modal-title text-danger"><i class="fas fa-trash-alt me-2"></i>Remove Class?</h5>
+                <button type="button" class="btn-close" @onclick="() => showDeleteConfirm = false"></button>
+            </div>
+            <div class="modal-body text-center py-4">
+                <p class="mb-1">Are you sure you want to remove</p>
+                <h6 class="fw-bold mb-3">@classToDelete.SubjectName?</h6>
+                <p class="small text-muted mb-0">This action cannot be undone.</p>
+            </div>
+            <div class="modal-footer border-0">
+                <button type="button" class="btn btn-light rounded-pill px-4" @onclick="() => showDeleteConfirm = false">Cancel</button>
+                <button type="button" class="btn btn-danger rounded-pill px-4" @onclick="ConfirmDelete" disabled="@isDeleting">
+                    @if (isDeleting) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                    Remove
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
 @if (showAddModal)
 {
     <div class="modal-overlay">
@@ -126,7 +160,7 @@
                     {
                         <!-- Search Input -->
                         <div class="position-relative">
-                            <input type="text" class="form-control" placeholder="Type to search subject..."
+                            <input type="text" class="form-control" placeholder="Type here to search or type the subject name..."
                                    value="@subjectSearchText"
                                    @oninput="OnSubjectSearch"
                                    @onfocus="() => showSubjectDropdown = true" />
@@ -218,6 +252,8 @@
     private bool isLoadingSubjects = false;
     private bool isSaving = false;
     private bool isDeleting = false;
+    private bool showDeleteConfirm = false;
+    private ClassOffering? classToDelete;
     private string errorMessage = "";
     private string successMessage = "";
     
@@ -317,20 +353,8 @@
                 .Where(s => !existingIds.Contains(s.SubjectId))
                 .Take(10).ToList();
 
-            if (filteredSubjects.Any())
-            {
-                // Auto-select first available subject if currently empty
-                if (string.IsNullOrEmpty(newSubjectId))
-                {
-                    newSubjectId = filteredSubjects[0].SubjectId;
-                    subjectSearchText = filteredSubjects[0].SubjectName;
-                }
-            }
-            else
-            {
-                newSubjectId = "";
-                subjectSearchText = "";
-            }
+            newSubjectId = "";
+            subjectSearchText = "";
         }
         catch (Exception ex)
         {
@@ -355,8 +379,23 @@
         subjectSearchText = "";
         showSubjectDropdown = false;
         filteredSubjects = new();
-        newStartTime = "07:30";
-        newEndTime = "08:30";
+        
+        // Auto-adjust time: set next start time to the end time of the last class
+        if (classes.Any())
+        {
+            var lastClass = classes.OrderBy(c => c.ScheduleEnd).Last();
+            var nextStart = lastClass.ScheduleEnd;
+            var nextEnd = nextStart.Add(TimeSpan.FromHours(1));
+            
+            // Limit to reasonable school hours if needed, but usually just +1hr is fine
+            newStartTime = nextStart.ToString(@"hh\:mm");
+            newEndTime = nextEnd.ToString(@"hh\:mm");
+        }
+        else
+        {
+            newStartTime = "07:30";
+            newEndTime = "08:30";
+        }
         showAddModal = true;
         await LoadSubjectsForGrade();
     }
@@ -514,16 +553,23 @@
         isSaving = false;
     }
 
-    private async Task DeleteClass(ClassOffering c)
+    private void DeleteClass(ClassOffering c)
     {
-        if (string.IsNullOrEmpty(advisorId)) return;
+        classToDelete = c;
+        showDeleteConfirm = true;
+    }
+
+    private async Task ConfirmDelete()
+    {
+        if (classToDelete == null || string.IsNullOrEmpty(advisorId)) return;
         isDeleting = true;
         try
         {
-            var response = await Http.DeleteAsync($"{ApiConfig.BaseUrl}api/ClassOffering/{c.ClassOfferingId}?advisorId={Uri.EscapeDataString(advisorId)}");
+            var response = await Http.DeleteAsync($"{ApiConfig.BaseUrl}api/ClassOffering/{classToDelete.ClassOfferingId}?advisorId={Uri.EscapeDataString(advisorId)}");
             if (response.IsSuccessStatusCode)
             {
                 await LoadClasses();
+                showDeleteConfirm = false;
                 ShowSuccessMessage("Class removed.");
             }
             else
@@ -551,7 +597,11 @@
 
 <style>
     .page-container {
-        padding: 0;
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        overflow: hidden;
+        background: #f8fafc;
     }
 
     .header-section {
@@ -585,7 +635,19 @@
     }
 
     .content-section {
-        padding: 0 1rem 1rem;
+        flex: 1;
+        overflow-y: auto;
+        padding: 0 1rem 120px; /* Extra padding at bottom for toast/clearance */
+        scrollbar-width: thin;
+    }
+    
+    .content-section::-webkit-scrollbar {
+        width: 4px;
+    }
+    
+    .content-section::-webkit-scrollbar-thumb {
+        background: #cbd5e1;
+        border-radius: 10px;
     }
 
     .class-list {
@@ -642,49 +704,153 @@
         left: 0;
         right: 0;
         bottom: 0;
-        background: rgba(0,0,0,0.5);
+        background: rgba(45, 55, 72, 0.4);
+        backdrop-filter: blur(6px);
+        -webkit-backdrop-filter: blur(6px);
         display: flex;
         align-items: center;
         justify-content: center;
-        z-index: 2000;
-        padding: 1rem;
+        z-index: 3000;
+        padding: 1.5rem;
+        animation: fadeIn 0.2s ease-out;
     }
 
     .modal-card {
         background: white;
-        border-radius: 16px;
+        border-radius: 20px;
         width: 100%;
-        max-width: 500px;
-        max-height: 90vh;
+        max-width: 480px;
+        max-height: 85vh;
         overflow-y: auto;
         display: flex;
         flex-direction: column;
+        box-shadow: 0 20px 40px rgba(0,0,0,0.15);
+        animation: slideUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        border: 1px solid rgba(255,255,255,0.2);
+    }
+
+    @@keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
+
+    @@keyframes slideUp {
+        from { transform: translateY(20px); opacity: 0; }
+        to { transform: translateY(0); opacity: 1; }
     }
 
     .modal-header {
-        padding: 1rem;
-        border-bottom: 1px solid #edf2f7;
+        padding: 1.25rem 1.5rem 1rem;
+        border-bottom: 1px solid #f1f5f9;
         display: flex;
         justify-content: space-between;
         align-items: center;
+        background: white;
+        position: sticky;
+        top: 0;
+        z-index: 10;
     }
 
     .modal-title {
-        font-weight: 700;
-        color: #2d3748;
+        font-weight: 800;
+        color: #1e293b;
+        font-size: 1.1rem;
+        letter-spacing: -0.02em;
     }
 
     .modal-body {
-        padding: 1rem;
+        padding: 1.5rem;
     }
 
     .modal-footer {
-        padding: 1rem;
-        border-top: 1px solid #edf2f7;
+        padding: 1rem 1.5rem 1.25rem;
+        border-top: 1px solid #f1f5f9;
         display: flex;
-        gap: 0.5rem;
+        gap: 0.75rem;
         justify-content: flex-end;
+        background: white;
+        position: sticky;
+        bottom: 0;
+        z-index: 10;
     }
+
+    .btn-close {
+        background: #f8fafc;
+        border: none;
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #64748b;
+        transition: all 0.2s;
+        font-size: 1.2rem;
+        padding: 0;
+        line-height: 1;
+    }
+
+    .btn-close:hover {
+        background: #fee2e2;
+        color: #ef4444;
+        transform: rotate(90deg);
+    }
+
+    .mini-modal {
+        max-width: 360px !important;
+    }
+
+    /* Floating Toast Notifications */
+    .toast-container {
+        position: fixed;
+        bottom: 2rem;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 9999;
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        width: calc(100% - 2rem);
+        max-width: 400px;
+        pointer-events: none;
+    }
+
+    .toast {
+        background: white;
+        padding: 1rem 1.25rem;
+        border-radius: 16px;
+        box-shadow: 0 12px 30px rgba(0,0,0,0.15);
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        pointer-events: auto;
+        animation: toastPop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        border: 1px solid #f1f5f9;
+    }
+
+    @@keyframes toastPop {
+        0% { transform: translateY(100%) scale(0.9); opacity: 0; }
+        100% { transform: translateY(0) scale(1); opacity: 1; }
+    }
+
+    .toast-content {
+        flex: 1;
+        font-size: 0.9rem;
+        font-weight: 600;
+        color: #334155;
+    }
+
+    .toast-close {
+        background: none;
+        border: none;
+        color: #94a3b8;
+        font-size: 1.25rem;
+        padding: 0;
+        line-height: 1;
+    }
+
+    .toast-success { border-left: 5px solid #10b981; }
+    .toast-danger { border-left: 5px solid #ef4444; }
 
     .form-group label {
         font-size: 0.8rem;

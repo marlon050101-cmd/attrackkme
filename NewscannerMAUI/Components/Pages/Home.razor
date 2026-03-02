@@ -312,6 +312,10 @@
                                 {
                                     Navigation.NavigateTo("/advisor-dashboard");
                                 }
+                                else if (result.User.UserType == UserType.Student)
+                                {
+                                    Navigation.NavigateTo("/student-dashboard");
+                                }
                                 else
                                 {
                                     Navigation.NavigateTo("/qr-scanner");

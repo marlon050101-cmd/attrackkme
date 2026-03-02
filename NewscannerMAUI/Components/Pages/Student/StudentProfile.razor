@@ -1,0 +1,39 @@
+@page "/student-profile"
+@using AttrackSharedClass.Models
+@using NewscannerMAUI.Services
+@layout StudentLayout
+
+@inject AuthService AuthService
+
+<div class="student-profile">
+    <div class="dashboard-header mb-4">
+        <h2 class="fw-bold text-primary">My Profile</h2>
+        <p class="text-muted">Manage your personal information</p>
+    </div>
+
+    <div class="card border-0 shadow-sm rounded-4 overlay-card">
+        <div class="card-body p-5 text-center">
+            <div class="mb-4">
+                <i class="fas fa-user-circle fa-5x text-light"></i>
+            </div>
+            <h4 class="fw-bold">Profile Management</h4>
+            <p class="text-muted">This feature is coming soon. You can view your current information on the dashboard.</p>
+            <hr class="my-4 mx-auto" style="max-width: 100px;">
+            <a href="/student-dashboard" class="btn btn-primary rounded-pill px-4">
+                <i class="fas fa-arrow-left me-2"></i>Back to Dashboard
+            </a>
+        </div>
+    </div>
+</div>
+
+<style>
+    .student-profile {
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 1rem;
+    }
+
+    .overlay-card {
+        background-color: white;
+    }
+</style>

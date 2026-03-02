@@ -328,12 +328,17 @@ namespace ServerAtrrak.Services
 
                 _logger.LogInformation("Fetching sections for SchoolId: {SchoolId}, GradeLevel: {GradeLevel}", schoolId, gradeLevel);
 
-                // Query teacher and student tables for distinct sections
+                // Query teacher, student, and class_offering tables for distinct sections
                 var query = @"
                     SELECT DISTINCT Section FROM (
                         SELECT Section FROM teacher WHERE SchoolId = @SchoolId AND Gradelvl = @GradeLevel AND Section IS NOT NULL AND Section != ''
                         UNION
                         SELECT Section FROM student WHERE SchoolId = @SchoolId AND GradeLevel = @GradeLevel AND Section IS NOT NULL AND Section != ''
+                        UNION
+                        SELECT co.Section 
+                        FROM class_offering co
+                        INNER JOIN teacher t ON co.AdvisorId = t.TeacherId
+                        WHERE t.SchoolId = @SchoolId AND co.GradeLevel = @GradeLevel AND co.Section IS NOT NULL AND co.Section != ''
                     ) AS combined_sections
                     ORDER BY Section";
 
