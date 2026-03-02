@@ -91,56 +91,70 @@
             <div class="modal-body">
                 <div class="form-group mb-3">
                     <label>Grade Level</label>
-                    <select class="form-select bg-light" @bind="newGrade" disabled>
-                        @for (var i = 7; i <= 12; i++)
+                    <div class="info-badge-row">
+                        <span class="info-badge">Grade @newGrade</span>
+                        <span class="info-badge">@newSection</span>
+                        @if (!string.IsNullOrEmpty(newStrand))
                         {
-                            <option value="@i">Grade @i</option>
-                        }
-                    </select>
-                    <small class="text-muted">Automatic based on your section</small>
-                </div>
-                <div class="form-group mb-3">
-                    <label>Section</label>
-                    <input type="text" class="form-control bg-light" @bind="newSection" readonly />
-                </div>
-                <div class="form-group mb-3">
-                    <label>Strand (Grade 11–12)</label>
-                    <select class="form-select bg-light" @bind="newStrand" disabled>
-                        <option value="">None</option>
-                        <option value="ABM">ABM</option>
-                        <option value="HUMSS">HUMSS</option>
-                        <option value="STEM">STEM</option>
-                        <option value="GAS">GAS</option>
-                    </select>
-                </div>
-                <div class="form-group mb-3">
-                    <label>Subject</label>
-                    <div class="position-relative">
-                        <select class="form-select @(isLoadingSubjects ? "border-primary" : "")" @bind="newSubjectId" disabled="@isLoadingSubjects">
-                            @if (isLoadingSubjects)
-                            {
-                                <option value="">Loading subjects...</option>
-                            }
-                            else if (!subjectsForGrade.Any())
-                            {
-                                <option value="">No subjects found for this grade/strand</option>
-                            }
-                            else
-                            {
-                                <option value="">-- Select Subject --</option>
-                                @foreach (var sub in subjectsForGrade)
-                                {
-                                    <option value="@sub.SubjectId">@sub.SubjectName</option>
-                                }
-                            }
-                        </select>
-                        @if (isLoadingSubjects)
-                        {
-                            <div class="position-absolute end-0 top-50 translate-middle-y me-3">
-                                <span class="spinner-border spinner-border-sm text-primary" role="status"></span>
-                            </div>
+                            <span class="info-badge strand-badge">@newStrand</span>
                         }
                     </div>
+                    <small class="text-muted">Automatic based on your profile</small>
+                </div>
+                <div class="form-group mb-3 subject-search-container">
+                    <label>Subject</label>
+                    @if (isLoadingSubjects)
+                    {
+                        <div class="d-flex align-items-center gap-2 text-primary">
+                            <span class="spinner-border spinner-border-sm"></span>
+                            <span class="small">Loading subjects...</span>
+                        </div>
+                    }
+                    else
+                    {
+                        <!-- Search Input -->
+                        <div class="position-relative">
+                            <input type="text" class="form-control" placeholder="Type to search subject..."
+                                   value="@subjectSearchText"
+                                   @oninput="OnSubjectSearch"
+                                   @onfocus="() => showSubjectDropdown = true" />
+                            @if (showSubjectDropdown && filteredSubjects.Any())
+                            {
+                                <div class="subject-dropdown">
+                                    @foreach (var sub in filteredSubjects)
+                                    {
+                                        <div class="subject-option @(sub.SubjectId == newSubjectId ? "selected" : "")"
+                                             @onclick="() => SelectSubject(sub)">
+                                            <strong>@sub.SubjectName</strong>
+                                            @if (!string.IsNullOrEmpty(sub.Strand))
+                                            {
+                                                <span class="badge badge-strand ms-1">@sub.Strand</span>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            }
+                            else if (showSubjectDropdown && !string.IsNullOrEmpty(subjectSearchText) && !filteredSubjects.Any())
+                            {
+                                <div class="subject-dropdown">
+                                    <div class="subject-option text-muted">No subjects found</div>
+                                </div>
+                            }
+                        </div>
+                        <!-- Selected Subject Preview -->
+                        @if (!string.IsNullOrEmpty(newSubjectId))
+                        {
+                            var selectedSub = subjectsForGrade.FirstOrDefault(s => s.SubjectId == newSubjectId);
+                            if (selectedSub != null)
+                            {
+                                <div class="selected-subject-badge mt-2">
+                                    <i class="fas fa-check-circle text-success me-1"></i>
+                                    <strong>@selectedSub.SubjectName</strong>
+                                    <button type="button" class="btn-clear" @onclick="ClearSubject">&times;</button>
+                                </div>
+                            }
+                        }
+                    }
                 </div>
                 <div class="row">
                     <div class="col-6">
@@ -183,6 +197,11 @@
     private bool isDeleting = false;
     private string errorMessage = "";
     private string successMessage = "";
+    
+    // Subject search
+    private string subjectSearchText = "";
+    private bool showSubjectDropdown = false;
+    private List<TeacherSubjectAssignment> filteredSubjects = new();
  
     private bool showAddModal = false;
     private int newGrade;
@@ -244,25 +263,30 @@
             var url = $"{ApiConfig.BaseUrl}api/ClassOffering/subjects-for-grade?gradeLevel={newGrade}{strandParam}";
             var list = await Http.GetFromJsonAsync<List<TeacherSubjectAssignment>>(url);
             subjectsForGrade = list ?? new List<TeacherSubjectAssignment>();
-            
+            filteredSubjects = subjectsForGrade.Take(10).ToList();
+
             if (subjectsForGrade.Any())
             {
                 // Auto-select first subject if currently empty or not in the new list
                 if (string.IsNullOrEmpty(newSubjectId) || !subjectsForGrade.Any(s => s.SubjectId == newSubjectId))
                 {
                     newSubjectId = subjectsForGrade[0].SubjectId;
+                    subjectSearchText = subjectsForGrade[0].SubjectName;
                 }
             }
             else
             {
                 newSubjectId = "";
+                subjectSearchText = "";
             }
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"Error loading subjects: {ex.Message}");
             subjectsForGrade = new List<TeacherSubjectAssignment>();
+            filteredSubjects = new();
             newSubjectId = "";
+            subjectSearchText = "";
         }
         finally
         {
@@ -276,13 +300,65 @@
         newSection = profileSection;
         newStrand = profileStrand;
         newSubjectId = "";
+        subjectSearchText = "";
+        showSubjectDropdown = false;
+        filteredSubjects = new();
         newStartTime = "07:30";
         newEndTime = "08:30";
         showAddModal = true;
         await LoadSubjectsForGrade();
     }
 
-    private void HideAddModal() => showAddModal = false;
+    private void HideAddModal()
+    {
+        showAddModal = false;
+        showSubjectDropdown = false;
+    }
+
+    private async Task OnSubjectSearch(ChangeEventArgs e)
+    {
+        subjectSearchText = e.Value?.ToString() ?? "";
+        showSubjectDropdown = true;
+        if (string.IsNullOrWhiteSpace(subjectSearchText))
+        {
+            filteredSubjects = subjectsForGrade.Take(10).ToList();
+        }
+        else
+        {
+            var keyword = subjectSearchText.ToLower();
+            filteredSubjects = subjectsForGrade
+                .Where(s => s.SubjectName.Contains(keyword, StringComparison.OrdinalIgnoreCase))
+                .Take(10)
+                .ToList();
+            // If no local results, search from server
+            if (!filteredSubjects.Any())
+            {
+                try
+                {
+                    var strandParam = string.IsNullOrEmpty(newStrand) ? "" : $"&strand={Uri.EscapeDataString(newStrand)}";
+                    var url = $"{ApiConfig.BaseUrl}api/ClassOffering/search-subjects?gradeLevel={newGrade}{strandParam}&keyword={Uri.EscapeDataString(subjectSearchText)}";
+                    var result = await Http.GetFromJsonAsync<List<TeacherSubjectAssignment>>(url);
+                    filteredSubjects = result ?? new();
+                }
+                catch { }
+            }
+        }
+    }
+
+    private void SelectSubject(TeacherSubjectAssignment sub)
+    {
+        newSubjectId = sub.SubjectId;
+        subjectSearchText = sub.SubjectName;
+        showSubjectDropdown = false;
+    }
+
+    private void ClearSubject()
+    {
+        newSubjectId = "";
+        subjectSearchText = "";
+        showSubjectDropdown = false;
+        filteredSubjects = subjectsForGrade.Take(10).ToList();
+    }
 
     private void OnStartTimeChanged(ChangeEventArgs e)
     {
@@ -531,4 +607,77 @@
         0% { transform: rotate(0deg); }
         100% { transform: rotate(360deg); }
     }
+
+    /* Info Badge Row (locked section display) */
+    .info-badge-row {
+        display: flex;
+        gap: 0.4rem;
+        flex-wrap: wrap;
+        margin-bottom: 0.25rem;
+    }
+    .info-badge {
+        background: #edf2f7;
+        color: #2d3748;
+        border-radius: 8px;
+        padding: 0.3rem 0.7rem;
+        font-size: 0.85rem;
+        font-weight: 600;
+    }
+    .strand-badge {
+        background: #ebf8f0;
+        color: #1cc88a;
+    }
+
+    /* Subject Search */
+    .subject-search-container { position: relative; }
+    .subject-dropdown {
+        position: absolute;
+        top: calc(100% + 2px);
+        left: 0;
+        right: 0;
+        background: white;
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+        z-index: 3000;
+        max-height: 220px;
+        overflow-y: auto;
+    }
+    .subject-option {
+        padding: 0.6rem 0.9rem;
+        cursor: pointer;
+        font-size: 0.88rem;
+        border-bottom: 1px solid #f7fafc;
+        transition: background 0.15s;
+    }
+    .subject-option:hover, .subject-option.selected {
+        background: #f0fff8;
+        color: #1cc88a;
+    }
+    .badge-strand {
+        background: #ebf8f0;
+        color: #1cc88a;
+        font-size: 0.7rem;
+    }
+    .selected-subject-badge {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        background: #f0fff8;
+        border: 1px solid #1cc88a30;
+        border-radius: 8px;
+        padding: 0.4rem 0.7rem;
+        font-size: 0.85rem;
+    }
+    .btn-clear {
+        background: none;
+        border: none;
+        color: #a0aec0;
+        font-size: 1rem;
+        line-height: 1;
+        cursor: pointer;
+        padding: 0;
+        margin-left: auto;
+    }
+    .btn-clear:hover { color: #e74a3b; }
 </style>

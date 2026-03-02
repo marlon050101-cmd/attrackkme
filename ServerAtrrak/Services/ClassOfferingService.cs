@@ -263,15 +263,38 @@ namespace ServerAtrrak.Services
             {
                 using var connection = new MySqlConnection(_dbConnection.GetConnection());
                 await connection.OpenAsync();
-                var query = @"
-                    SELECT s.SubjectId, s.SubjectName, s.GradeLevel, s.Strand
-                    FROM subject s
-                    WHERE s.GradeLevel = @GradeLevel
-                      AND (s.Strand = @Strand OR (s.Strand IS NULL AND @Strand IS NULL))
-                    ORDER BY s.SubjectName";
-                using var cmd = new MySqlCommand(query, connection);
-                cmd.Parameters.AddWithValue("@GradeLevel", gradeLevel);
-                cmd.Parameters.AddWithValue("@Strand", strand ?? (object)DBNull.Value);
+
+                // Normalize: treat empty string as null
+                string? normalizedStrand = string.IsNullOrWhiteSpace(strand) ? null : strand.Trim();
+
+                string query;
+                MySqlCommand cmd;
+
+                if (normalizedStrand != null)
+                {
+                    // Senior High: match exact strand OR subjects with no strand requirement
+                    query = @"
+                        SELECT s.SubjectId, s.SubjectName, s.GradeLevel, s.Strand
+                        FROM subject s
+                        WHERE s.GradeLevel = @GradeLevel
+                          AND (s.Strand = @Strand OR s.Strand IS NULL OR s.Strand = '')
+                        ORDER BY s.SubjectName";
+                    cmd = new MySqlCommand(query, connection);
+                    cmd.Parameters.AddWithValue("@GradeLevel", gradeLevel);
+                    cmd.Parameters.AddWithValue("@Strand", normalizedStrand);
+                }
+                else
+                {
+                    // JHS or no strand: just match grade level
+                    query = @"
+                        SELECT s.SubjectId, s.SubjectName, s.GradeLevel, s.Strand
+                        FROM subject s
+                        WHERE s.GradeLevel = @GradeLevel
+                        ORDER BY s.SubjectName";
+                    cmd = new MySqlCommand(query, connection);
+                    cmd.Parameters.AddWithValue("@GradeLevel", gradeLevel);
+                }
+
                 using var reader = await cmd.ExecuteReaderAsync();
                 while (await reader.ReadAsync())
                 {
@@ -292,6 +315,57 @@ namespace ServerAtrrak.Services
             }
             return list;
         }
+
+        public async Task<List<TeacherSubjectAssignment>> SearchSubjectsAsync(int gradeLevel, string? strand, string? keyword)
+        {
+            var list = new List<TeacherSubjectAssignment>();
+            try
+            {
+                using var connection = new MySqlConnection(_dbConnection.GetConnection());
+                await connection.OpenAsync();
+
+                string? normalizedStrand = string.IsNullOrWhiteSpace(strand) ? null : strand.Trim();
+                string? normalizedKeyword = string.IsNullOrWhiteSpace(keyword) ? null : $"%{keyword.Trim()}%";
+
+                var conditions = new List<string> { "s.GradeLevel = @GradeLevel" };
+                if (normalizedStrand != null)
+                    conditions.Add("(s.Strand = @Strand OR s.Strand IS NULL OR s.Strand = '')");
+                if (normalizedKeyword != null)
+                    conditions.Add("s.SubjectName LIKE @Keyword");
+
+                var query = $@"
+                    SELECT s.SubjectId, s.SubjectName, s.GradeLevel, s.Strand
+                    FROM subject s
+                    WHERE {string.Join(" AND ", conditions)}
+                    ORDER BY s.SubjectName
+                    LIMIT 20";
+
+                using var cmd = new MySqlCommand(query, connection);
+                cmd.Parameters.AddWithValue("@GradeLevel", gradeLevel);
+                if (normalizedStrand != null) cmd.Parameters.AddWithValue("@Strand", normalizedStrand);
+                if (normalizedKeyword != null) cmd.Parameters.AddWithValue("@Keyword", normalizedKeyword);
+
+                using var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    list.Add(new TeacherSubjectAssignment
+                    {
+                        SubjectId = reader.GetString(0),
+                        SubjectName = reader.GetString(1),
+                        GradeLevel = reader.GetInt32(2),
+                        Strand = reader.IsDBNull(3) ? null : reader.GetString(3),
+                        ScheduleStart = TimeSpan.Zero,
+                        ScheduleEnd = TimeSpan.Zero
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error searching subjects");
+            }
+            return list;
+        }
+
 
         private static ClassOffering ReadClassOffering(DbDataReader reader)
         {

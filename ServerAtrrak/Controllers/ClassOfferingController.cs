@@ -58,6 +58,16 @@ namespace ServerAtrrak.Controllers
             return Ok(list);
         }
 
+        [HttpGet("search-subjects")]
+        public async Task<ActionResult<List<TeacherSubjectAssignment>>> SearchSubjects(
+            [FromQuery] int gradeLevel,
+            [FromQuery] string? strand,
+            [FromQuery] string? keyword)
+        {
+            var list = await _service.SearchSubjectsAsync(gradeLevel, strand, keyword);
+            return Ok(list);
+        }
+
         [HttpPost]
         public async Task<ActionResult<ClassOfferingResponse>> Create([FromBody] CreateClassOfferingRequest request)
         {
