@@ -89,6 +89,18 @@
                 <button type="button" class="btn-close" @onclick="HideAddModal"></button>
             </div>
             <div class="modal-body">
+                @if (!string.IsNullOrEmpty(modalErrorMessage))
+                {
+                    <div class="alert alert-danger py-2 mb-2 small">
+                        <i class="fas fa-exclamation-circle me-1"></i> @modalErrorMessage
+                    </div>
+                }
+                @if (!string.IsNullOrEmpty(modalSuccessMessage))
+                {
+                    <div class="alert alert-success py-2 mb-2 small">
+                        <i class="fas fa-check-circle me-1"></i> @modalSuccessMessage
+                    </div>
+                }
                 <div class="form-group mb-3">
                     <label>Grade Level</label>
                     <div class="info-badge-row">
@@ -118,26 +130,37 @@
                                    value="@subjectSearchText"
                                    @oninput="OnSubjectSearch"
                                    @onfocus="() => showSubjectDropdown = true" />
-                            @if (showSubjectDropdown && filteredSubjects.Any())
+                             @if (showSubjectDropdown)
                             {
                                 <div class="subject-dropdown">
                                     @foreach (var sub in filteredSubjects)
                                     {
                                         <div class="subject-option @(sub.SubjectId == newSubjectId ? "selected" : "")"
                                              @onclick="() => SelectSubject(sub)">
-                                            <strong>@sub.SubjectName</strong>
-                                            @if (!string.IsNullOrEmpty(sub.Strand))
+                                            @if (string.IsNullOrEmpty(sub.SubjectId))
                                             {
-                                                <span class="badge badge-strand ms-1">@sub.Strand</span>
+                                                <span class="text-primary"><i class="fas fa-plus-circle me-1"></i> Add "<strong>@sub.SubjectName</strong>" as new subject</span>
+                                            }
+                                            else
+                                            {
+                                                <strong>@sub.SubjectName</strong>
+                                                @if (!string.IsNullOrEmpty(sub.Strand))
+                                                {
+                                                    <span class="badge badge-strand ms-1">@sub.Strand</span>
+                                                }
                                             }
                                         </div>
                                     }
-                                </div>
-                            }
-                            else if (showSubjectDropdown && !string.IsNullOrEmpty(subjectSearchText) && !filteredSubjects.Any())
-                            {
-                                <div class="subject-dropdown">
-                                    <div class="subject-option text-muted">No subjects found</div>
+                                    @if (!string.IsNullOrEmpty(subjectSearchText) && !filteredSubjects.Any(s => s.SubjectName.Equals(subjectSearchText, StringComparison.OrdinalIgnoreCase)))
+                                    {
+                                        <div class="subject-option text-primary" @onclick="() => SelectManualSubject(subjectSearchText)">
+                                            <i class="fas fa-magic me-1"></i> Use "<strong>@subjectSearchText</strong>" as subject
+                                        </div>
+                                    }
+                                    @if (!filteredSubjects.Any() && string.IsNullOrEmpty(subjectSearchText))
+                                    {
+                                        <div class="subject-option text-muted italic">Type to search or enter subject...</div>
+                                    }
                                 </div>
                             }
                         </div>
@@ -204,6 +227,8 @@
     private List<TeacherSubjectAssignment> filteredSubjects = new();
  
     private bool showAddModal = false;
+    private string modalErrorMessage = "";
+    private string modalSuccessMessage = "";
     private int newGrade;
     private string newSection = "";
     private string? newStrand = "";
@@ -221,9 +246,6 @@
             return;
         }
         advisorId = user.TeacherId;
-        profileGrade = user.GradeLevel ?? 11;
-        profileSection = user.Section ?? "A";
-        profileStrand = user.Strand ?? "";
 
         if (string.IsNullOrEmpty(advisorId))
         {
@@ -231,6 +253,31 @@
             isLoading = false;
             return;
         }
+
+        // Fetch real profile data from DB — the auth token doesn't carry GradeLevel/Section
+        TeacherInfo? profile = null;
+        try
+        {
+            profile = await Http.GetFromJsonAsync<TeacherInfo>($"{ApiConfig.BaseUrl}api/register/teacher-by-user/{user.UserId}");
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Failed to load advisor profile: {ex.Message}";
+            isLoading = false;
+            return;
+        }
+
+        if (profile == null)
+        {
+            errorMessage = "Advisor profile not found in the database. Please contact your administrator.";
+            isLoading = false;
+            return;
+        }
+
+        profileGrade = profile.GradeLevel > 0 ? profile.GradeLevel : 7;
+        profileSection = profile.Section ?? "";
+        profileStrand = profile.Strand ?? "";
+
         await LoadClasses();
         // Set initial modal values to profile
         newGrade = profileGrade;
@@ -263,15 +310,20 @@
             var url = $"{ApiConfig.BaseUrl}api/ClassOffering/subjects-for-grade?gradeLevel={newGrade}{strandParam}";
             var list = await Http.GetFromJsonAsync<List<TeacherSubjectAssignment>>(url);
             subjectsForGrade = list ?? new List<TeacherSubjectAssignment>();
-            filteredSubjects = subjectsForGrade.Take(10).ToList();
+            
+            // Filter out subjects already in this section
+            var existingIds = classes.Select(c => c.SubjectId).ToList();
+            filteredSubjects = subjectsForGrade
+                .Where(s => !existingIds.Contains(s.SubjectId))
+                .Take(10).ToList();
 
-            if (subjectsForGrade.Any())
+            if (filteredSubjects.Any())
             {
-                // Auto-select first subject if currently empty or not in the new list
-                if (string.IsNullOrEmpty(newSubjectId) || !subjectsForGrade.Any(s => s.SubjectId == newSubjectId))
+                // Auto-select first available subject if currently empty
+                if (string.IsNullOrEmpty(newSubjectId))
                 {
-                    newSubjectId = subjectsForGrade[0].SubjectId;
-                    subjectSearchText = subjectsForGrade[0].SubjectName;
+                    newSubjectId = filteredSubjects[0].SubjectId;
+                    subjectSearchText = filteredSubjects[0].SubjectName;
                 }
             }
             else
@@ -313,32 +365,43 @@
     {
         showAddModal = false;
         showSubjectDropdown = false;
+        modalErrorMessage = "";
+        modalSuccessMessage = "";
     }
 
     private async Task OnSubjectSearch(ChangeEventArgs e)
     {
         subjectSearchText = e.Value?.ToString() ?? "";
         showSubjectDropdown = true;
+        var existingIds = classes.Select(c => c.SubjectId).ToList();
+
         if (string.IsNullOrWhiteSpace(subjectSearchText))
         {
-            filteredSubjects = subjectsForGrade.Take(10).ToList();
+            filteredSubjects = subjectsForGrade
+                .Where(s => !existingIds.Contains(s.SubjectId))
+                .Take(10).ToList();
         }
         else
         {
             var keyword = subjectSearchText.ToLower();
             filteredSubjects = subjectsForGrade
-                .Where(s => s.SubjectName.Contains(keyword, StringComparison.OrdinalIgnoreCase))
+                .Where(s => !existingIds.Contains(s.SubjectId) && s.SubjectName.Contains(keyword, StringComparison.OrdinalIgnoreCase))
                 .Take(10)
                 .ToList();
-            // If no local results, search from server
-            if (!filteredSubjects.Any())
+            
+            // If no local results or keyword is specific, search from server
+            if (filteredSubjects.Count < 3)
             {
                 try
                 {
                     var strandParam = string.IsNullOrEmpty(newStrand) ? "" : $"&strand={Uri.EscapeDataString(newStrand)}";
                     var url = $"{ApiConfig.BaseUrl}api/ClassOffering/search-subjects?gradeLevel={newGrade}{strandParam}&keyword={Uri.EscapeDataString(subjectSearchText)}";
                     var result = await Http.GetFromJsonAsync<List<TeacherSubjectAssignment>>(url);
-                    filteredSubjects = result ?? new();
+                    if (result != null)
+                    {
+                        var newResults = result.Where(s => !existingIds.Contains(s.SubjectId) && !filteredSubjects.Any(fs => fs.SubjectId == s.SubjectId));
+                        filteredSubjects.AddRange(newResults);
+                    }
                 }
                 catch { }
             }
@@ -350,6 +413,15 @@
         newSubjectId = sub.SubjectId;
         subjectSearchText = sub.SubjectName;
         showSubjectDropdown = false;
+        modalErrorMessage = "";
+    }
+
+    private void SelectManualSubject(string name)
+    {
+        newSubjectId = ""; // Empty ID signals manual entry
+        subjectSearchText = name;
+        showSubjectDropdown = false;
+        modalErrorMessage = "";
     }
 
     private void ClearSubject()
@@ -357,7 +429,10 @@
         newSubjectId = "";
         subjectSearchText = "";
         showSubjectDropdown = false;
-        filteredSubjects = subjectsForGrade.Take(10).ToList();
+        var existingIds = classes.Select(c => c.SubjectId).ToList();
+        filteredSubjects = subjectsForGrade
+            .Where(s => !existingIds.Contains(s.SubjectId))
+            .Take(10).ToList();
     }
 
     private void OnStartTimeChanged(ChangeEventArgs e)
@@ -374,21 +449,35 @@
 
     private async Task AddClass()
     {
-        if (string.IsNullOrEmpty(advisorId) || string.IsNullOrEmpty(newSubjectId)) return;
+        if (string.IsNullOrEmpty(advisorId) || (string.IsNullOrEmpty(newSubjectId) && string.IsNullOrEmpty(subjectSearchText))) return;
+        
+        modalErrorMessage = "";
+        modalSuccessMessage = "";
+
         if (!TimeSpan.TryParse(newStartTime, out var start) || !TimeSpan.TryParse(newEndTime, out var end) || end <= start)
         {
-            errorMessage = "Invalid time. End must be after start.";
+            modalErrorMessage = "Invalid time. End must be after start.";
             return;
         }
+
+        // Check for time overlap in the current section
+        var overlappingClass = classes.FirstOrDefault(c => 
+            (start < c.ScheduleEnd && end > c.ScheduleStart));
+        
+        if (overlappingClass != null)
+        {
+            modalErrorMessage = $"Time conflict! This slot overlaps with '{overlappingClass.SubjectName}' ({overlappingClass.ScheduleStart:hh\\:mm} - {overlappingClass.ScheduleEnd:hh\\:mm}).";
+            return;
+        }
+
         isSaving = true;
-        errorMessage = "";
-        successMessage = "";
         try
         {
             var request = new CreateClassOfferingRequest
             {
                 AdvisorId = advisorId,
-                SubjectId = newSubjectId,
+                SubjectId = newSubjectId ?? "",
+                SubjectName = string.IsNullOrEmpty(newSubjectId) ? subjectSearchText : null,
                 GradeLevel = newGrade,
                 Section = newSection,
                 Strand = string.IsNullOrEmpty(newStrand) ? null : newStrand,
@@ -398,18 +487,29 @@
             var response = await Http.PostAsJsonAsync($"{ApiConfig.BaseUrl}api/ClassOffering", request);
             if (response.IsSuccessStatusCode)
             {
-                successMessage = "Class added successfully!";
+                var result = await response.Content.ReadFromJsonAsync<ClassOfferingResponse>();
                 await LoadClasses();
-                HideAddModal();
+                modalSuccessMessage = "Class added successfully!";
+                StateHasChanged();
+                
+                // Clear modal and hide after delay
+                Task.Delay(1500).ContinueWith(_ => {
+                    InvokeAsync(() => {
+                        HideAddModal();
+                        ShowSuccessMessage("Class added successfully!");
+                        StateHasChanged();
+                    });
+                });
             }
             else
             {
-                errorMessage = "Failed to add class.";
+                var error = await response.Content.ReadAsStringAsync();
+                modalErrorMessage = $"Failed to add class: {error}";
             }
         }
         catch (Exception ex)
         {
-            errorMessage = ex.Message;
+            modalErrorMessage = ex.Message;
         }
         isSaving = false;
     }
@@ -423,8 +523,8 @@
             var response = await Http.DeleteAsync($"{ApiConfig.BaseUrl}api/ClassOffering/{c.ClassOfferingId}?advisorId={Uri.EscapeDataString(advisorId)}");
             if (response.IsSuccessStatusCode)
             {
-                successMessage = "Class removed.";
                 await LoadClasses();
+                ShowSuccessMessage("Class removed.");
             }
             else
                 errorMessage = "Failed to remove class.";
@@ -434,6 +534,18 @@
             errorMessage = ex.Message;
         }
         isDeleting = false;
+    }
+
+    private void ShowSuccessMessage(string message)
+    {
+        successMessage = message;
+        StateHasChanged();
+        // Clear message after 3 seconds
+        Task.Delay(3000).ContinueWith(_ =>
+        {
+            successMessage = "";
+            InvokeAsync(StateHasChanged);
+        });
     }
 }
 

@@ -162,8 +162,19 @@ namespace ServerAtrrak.Services
             {
                 if (request.ScheduleEnd <= request.ScheduleStart)
                     return new ClassOfferingResponse { Success = false, Message = "End time must be after start time." };
+                
                 using var connection = new MySqlConnection(_dbConnection.GetConnection());
                 await connection.OpenAsync();
+
+                string finalSubjectId = request.SubjectId;
+                if (string.IsNullOrEmpty(finalSubjectId) && !string.IsNullOrEmpty(request.SubjectName))
+                {
+                    finalSubjectId = await EnsureSubjectExistsAsync(request.SubjectName, request.GradeLevel, request.Strand, connection);
+                }
+
+                if (string.IsNullOrEmpty(finalSubjectId))
+                    return new ClassOfferingResponse { Success = false, Message = "Subject is required." };
+
                 var id = Guid.NewGuid().ToString();
                 var sql = @"
                     INSERT INTO class_offering (ClassOfferingId, AdvisorId, SubjectId, GradeLevel, Section, Strand, ScheduleStart, ScheduleEnd)
@@ -171,14 +182,15 @@ namespace ServerAtrrak.Services
                 using var cmd = new MySqlCommand(sql, connection);
                 cmd.Parameters.AddWithValue("@Id", id);
                 cmd.Parameters.AddWithValue("@AdvisorId", request.AdvisorId);
-                cmd.Parameters.AddWithValue("@SubjectId", request.SubjectId);
+                cmd.Parameters.AddWithValue("@SubjectId", finalSubjectId);
                 cmd.Parameters.AddWithValue("@GradeLevel", request.GradeLevel);
                 cmd.Parameters.AddWithValue("@Section", request.Section);
                 cmd.Parameters.AddWithValue("@Strand", request.Strand ?? (object)DBNull.Value);
                 cmd.Parameters.AddWithValue("@Start", request.ScheduleStart);
                 cmd.Parameters.AddWithValue("@End", request.ScheduleEnd);
                 await cmd.ExecuteNonQueryAsync();
-                _logger.LogInformation("Created class offering {Id} by advisor {AdvisorId}", id, request.AdvisorId);
+                
+                _logger.LogInformation("Created class offering {Id} (Subject: {SubId}) by advisor {AdvisorId}", id, finalSubjectId, request.AdvisorId);
                 var created = await GetByIdAsync(id);
                 return new ClassOfferingResponse { Success = true, Message = "Class added.", ClassOffering = created };
             }
@@ -187,6 +199,34 @@ namespace ServerAtrrak.Services
                 _logger.LogError(ex, "Error creating class offering");
                 return new ClassOfferingResponse { Success = false, Message = ex.Message };
             }
+        }
+
+        private async Task<string> EnsureSubjectExistsAsync(string name, int grade, string? strand, MySqlConnection conn)
+        {
+            // Check if exists first
+            var checkSql = "SELECT SubjectId FROM subject WHERE SubjectName = @Name AND GradeLevel = @Grade AND (Strand = @Strand OR (@Strand IS NULL AND (Strand IS NULL OR Strand = '')))";
+            using (var checkCmd = new MySqlCommand(checkSql, conn))
+            {
+                checkCmd.Parameters.AddWithValue("@Name", name);
+                checkCmd.Parameters.AddWithValue("@Grade", grade);
+                checkCmd.Parameters.AddWithValue("@Strand", strand ?? (object)DBNull.Value);
+                var existingId = await checkCmd.ExecuteScalarAsync();
+                if (existingId != null) return existingId.ToString();
+            }
+
+            // Create new
+            var id = Guid.NewGuid().ToString();
+            var insertSql = "INSERT INTO subject (SubjectId, SubjectName, GradeLevel, Strand) VALUES (@Id, @Name, @Grade, @Strand)";
+            using (var insertCmd = new MySqlCommand(insertSql, conn))
+            {
+                insertCmd.Parameters.AddWithValue("@Id", id);
+                insertCmd.Parameters.AddWithValue("@Name", name);
+                insertCmd.Parameters.AddWithValue("@Grade", grade);
+                insertCmd.Parameters.AddWithValue("@Strand", strand ?? (object)DBNull.Value);
+                await insertCmd.ExecuteNonQueryAsync();
+                _logger.LogInformation("Created new subject '{Name}' (Grade {Grade}) with ID {Id}", name, grade, id);
+            }
+            return id;
         }
 
         public async Task<ClassOfferingResponse> AssignTeacherAsync(string classOfferingId, string teacherId)

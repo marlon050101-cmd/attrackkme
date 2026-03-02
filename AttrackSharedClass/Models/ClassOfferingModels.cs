@@ -27,6 +27,7 @@ namespace AttrackSharedClass.Models
         public string AdvisorId { get; set; } = "";
         [Required]
         public string SubjectId { get; set; } = "";
+        public string? SubjectName { get; set; }
         [Required]
         [Range(7, 12)]
         public int GradeLevel { get; set; }
