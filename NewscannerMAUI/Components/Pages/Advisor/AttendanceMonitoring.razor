@@ -1,0 +1,293 @@
+@page "/advisor/attendance-monitoring"
+@layout AdvisorLayout
+@using AttrackSharedClass.Models
+@using NewscannerMAUI.Services
+@inject HttpClient Http
+@inject AuthService AuthService
+@inject NavigationManager Navigation
+
+<div class="page-container">
+    <div class="header-section">
+        <h3 class="page-title">Attendance Monitoring</h3>
+        <p class="text-muted small">Real-time daily attendance for your section.</p>
+    </div>
+
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="alert alert-danger mx-3">@errorMessage</div>
+    }
+
+    <!-- Summary Cards -->
+    <div class="summary-grid px-3 mb-4">
+        <div class="summary-card present">
+            <span class="count">@presentCount</span>
+            <span class="label">Present</span>
+        </div>
+        <div class="summary-card late">
+            <span class="count">@lateCount</span>
+            <span class="label">Late</span>
+        </div>
+        <div class="summary-card absent">
+            <span class="count">@absentCount</span>
+            <span class="label">Absent</span>
+        </div>
+    </div>
+
+    <div class="content-section">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="section-subtitle">Student List</h5>
+            <button class="btn-refresh" @onclick="RefreshData" disabled="@isLoading">
+                <i class="fas fa-sync-alt @(isLoading ? "fa-spin" : "")"></i>
+            </button>
+        </div>
+
+        @if (isLoading)
+        {
+            <div class="loading-state">
+                <div class="spinner"></div>
+                <span>Updating records...</span>
+            </div>
+        }
+        else if (!students.Any())
+        {
+            <div class="empty-state">
+                <i class="fas fa-users-slash"></i>
+                <p>No students found in your section.</p>
+            </div>
+        }
+        else
+        {
+            <div class="attendance-list">
+                @foreach (var student in students.OrderBy(s => s.FullName))
+                {
+                    var record = todayRecords.FirstOrDefault(r => r.StudentId == student.StudentId);
+                    var status = record?.Status ?? "Absent";
+                    
+                    <div class="attendance-card @status.ToLower()">
+                        <div class="card-border"></div>
+                        <div class="card-content">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div class="student-info">
+                                    <span class="student-name">@student.FullName</span>
+                                    <div class="time-info">
+                                        @if (status != "Absent")
+                                        {
+                                            <span><i class="far fa-clock me-1"></i>In: @record?.TimeIn</span>
+                                            @if (!string.IsNullOrEmpty(record?.TimeOut))
+                                            {
+                                                <span class="ms-2"><i class="fas fa-sign-out-alt me-1"></i>Out: @record?.TimeOut</span>
+                                            }
+                                        }
+                                        else
+                                        {
+                                            <span class="text-danger">Not yet timed in</span>
+                                        }
+                                    </div>
+                                </div>
+                                <div class="status-badge @status.ToLower()">
+                                    @status
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private List<Student> students = new();
+    private List<DailyAttendanceRecord> todayRecords = new();
+    private bool isLoading = true;
+    private string errorMessage = "";
+    private string? advisorId;
+
+    private int presentCount => todayRecords.Count(r => r.Status == "Present");
+    private int lateCount => todayRecords.Count(r => r.Status == "Late");
+    private int absentCount => students.Count - todayRecords.Count(r => r.Status == "Present" || r.Status == "Late");
+
+    protected override async Task OnInitializedAsync()
+    {
+        var user = await AuthService.GetCurrentUserAsync();
+        if (user == null)
+        {
+            Navigation.NavigateTo("/");
+            return;
+        }
+
+        advisorId = user.TeacherId;
+        await RefreshData();
+    }
+
+    private async Task RefreshData()
+    {
+        if (string.IsNullOrEmpty(advisorId)) return;
+        
+        isLoading = true;
+        errorMessage = "";
+        try
+        {
+            // Load students for this advisor's section
+            var studentList = await Http.GetFromJsonAsync<List<Student>>($"{ApiConfig.BaseUrl}api/register/students?teacherId={advisorId}");
+            students = studentList ?? new List<Student>();
+
+            // Load today's attendance records
+            var records = await Http.GetFromJsonAsync<List<DailyAttendanceRecord>>($"{ApiConfig.BaseUrl}api/dailyattendance/today/{advisorId}");
+            todayRecords = records ?? new List<DailyAttendanceRecord>();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = "Failed to load data: " + ex.Message;
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+}
+
+<style>
+    .page-container {
+        padding: 0;
+    }
+
+    .header-section {
+        padding: 0.5rem 1rem 0.25rem;
+        margin-bottom: 0.75rem;
+    }
+
+    .page-title {
+        font-weight: 800;
+        color: #2c3e50;
+        font-size: 1.2rem;
+        margin-bottom: 0;
+    }
+
+    .summary-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 0.75rem;
+    }
+
+    .summary-card {
+        background: white;
+        padding: 0.75rem;
+        border-radius: 12px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.03);
+        border: 1px solid #edf2f7;
+    }
+
+    .summary-card .count {
+        font-size: 1.2rem;
+        font-weight: 800;
+    }
+
+    .summary-card .label {
+        font-size: 0.7rem;
+        font-weight: 600;
+        color: #718096;
+        text-transform: uppercase;
+    }
+
+    .summary-card.present .count { color: #1cc88a; }
+    .summary-card.late .count { color: #f6c23e; }
+    .summary-card.absent .count { color: #e74a3b; }
+
+    .content-section {
+        padding: 0 1rem 1rem;
+    }
+
+    .section-subtitle {
+        font-weight: 700;
+        color: #4a5568;
+        font-size: 0.9rem;
+        margin: 0;
+    }
+
+    .btn-refresh {
+        background: none;
+        border: none;
+        color: #4e73df;
+        font-size: 1.1rem;
+        padding: 0.5rem;
+    }
+
+    .attendance-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.6rem;
+    }
+
+    .attendance-card {
+        background: white;
+        border-radius: 10px;
+        overflow: hidden;
+        display: flex;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+        border: 1px solid #edf2f7;
+    }
+
+    .card-border {
+        width: 4px;
+        height: 100%;
+    }
+
+    .attendance-card.present .card-border { background: #1cc88a; }
+    .attendance-card.late .card-border { background: #f6c23e; }
+    .attendance-card.absent .card-border { background: #e74a3b; }
+
+    .card-content {
+        flex: 1;
+        padding: 0.75rem 1rem;
+    }
+
+    .student-name {
+        font-weight: 700;
+        color: #2d3748;
+        font-size: 0.95rem;
+        display: block;
+    }
+
+    .time-info {
+        font-size: 0.75rem;
+        color: #718096;
+        margin-top: 0.2rem;
+    }
+
+    .status-badge {
+        font-size: 0.65rem;
+        font-weight: 800;
+        padding: 0.2rem 0.6rem;
+        border-radius: 20px;
+        text-transform: uppercase;
+    }
+
+    .status-badge.present { background: rgba(28, 200, 138, 0.1); color: #1cc88a; }
+    .status-badge.late { background: rgba(246, 194, 62, 0.1); color: #f6c23e; }
+    .status-badge.absent { background: rgba(231, 74, 59, 0.1); color: #e74a3b; }
+
+    .loading-state, .empty-state {
+        text-align: center;
+        padding: 3rem 1rem;
+        color: #718096;
+    }
+
+    .spinner {
+        width: 30px;
+        height: 30px;
+        border: 3px solid rgba(78, 115, 223, 0.1);
+        border-top: 3px solid #4e73df;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 1rem;
+    }
+
+    @@keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+</style>

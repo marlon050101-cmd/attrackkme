@@ -340,10 +340,6 @@
             {
                 Navigation.NavigateTo("/advisor-section-classes");
             }
-            else if (currentUser.UserType == UserType.GuidanceCounselor)
-            {
-                Navigation.NavigateTo("/guidance-dashboard");
-            }
             else if (currentUser.UserType == UserType.Teacher)
             {
                 Navigation.NavigateTo("/teacher-dashboard");
@@ -451,10 +447,6 @@
                 else if (response.User?.UserType == UserType.Advisor)
                 {
                     Navigation.NavigateTo("/advisor-section-classes");
-                }
-                else if (response.User?.UserType == UserType.GuidanceCounselor)
-                {
-                    Navigation.NavigateTo("/guidance-dashboard");
                 }
                 else if (response.User?.UserType == UserType.Teacher)
                 {

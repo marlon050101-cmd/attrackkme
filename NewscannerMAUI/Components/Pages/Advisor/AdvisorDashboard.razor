@@ -1,0 +1,209 @@
+@page "/advisor-dashboard"
+@layout AdvisorLayout
+@using NewscannerMAUI.Services
+@using AttrackSharedClass.Models
+@inject AuthService AuthService
+@inject NavigationManager Navigation
+
+<div class="dashboard-container">
+    <div class="welcome-banner">
+        <h2 class="mb-1">Hello, @advisorName!</h2>
+        <p class="text-muted small">Welcome to Sardo-TrackCare Advisor Portal</p>
+    </div>
+
+    <!-- Quick Stats -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-icon section">
+                <i class="fas fa-chalkboard"></i>
+            </div>
+            <div class="stat-info">
+                <span class="stat-value">Section classes</span>
+                <span class="stat-label">Manage your section</span>
+            </div>
+            <i class="fas fa-chevron-right ms-auto text-muted"></i>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon monitoring">
+                <i class="fas fa-user-check"></i>
+            </div>
+            <div class="stat-info">
+                <span class="stat-value">Attendance Monitoring</span>
+                <span class="stat-label">Daily student tracking</span>
+            </div>
+            <i class="fas fa-chevron-right ms-auto text-muted"></i>
+        </div>
+    </div>
+
+    <!-- Main Actions -->
+    <div class="actions-section mt-4">
+        <h5 class="section-title">Quick Actions</h5>
+        <div class="action-buttons-grid">
+            <button class="action-card classes" @onclick="GoToClasses">
+                <div class="action-icon">
+                    <i class="fas fa-plus-circle"></i>
+                </div>
+                <span class="action-text">Add/View Classes</span>
+            </button>
+            
+            <button class="action-card monitoring" @onclick="GoToMonitoring">
+                <div class="action-icon">
+                    <i class="fas fa-clipboard-list"></i>
+                </div>
+                <span class="action-text">View Attendance</span>
+            </button>
+        </div>
+    </div>
+</div>
+
+@code {
+    private string advisorName = "Advisor";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var user = await AuthService.GetCurrentUserAsync();
+        if (user != null)
+        {
+            advisorName = user.Username;
+        }
+    }
+
+    private void GoToClasses() => Navigation.NavigateTo("/advisor/section-classes");
+    private void GoToMonitoring() => Navigation.NavigateTo("/advisor/attendance-monitoring");
+}
+
+<style>
+    .dashboard-container {
+        padding: 0;
+    }
+
+    .welcome-banner {
+        margin-top: 0;
+        margin-bottom: 0.75rem;
+        padding: 0.5rem 1rem 0.25rem;
+    }
+
+    .welcome-banner h2 {
+        font-weight: 800;
+        color: #2c3e50;
+        font-size: 1.2rem;
+        margin-top: 0;
+    }
+
+    /* Stats Grid */
+    .stats-grid {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        padding: 0 1rem;
+    }
+
+    .stat-card {
+        background: white;
+        padding: 1rem;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.03);
+        border: 1px solid #edf2f7;
+    }
+
+    .stat-icon {
+        width: 50px;
+        height: 50px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.5rem;
+    }
+
+    .stat-icon.section {
+        background: rgba(28, 200, 138, 0.1);
+        color: #1cc88a;
+    }
+
+    .stat-icon.monitoring {
+        background: rgba(54, 185, 204, 0.1);
+        color: #36b9cc;
+    }
+
+    .stat-info {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .stat-value {
+        font-weight: 700;
+        font-size: 1.1rem;
+        color: #2d3748;
+    }
+
+    .stat-label {
+        font-size: 0.85rem;
+        color: #718096;
+    }
+
+    /* Actions Grid */
+    .actions-section {
+        padding: 0 1rem;
+    }
+
+    .section-title {
+        font-weight: 700;
+        color: #4a5568;
+        margin-bottom: 1rem;
+        font-size: 1rem;
+    }
+
+    .action-buttons-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+    }
+
+    .action-card {
+        background: white;
+        border: 1px solid #edf2f7;
+        border-radius: 18px;
+        padding: 1.5rem 1rem;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.75rem;
+        transition: transform 0.2s;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.04);
+        width: 100%;
+    }
+
+    .action-card:active {
+        transform: scale(0.95);
+    }
+
+    .action-icon {
+        width: 60px;
+        height: 60px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.8rem;
+    }
+
+    .action-card.classes .action-icon {
+        background: linear-gradient(135deg, #1cc88a 0%, #13855c 100%);
+        color: white;
+    }
+
+    .action-card.monitoring .action-icon {
+        background: linear-gradient(135deg, #36b9cc 0%, #258391 100%);
+        color: white;
+    }
+
+    .action-text {
+        font-weight: 700;
+        color: #2d3748;
+        font-size: 0.9rem;
+    }
+</style>

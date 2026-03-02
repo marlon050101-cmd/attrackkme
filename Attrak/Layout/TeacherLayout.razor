@@ -1,0 +1,412 @@
+@inherits LayoutComponentBase
+@using Attrak.Services
+@inject ThemeService ThemeService
+@inject IJSRuntime JSRuntime
+@inject AuthService AuthService
+@inject NavigationManager Navigation
+
+<div class="layout-container @(isSidebarCollapsed ? "sidebar-collapsed" : "")" data-theme="@(ThemeService.IsDarkMode ? "dark" : "light")">
+    <!-- Header -->
+    <header class="app-header header-gradient-bg">
+        <div class="header-content">
+            <div class="header-left">
+                <button class="hamburger-btn" @onclick="ToggleSidebar">
+                    <i class="fas fa-bars"></i>
+                </button>
+                <div class="welcome-section ms-3">
+                    <div class="welcome-text">STUDENT-TRACKER | TEACHER</div>
+                </div>
+            </div>
+            
+            <div class="header-right d-flex align-items-center gap-3">
+                <div class="datetime-info d-none d-md-flex">
+                    <span class="current-date" id="currentDate"></span>
+                    <span class="datetime-separator">•</span>
+                    <span class="current-time" id="currentTime"></span>
+                </div>
+
+                <div class="theme-switch-pill d-none d-sm-flex">
+                    <button class="switch-btn @(!ThemeService.IsDarkMode ? "active" : "")" @onclick="() => SetTheme(false)" title="Light Mode">
+                        <i class="fas fa-sun"></i>
+                    </button>
+                    <button class="switch-btn @(ThemeService.IsDarkMode ? "active" : "")" @onclick="() => SetTheme(true)" title="Dark Mode">
+                        <i class="fas fa-moon"></i>
+                    </button>
+                </div>
+
+                <button class="logout-btn" @onclick="HandleLogout">
+                    <i class="fas fa-sign-out-alt"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <div class="body-wrapper">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar-nav">
+            <div class="sidebar-content">
+                <div class="nav-group">
+                    <div class="nav-label">Main Menu</div>
+                    <a href="/teacher-dashboard" class="nav-sidebar-link @(IsActive("/teacher-dashboard"))">
+                        <i class="fas fa-th-large"></i>
+                        <span>Dashboard</span>
+                    </a>
+                    <a href="/daily-attendance" class="nav-sidebar-link @(IsActive("/daily-attendance"))">
+                        <i class="fas fa-calendar-check"></i>
+                        <span>Attendance</span>
+                    </a>
+                    <a href="/teacher-subject-load" class="nav-sidebar-link @(IsActive("/teacher-subject-load"))">
+                        <i class="fas fa-book-reader"></i>
+                        <span>Subject Load</span>
+                    </a>
+                    <a href="/pick-classes-to-teach" class="nav-sidebar-link @(IsActive("/pick-classes-to-teach"))">
+                        <i class="fas fa-hand-pointer"></i>
+                        <span>Pick Classes</span>
+                    </a>
+                </div>
+
+                <div class="nav-group">
+                    <div class="nav-label">Tools</div>
+                    <a href="/qr-scanner" class="nav-sidebar-link scanner-link @(IsActive("/qr-scanner"))">
+                        <i class="fas fa-qrcode"></i>
+                        <span>QR Scanner</span>
+                    </a>
+                </div>
+            </div>
+        </aside>
+        
+        <!-- Main Content -->
+        <main class="main-content">
+            @Body
+        </main>
+    </div>
+</div>
+
+@code {
+    private bool isSidebarCollapsed = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await ThemeService.InitializeAsync();
+        ThemeService.OnThemeChanged += HandleThemeChanged;
+    }
+
+    private void ToggleSidebar()
+    {
+        isSidebarCollapsed = !isSidebarCollapsed;
+    }
+
+    private async Task SetTheme(bool isDark)
+    {
+        if (ThemeService.IsDarkMode != isDark)
+        {
+            await ThemeService.ToggleThemeAsync();
+            await JSRuntime.InvokeVoidAsync("document.documentElement.setAttribute", "data-theme", isDark ? "dark" : "light");
+        }
+    }
+
+    private void HandleThemeChanged()
+    {
+        StateHasChanged();
+    }
+
+    private bool IsActive(string href)
+    {
+        var relativePath = Navigation.ToBaseRelativePath(Navigation.Uri);
+        var currentPath = "/" + relativePath;
+        if (href == "/teacher-dashboard") return currentPath == "/teacher-dashboard" || currentPath == "/";
+        return currentPath.StartsWith(href);
+    }
+
+    private async Task HandleLogout()
+    {
+        await AuthService.LogoutAsync();
+        Navigation.NavigateTo("/login");
+    }
+
+    public void Dispose()
+    {
+        ThemeService.OnThemeChanged -= HandleThemeChanged;
+    }
+}
+
+<script>
+    function updateDateTime() {
+        const now = new Date();
+        const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+        const dateString = now.toLocaleDateString('en-US', options);
+        const timeString = now.toLocaleTimeString('en-US', { hour12: true, hour: '2-digit', minute: '2-digit' });
+        
+        const dateElement = document.getElementById('currentDate');
+        const timeElement = document.getElementById('currentTime');
+        
+        if (dateElement) dateElement.textContent = dateString;
+        if (timeElement) timeElement.textContent = timeString;
+    }
+    updateDateTime();
+    setInterval(updateDateTime, 60000);
+</script>
+
+<style>
+    :root {
+        --sidebar-width: 260px;
+        --sidebar-collapsed-width: 80px;
+        --header-height: 70px;
+    }
+
+    .layout-container {
+        min-height: 100vh;
+        background: var(--bg-primary);
+        color: var(--text-main);
+        transition: background-color 0.3s ease;
+        display: flex;
+        flex-direction: column;
+    }
+
+    /* Header */
+    .app-header {
+        height: var(--header-height);
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        z-index: 1001;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+        background: linear-gradient(135deg, #4e73df 0%, #224abe 100%);
+    }
+
+    .header-content {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0 1.5rem;
+        height: 100%;
+    }
+
+    .header-left {
+        display: flex;
+        align-items: center;
+    }
+
+    .hamburger-btn {
+        background: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        color: white;
+        width: 40px;
+        height: 40px;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .hamburger-btn:hover {
+        background: rgba(255, 255, 255, 0.2);
+    }
+
+    .welcome-text {
+        font-size: 1.1rem;
+        font-weight: 800;
+        color: #ffffff;
+        letter-spacing: 0.05em;
+        white-space: nowrap;
+    }
+
+    /* Body Wrapper */
+    .body-wrapper {
+        display: flex;
+        margin-top: var(--header-height);
+        flex: 1;
+    }
+
+    /* Sidebar */
+    .sidebar-nav {
+        width: var(--sidebar-width);
+        background: var(--bg-secondary);
+        border-right: 1px solid var(--border-color);
+        position: fixed;
+        top: var(--header-height);
+        bottom: 0;
+        left: 0;
+        z-index: 1000;
+        transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        overflow-x: hidden;
+    }
+
+    .sidebar-collapsed .sidebar-nav {
+        width: var(--sidebar-collapsed-width);
+    }
+
+    .sidebar-content {
+        padding: 1.5rem 0;
+        display: flex;
+        flex-direction: column;
+        gap: 2rem;
+    }
+
+    .nav-group {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .nav-label {
+        padding: 0 1.5rem;
+        font-size: 0.75rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        color: var(--text-muted);
+        letter-spacing: 0.1em;
+        margin-bottom: 0.5rem;
+        transition: opacity 0.2s;
+    }
+
+    .sidebar-collapsed .nav-label {
+        opacity: 0;
+    }
+
+    .nav-sidebar-link {
+        display: flex;
+        align-items: center;
+        padding: 0.75rem 1.5rem;
+        color: var(--text-main);
+        text-decoration: none;
+        gap: 1rem;
+        transition: all 0.2s;
+        border-left: 4px solid transparent;
+        white-space: nowrap;
+    }
+
+    .nav-sidebar-link i {
+        font-size: 1.25rem;
+        width: 25px;
+        text-align: center;
+        color: var(--text-muted);
+    }
+
+    .nav-sidebar-link:hover {
+        background: rgba(78, 115, 223, 0.05);
+        color: #4e73df;
+    }
+
+    .nav-sidebar-link.active {
+        background: rgba(78, 115, 223, 0.1);
+        color: #4e73df;
+        border-left-color: #4e73df;
+    }
+
+    .nav-sidebar-link.active i {
+        color: #4e73df;
+    }
+
+    .sidebar-collapsed .nav-sidebar-link span {
+        display: none;
+    }
+
+    .scanner-link {
+        color: #1cc88a;
+    }
+
+    .scanner-link:hover {
+        background: rgba(28, 200, 138, 0.05);
+        color: #1cc88a;
+    }
+
+    .scanner-link.active {
+        background: rgba(28, 200, 138, 0.1);
+        color: #1cc88a;
+        border-left-color: #1cc88a;
+    }
+
+    /* Main Content */
+    .main-content {
+        flex: 1;
+        padding: 2rem;
+        margin-left: var(--sidebar-width);
+        transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        min-width: 0;
+    }
+
+    .sidebar-collapsed .main-content {
+        margin-left: var(--sidebar-collapsed-width);
+    }
+
+    /* Shared Components */
+    .datetime-info {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        background: rgba(255, 255, 255, 0.1);
+        padding: 0.5rem 1rem;
+        border-radius: 50px;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        color: #ffffff;
+        font-size: 0.8rem;
+        backdrop-filter: blur(4px);
+    }
+
+    .theme-switch-pill {
+        display: flex;
+        background: rgba(0, 0, 0, 0.2);
+        padding: 4px;
+        border-radius: 50px;
+    }
+
+    .switch-btn {
+        border: none;
+        background: none;
+        color: rgba(255, 255, 255, 0.5);
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+    }
+
+    .switch-btn.active {
+        background: #ffffff;
+        color: #4e73df;
+    }
+
+    .logout-btn {
+        background: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        color: white;
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .logout-btn:hover {
+        background: #dc3545;
+        border-color: #dc3545;
+    }
+
+    @@media (max-width: 768px) {
+        .sidebar-nav {
+            transform: translateX(-100%);
+            width: var(--sidebar-width) !important;
+        }
+        
+        .sidebar-collapsed .sidebar-nav {
+            transform: translateX(0);
+        }
+
+        .main-content {
+            margin-left: 0 !important;
+        }
+        
+        .welcome-text {
+            font-size: 0.9rem;
+        }
+    }
+</style>

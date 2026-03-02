@@ -317,8 +317,8 @@
                 </div>
             }
 
-            <!-- Grade/Section/Strand for Teacher, Advisor, Student -->
-            @if (selectedUserType == "SubjectTeacher" || selectedUserType == "Advisor" || selectedUserType == "Student")
+            <!-- Grade/Section/Strand for Advisor, Student -->
+            @if (selectedUserType == "Advisor" || selectedUserType == "Student")
             {
                 <div class="row g-2 mb-2 mt-1">
                     <div class="col-4">
@@ -517,44 +517,44 @@
 
         // --- Basic Validation ---
         if (string.IsNullOrWhiteSpace(selectedUserType))
-        { errorMessage = "Please select a user type."; return; }
+        { errorMessage = "Please select a user type."; StateHasChanged(); return; }
 
         if (string.IsNullOrWhiteSpace(fullName) || string.IsNullOrWhiteSpace(username) ||
             string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password))
-        { errorMessage = "Please fill in all account fields."; return; }
+        { errorMessage = "Please fill in all account fields."; StateHasChanged(); return; }
 
         if (password != confirmPassword)
-        { errorMessage = "Passwords do not match."; return; }
+        { errorMessage = "Passwords do not match."; StateHasChanged(); return; }
 
         if (password.Length < 6)
-        { errorMessage = "Password must be at least 6 characters."; return; }
+        { errorMessage = "Password must be at least 6 characters."; StateHasChanged(); return; }
 
         // School Validation (conditional)
         if (selectedUserType != "Admin")
         {
             if (string.IsNullOrWhiteSpace(selectedSchoolId) || string.IsNullOrWhiteSpace(selectedSchoolName))
-            { errorMessage = "Please search and select your school."; return; }
+            { errorMessage = "Please search and select your school."; StateHasChanged(); return; }
         }
 
-        // Student/Teacher/Advisor Validation
-        if (selectedUserType == "Student" || selectedUserType == "SubjectTeacher" || selectedUserType == "Advisor")
+        // Student/Advisor Validation
+        if (selectedUserType == "Student" || selectedUserType == "Advisor")
         {
             if (gradeLevel < 7 || gradeLevel > 12)
-            { errorMessage = "Please select a grade level."; return; }
+            { errorMessage = "Please select a grade level."; StateHasChanged(); return; }
             if (string.IsNullOrWhiteSpace(userSection))
-            { errorMessage = "Please enter your section."; return; }
+            { errorMessage = "Please enter your section."; StateHasChanged(); return; }
             
             // Only require strand for Senior High (11-12)
             if (gradeLevel >= 11 && string.IsNullOrWhiteSpace(strand))
-            { errorMessage = "Please select your strand."; return; }
+            { errorMessage = "Please select your strand."; StateHasChanged(); return; }
         }
 
         if (selectedUserType == "Student")
         {
             if (string.IsNullOrWhiteSpace(gender))
-            { errorMessage = "Please select gender."; return; }
+            { errorMessage = "Please select gender."; StateHasChanged(); return; }
             if (!System.Text.RegularExpressions.Regex.IsMatch(parentsNumber, @"^09\d{9}$"))
-            { errorMessage = "Parent's number must be a valid 11-digit number starting with 09."; return; }
+            { errorMessage = "Parent's number must be a valid 11-digit number starting with 09."; StateHasChanged(); return; }
         }
 
         isLoading = true;

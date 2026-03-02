@@ -301,19 +301,20 @@
                             // Force a longer delay to ensure UI is ready
                             await Task.Delay(1000);
                             
-                            // Use a more direct navigation approach
+                            // Try to navigate based on role
                             await InvokeAsync(() => 
                             {
-                                try
+                                if (result.User.UserType == UserType.Teacher)
                                 {
-                                    // Try to navigate using a different method
-                                    Navigation.NavigateTo("/qr-scanner", forceLoad: true);
+                                    Navigation.NavigateTo("/teacher-dashboard");
                                 }
-                                catch (Exception innerEx)
+                                else if (result.User.UserType == UserType.Advisor || result.User.UserType == UserType.GuidanceCounselor)
                                 {
-                                    System.Diagnostics.Debug.WriteLine($"Inner navigation error: {innerEx.Message}");
-                                    // Try alternative navigation
-                                    Navigation.NavigateTo("/");
+                                    Navigation.NavigateTo("/advisor-dashboard");
+                                }
+                                else
+                                {
+                                    Navigation.NavigateTo("/qr-scanner");
                                 }
                             });
                         }

@@ -1,0 +1,534 @@
+@page "/advisor/section-classes"
+@layout AdvisorLayout
+@using AttrackSharedClass.Models
+@using NewscannerMAUI.Services
+@inject HttpClient Http
+@inject AuthService AuthService
+@inject NavigationManager Navigation
+
+<div class="page-container">
+    <div class="header-section">
+        <h3 class="page-title">My Section Classes</h3>
+        <p class="text-muted small">Manage subjects and class schedule for your section.</p>
+    </div>
+
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="alert alert-danger mx-3">@errorMessage</div>
+    }
+    @if (!string.IsNullOrEmpty(successMessage))
+    {
+        <div class="alert alert-success mx-3">@successMessage</div>
+    }
+
+    <div class="px-3 mb-3">
+        <button class="btn-add" @onclick="ShowAddModal" disabled="@IsAddDisabled">
+            <i class="fas fa-plus me-1"></i> Add Subject & Time
+        </button>
+    </div>
+
+    <div class="content-section">
+        @if (isLoading)
+        {
+            <div class="loading-state">
+                <div class="spinner"></div>
+                <span>Loading classes...</span>
+            </div>
+        }
+        else if (!classes.Any())
+        {
+            <div class="empty-state">
+                <i class="fas fa-chalkboard-teacher"></i>
+                <p>No classes yet. Add a subject and class time for your section.</p>
+            </div>
+        }
+        else
+        {
+            <div class="class-list">
+                @foreach (var c in classes)
+                {
+                    <div class="class-card">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <h5 class="subject-name">@c.SubjectName</h5>
+                                    <div class="class-details">
+                                        <span class="badge bg-light text-dark">G-@c.GradeLevel @c.Section</span>
+                                        @if (!string.IsNullOrEmpty(c.Strand))
+                                        {
+                                            <span class="badge bg-light text-dark ms-1">@c.Strand</span>
+                                        }
+                                    </div>
+                                    <div class="time-slot mt-2">
+                                        <i class="far fa-clock me-1"></i>
+                                        @c.ScheduleStart.ToString("hh\\:mm") - @c.ScheduleEnd.ToString("hh\\:mm")
+                                    </div>
+                                    <div class="teacher-name mt-1">
+                                        <i class="fas fa-user-graduate me-1"></i>
+                                        @(c.TeacherName ?? "No teacher assigned yet")
+                                    </div>
+                                </div>
+                                <button class="btn-remove" @onclick="() => DeleteClass(c)" disabled="@isDeleting">
+                                    <i class="fas fa-trash-alt"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@if (showAddModal)
+{
+    <div class="modal-overlay">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h5 class="modal-title">Add Subject & Class Time</h5>
+                <button type="button" class="btn-close" @onclick="HideAddModal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group mb-3">
+                    <label>Grade Level</label>
+                    <select class="form-select bg-light" @bind="newGrade" disabled>
+                        @for (var i = 7; i <= 12; i++)
+                        {
+                            <option value="@i">Grade @i</option>
+                        }
+                    </select>
+                    <small class="text-muted">Automatic based on your section</small>
+                </div>
+                <div class="form-group mb-3">
+                    <label>Section</label>
+                    <input type="text" class="form-control bg-light" @bind="newSection" readonly />
+                </div>
+                <div class="form-group mb-3">
+                    <label>Strand (Grade 11–12)</label>
+                    <select class="form-select bg-light" @bind="newStrand" disabled>
+                        <option value="">None</option>
+                        <option value="ABM">ABM</option>
+                        <option value="HUMSS">HUMSS</option>
+                        <option value="STEM">STEM</option>
+                        <option value="GAS">GAS</option>
+                    </select>
+                </div>
+                <div class="form-group mb-3">
+                    <label>Subject</label>
+                    <div class="position-relative">
+                        <select class="form-select @(isLoadingSubjects ? "border-primary" : "")" @bind="newSubjectId" disabled="@isLoadingSubjects">
+                            @if (isLoadingSubjects)
+                            {
+                                <option value="">Loading subjects...</option>
+                            }
+                            else if (!subjectsForGrade.Any())
+                            {
+                                <option value="">No subjects found for this grade/strand</option>
+                            }
+                            else
+                            {
+                                <option value="">-- Select Subject --</option>
+                                @foreach (var sub in subjectsForGrade)
+                                {
+                                    <option value="@sub.SubjectId">@sub.SubjectName</option>
+                                }
+                            }
+                        </select>
+                        @if (isLoadingSubjects)
+                        {
+                            <div class="position-absolute end-0 top-50 translate-middle-y me-3">
+                                <span class="spinner-border spinner-border-sm text-primary" role="status"></span>
+                            </div>
+                        }
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-6">
+                        <div class="form-group mb-3">
+                            <label>Start Time</label>
+                            <input type="time" class="form-control" value="@newStartTime" @onchange="OnStartTimeChanged" />
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="form-group mb-3">
+                            <label>End Time</label>
+                            <input type="time" class="form-control" value="@newEndTime" @onchange="OnEndTimeChanged" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" @onclick="HideAddModal">Cancel</button>
+                <button type="button" class="btn btn-primary" @onclick="AddClass" disabled="@isSaving">
+                    @if (isSaving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                    Add Class
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private string? advisorId;
+    private int profileGrade;
+    private string profileSection = "";
+    private string? profileStrand = "";
+    
+    private bool IsAddDisabled => string.IsNullOrEmpty(advisorId);
+    private List<ClassOffering> classes = new();
+    private List<TeacherSubjectAssignment> subjectsForGrade = new();
+    private bool isLoading = true;
+    private bool isLoadingSubjects = false;
+    private bool isSaving = false;
+    private bool isDeleting = false;
+    private string errorMessage = "";
+    private string successMessage = "";
+ 
+    private bool showAddModal = false;
+    private int newGrade;
+    private string newSection = "";
+    private string? newStrand = "";
+    private string? newSubjectId = "";
+    private string newStartTime = "07:30";
+    private string newEndTime = "08:30";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var user = await AuthService.GetCurrentUserAsync();
+        if (user == null || (user.UserType != UserType.Advisor && user.UserType != UserType.GuidanceCounselor))
+        {
+            errorMessage = "Access denied. Advisor only.";
+            isLoading = false;
+            return;
+        }
+        advisorId = user.TeacherId;
+        profileGrade = user.GradeLevel ?? 11;
+        profileSection = user.Section ?? "A";
+        profileStrand = user.Strand ?? "";
+
+        if (string.IsNullOrEmpty(advisorId))
+        {
+            errorMessage = "Advisor profile not found.";
+            isLoading = false;
+            return;
+        }
+        await LoadClasses();
+        // Set initial modal values to profile
+        newGrade = profileGrade;
+        newSection = profileSection;
+        newStrand = profileStrand;
+        await LoadSubjectsForGrade();
+        isLoading = false;
+    }
+
+    private async Task LoadClasses()
+    {
+        if (string.IsNullOrEmpty(advisorId)) return;
+        try
+        {
+            var list = await Http.GetFromJsonAsync<List<ClassOffering>>($"{ApiConfig.BaseUrl}api/ClassOffering/advisor/{advisorId}");
+            classes = list ?? new List<ClassOffering>();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = "Failed to load classes: " + ex.Message;
+        }
+    }
+
+    private async Task LoadSubjectsForGrade()
+    {
+        isLoadingSubjects = true;
+        try
+        {
+            var strandParam = string.IsNullOrEmpty(newStrand) ? "" : $"&strand={Uri.EscapeDataString(newStrand)}";
+            var url = $"{ApiConfig.BaseUrl}api/ClassOffering/subjects-for-grade?gradeLevel={newGrade}{strandParam}";
+            var list = await Http.GetFromJsonAsync<List<TeacherSubjectAssignment>>(url);
+            subjectsForGrade = list ?? new List<TeacherSubjectAssignment>();
+            
+            if (subjectsForGrade.Any())
+            {
+                // Auto-select first subject if currently empty or not in the new list
+                if (string.IsNullOrEmpty(newSubjectId) || !subjectsForGrade.Any(s => s.SubjectId == newSubjectId))
+                {
+                    newSubjectId = subjectsForGrade[0].SubjectId;
+                }
+            }
+            else
+            {
+                newSubjectId = "";
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Error loading subjects: {ex.Message}");
+            subjectsForGrade = new List<TeacherSubjectAssignment>();
+            newSubjectId = "";
+        }
+        finally
+        {
+            isLoadingSubjects = false;
+        }
+    }
+
+    private async Task ShowAddModal()
+    {
+        newGrade = profileGrade;
+        newSection = profileSection;
+        newStrand = profileStrand;
+        newSubjectId = "";
+        newStartTime = "07:30";
+        newEndTime = "08:30";
+        showAddModal = true;
+        await LoadSubjectsForGrade();
+    }
+
+    private void HideAddModal() => showAddModal = false;
+
+    private void OnStartTimeChanged(ChangeEventArgs e)
+    {
+        var v = e.Value?.ToString();
+        if (!string.IsNullOrEmpty(v)) newStartTime = v;
+    }
+
+    private void OnEndTimeChanged(ChangeEventArgs e)
+    {
+        var v = e.Value?.ToString();
+        if (!string.IsNullOrEmpty(v)) newEndTime = v;
+    }
+
+    private async Task AddClass()
+    {
+        if (string.IsNullOrEmpty(advisorId) || string.IsNullOrEmpty(newSubjectId)) return;
+        if (!TimeSpan.TryParse(newStartTime, out var start) || !TimeSpan.TryParse(newEndTime, out var end) || end <= start)
+        {
+            errorMessage = "Invalid time. End must be after start.";
+            return;
+        }
+        isSaving = true;
+        errorMessage = "";
+        successMessage = "";
+        try
+        {
+            var request = new CreateClassOfferingRequest
+            {
+                AdvisorId = advisorId,
+                SubjectId = newSubjectId,
+                GradeLevel = newGrade,
+                Section = newSection,
+                Strand = string.IsNullOrEmpty(newStrand) ? null : newStrand,
+                ScheduleStart = start,
+                ScheduleEnd = end
+            };
+            var response = await Http.PostAsJsonAsync($"{ApiConfig.BaseUrl}api/ClassOffering", request);
+            if (response.IsSuccessStatusCode)
+            {
+                successMessage = "Class added successfully!";
+                await LoadClasses();
+                HideAddModal();
+            }
+            else
+            {
+                errorMessage = "Failed to add class.";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+        isSaving = false;
+    }
+
+    private async Task DeleteClass(ClassOffering c)
+    {
+        if (string.IsNullOrEmpty(advisorId)) return;
+        isDeleting = true;
+        try
+        {
+            var response = await Http.DeleteAsync($"{ApiConfig.BaseUrl}api/ClassOffering/{c.ClassOfferingId}?advisorId={Uri.EscapeDataString(advisorId)}");
+            if (response.IsSuccessStatusCode)
+            {
+                successMessage = "Class removed.";
+                await LoadClasses();
+            }
+            else
+                errorMessage = "Failed to remove class.";
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+        isDeleting = false;
+    }
+}
+
+<style>
+    .page-container {
+        padding: 0;
+    }
+
+    .header-section {
+        padding: 0.5rem 1rem 0.25rem;
+        margin-bottom: 0.75rem;
+    }
+
+    .page-title {
+        font-weight: 800;
+        color: #2c3e50;
+        font-size: 1.2rem;
+        margin-bottom: 0;
+    }
+
+    .btn-add {
+        background: #1cc88a;
+        color: white;
+        border: none;
+        padding: 0.6rem 1rem;
+        border-radius: 8px;
+        font-weight: 600;
+        font-size: 0.9rem;
+        box-shadow: 0 4px 10px rgba(28, 200, 138, 0.2);
+        width: 100%;
+        transition: all 0.2s;
+    }
+
+    .btn-add:active {
+        transform: scale(0.98);
+        background: #17a673;
+    }
+
+    .content-section {
+        padding: 0 1rem 1rem;
+    }
+
+    .class-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .class-card {
+        background: white;
+        border-radius: 12px;
+        border: 1px solid #edf2f7;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.03);
+    }
+
+    .card-body {
+        padding: 1rem;
+    }
+
+    .subject-name {
+        font-weight: 700;
+        color: #2d3748;
+        font-size: 1rem;
+        margin-bottom: 0.25rem;
+    }
+
+    .class-details {
+        display: flex;
+        gap: 0.4rem;
+    }
+
+    .time-slot, .teacher-name {
+        font-size: 0.8rem;
+        color: #718096;
+    }
+
+    .btn-remove {
+        background: none;
+        border: none;
+        color: #e74a3b;
+        padding: 0.5rem;
+        font-size: 1rem;
+        opacity: 0.7;
+    }
+
+    .btn-remove:active {
+        opacity: 1;
+    }
+
+    /* Modal Styles */
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0,0,0,0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 2000;
+        padding: 1rem;
+    }
+
+    .modal-card {
+        background: white;
+        border-radius: 16px;
+        width: 100%;
+        max-width: 500px;
+        max-height: 90vh;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .modal-header {
+        padding: 1rem;
+        border-bottom: 1px solid #edf2f7;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .modal-title {
+        font-weight: 700;
+        color: #2d3748;
+    }
+
+    .modal-body {
+        padding: 1rem;
+    }
+
+    .modal-footer {
+        padding: 1rem;
+        border-top: 1px solid #edf2f7;
+        display: flex;
+        gap: 0.5rem;
+        justify-content: flex-end;
+    }
+
+    .form-group label {
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: #4a5568;
+        margin-bottom: 0.3rem;
+    }
+
+    .loading-state, .empty-state {
+        text-align: center;
+        padding: 3rem 1rem;
+        color: #718096;
+    }
+
+    .empty-state i {
+        font-size: 3rem;
+        margin-bottom: 1rem;
+        opacity: 0.3;
+    }
+
+    .spinner {
+        width: 30px;
+        height: 30px;
+        border: 3px solid rgba(28, 200, 138, 0.1);
+        border-top: 3px solid #1cc88a;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 1rem;
+    }
+
+    @@keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+</style>

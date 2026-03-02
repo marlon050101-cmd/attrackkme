@@ -1147,10 +1147,15 @@ namespace ServerAtrrak.Controllers
 
                 var schoolId = await _schoolService.GetOrCreateSchoolAsync(request);
 
-                // Advisor has no fixed grade/section (they manage a section dynamically via class_offering)
-                request.GradeLevel = null;
-                request.Section = null;
-                request.Strand = null;
+                // Advisor validation: ensure section details are provided
+                if (request.GradeLevel == null || request.GradeLevel < 7 || request.GradeLevel > 12)
+                    return BadRequest(new RegisterResponse { Success = false, Message = "Please provide a valid grade level." });
+
+                if (string.IsNullOrWhiteSpace(request.Section))
+                    return BadRequest(new RegisterResponse { Success = false, Message = "Please provide your section." });
+
+                if (request.GradeLevel >= 11 && string.IsNullOrWhiteSpace(request.Strand))
+                    return BadRequest(new RegisterResponse { Success = false, Message = "Please provide your strand." });
 
                 var advisorTeacherId = await CreateAdvisorTeacherRecordAsync(request, schoolId);
                 var userId = await CreateUserForAdvisorAsync(request, advisorTeacherId);
@@ -1178,12 +1183,15 @@ namespace ServerAtrrak.Controllers
             var teacherId = Guid.NewGuid().ToString();
             var query = @"
                 INSERT INTO teacher (TeacherId, FullName, Email, SchoolId, Gradelvl, Section, Strand)
-                VALUES (@TeacherId, @FullName, @Email, @SchoolId, NULL, NULL, NULL)";
+                VALUES (@TeacherId, @FullName, @Email, @SchoolId, @Gradelvl, @Section, @Strand)";
             using var command = new MySqlCommand(query, connection);
             command.Parameters.AddWithValue("@TeacherId", teacherId);
             command.Parameters.AddWithValue("@FullName", request.FullName);
             command.Parameters.AddWithValue("@Email", request.Email);
             command.Parameters.AddWithValue("@SchoolId", schoolId);
+            command.Parameters.AddWithValue("@Gradelvl", (object?)request.GradeLevel ?? DBNull.Value);
+            command.Parameters.AddWithValue("@Section", (object?)request.Section ?? DBNull.Value);
+            command.Parameters.AddWithValue("@Strand", (object?)request.Strand ?? DBNull.Value);
             await command.ExecuteNonQueryAsync();
             return teacherId;
         }

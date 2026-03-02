@@ -1,0 +1,187 @@
+@page "/teacher-dashboard"
+@layout TeacherLayout
+@using NewscannerMAUI.Services
+@using AttrackSharedClass.Models
+@inject AuthService AuthService
+@inject NavigationManager Navigation
+
+<div class="dashboard-container">
+    <div class="welcome-banner">
+        <h2 class="mb-1">Hello, @teacherName!</h2>
+        <p class="text-muted small">Welcome to Sardo-TrackCare Teacher Portal</p>
+    </div>
+
+    <!-- Quick Stats -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-icon attendance">
+                <i class="fas fa-users"></i>
+            </div>
+            <div class="stat-info">
+                <span class="stat-value">Attendance</span>
+                <span class="stat-label">Monitor students</span>
+            </div>
+            <i class="fas fa-chevron-right ms-auto text-muted"></i>
+        </div>
+    </div>
+
+    <!-- Main Actions -->
+    <div class="actions-section mt-4">
+        <h5 class="section-title">Quick Actions</h5>
+        <div class="action-buttons-grid">
+            <button class="action-card scanner" @onclick="GoToScanner">
+                <div class="action-icon">
+                    <i class="fas fa-qrcode"></i>
+                </div>
+                <span class="action-text">Open Scanner</span>
+            </button>
+            
+            <button class="action-card load" @onclick="() => Navigation.NavigateTo(Navigation.Uri)">
+                <div class="action-icon">
+                    <i class="fas fa-sync"></i>
+                </div>
+                <span class="action-text">Refresh Data</span>
+            </button>
+        </div>
+    </div>
+</div>
+
+@code {
+    private string teacherName = "Teacher";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var user = await AuthService.GetCurrentUserAsync();
+        if (user != null)
+        {
+            teacherName = user.Username;
+        }
+    }
+
+    private void GoToScanner() => Navigation.NavigateTo("/qr-scanner");
+}
+
+<style>
+    .dashboard-container {
+        padding: 0; /* No padding at top level */
+    }
+
+    .welcome-banner {
+        margin-top: 0;
+        margin-bottom: 0.75rem;
+        padding: 0.5rem 1rem 0.25rem; /* Horizontal padding only */
+    }
+
+    .welcome-banner h2 {
+        font-weight: 800;
+        color: #2c3e50;
+        font-size: 1.2rem;
+        margin-top: 0;
+    }
+
+    /* Stats Grid */
+    .stats-grid {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .stat-card {
+        background: white;
+        padding: 1rem; /* Tighter padding */
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.03);
+        border: 1px solid #edf2f7;
+    }
+
+    .stat-icon {
+        width: 50px;
+        height: 50px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.5rem;
+    }
+
+    .stat-icon.attendance {
+        background: rgba(78, 115, 223, 0.1);
+        color: #4e73df;
+    }
+
+    .stat-info {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .stat-value {
+        font-weight: 700;
+        font-size: 1.1rem;
+        color: #2d3748;
+    }
+
+    .stat-label {
+        font-size: 0.85rem;
+        color: #718096;
+    }
+
+    /* Actions Grid */
+    .section-title {
+        font-weight: 700;
+        color: #4a5568;
+        margin-bottom: 1rem;
+        font-size: 1rem;
+    }
+
+    .action-buttons-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+    }
+
+    .action-card {
+        background: white;
+        border: 1px solid #edf2f7;
+        border-radius: 18px;
+        padding: 1.5rem 1rem;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.75rem;
+        transition: transform 0.2s;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.04);
+    }
+
+    .action-card:active {
+        transform: scale(0.95);
+    }
+
+    .action-icon {
+        width: 60px;
+        height: 60px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.8rem;
+    }
+
+    .action-card.scanner .action-icon {
+        background: linear-gradient(135deg, #4e73df 0%, #224abe 100%);
+        color: white;
+    }
+
+    .action-card.load .action-icon {
+        background: linear-gradient(135deg, #1cc88a 0%, #13855c 100%);
+        color: white;
+    }
+
+    .action-text {
+        font-weight: 700;
+        color: #2d3748;
+        font-size: 0.9rem;
+    }
+</style>
