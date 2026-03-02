@@ -125,6 +125,8 @@ namespace AttrackSharedClass.Models
         public string Gender { get; set; } = string.Empty;
         public string SchoolName { get; set; } = string.Empty;
         public string? QRCodeData { get; set; }
+        public string? QRImage { get; set; }
+        public string? AdvisorId { get; set; }
         public bool IsValid { get; set; }
         public string Message { get; set; } = string.Empty;
     }

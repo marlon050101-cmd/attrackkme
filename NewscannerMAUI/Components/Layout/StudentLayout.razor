@@ -4,6 +4,7 @@
 @inject AuthService AuthService
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
+@inject IHttpClientFactory HttpClientFactory
 
 <div class="student-layout @(isSidebarOpen ? "sidebar-open" : "")">
     <!-- Header -->
@@ -44,12 +45,12 @@
             <div class="nav-section">
                 <div class="nav-section-title">Main</div>
                 <NavLink class="nav-item" href="/student-dashboard" Match="NavLinkMatch.All" @onclick="CloseSidebar">
-                    <i class="fas fa-qrcode"></i>
-                    <span>My QR Code</span>
+                    <i class="fas fa-th-large"></i>
+                    <span>Dashboard</span>
                 </NavLink>
                 <NavLink class="nav-item" href="/student-profile" @onclick="CloseSidebar">
-                    <i class="fas fa-user"></i>
-                    <span>Profile</span>
+                    <i class="fas fa-user-circle"></i>
+                    <span>Personal Information</span>
                 </NavLink>
             </div>
 
@@ -79,6 +80,23 @@
         if (user != null)
         {
             studentName = user.Username;
+
+            if (user.UserType == UserType.Student && !string.IsNullOrEmpty(user.StudentId))
+            {
+                try
+                {
+                    var httpClient = HttpClientFactory.CreateClient("AttrakAPI");
+                    var student = await httpClient.GetFromJsonAsync<Student>($"api/register/student/{user.StudentId}");
+                    if (student != null && !string.IsNullOrEmpty(student.FullName))
+                    {
+                        studentName = student.FullName;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Error fetching student name for layout: {ex.Message}");
+                }
+            }
         }
     }
 

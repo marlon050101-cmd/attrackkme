@@ -48,6 +48,40 @@ namespace ServerAtrrak.Services
             return list;
         }
 
+        public async Task<List<ClassOffering>> GetBySectionAsync(string advisorId, string section, int gradeLevel)
+        {
+            var list = new List<ClassOffering>();
+            try
+            {
+                using var connection = new MySqlConnection(_dbConnection.GetConnection());
+                await connection.OpenAsync();
+                var query = @"
+                    SELECT co.ClassOfferingId, co.AdvisorId, t.FullName as AdvisorName, co.SubjectId, s.SubjectName,
+                           co.GradeLevel, co.Section, co.Strand, TIME_FORMAT(co.ScheduleStart,'%H:%i:%s'), TIME_FORMAT(co.ScheduleEnd,'%H:%i:%s'),
+                           co.TeacherId, t2.FullName as TeacherName, co.CreatedAt
+                    FROM class_offering co
+                    INNER JOIN subject s ON co.SubjectId = s.SubjectId
+                    LEFT JOIN teacher t ON co.AdvisorId = t.TeacherId
+                    LEFT JOIN teacher t2 ON co.TeacherId = t2.TeacherId
+                    WHERE co.AdvisorId = @AdvisorId AND co.Section = @Section AND co.GradeLevel = @GradeLevel
+                    ORDER BY co.ScheduleStart";
+                using var cmd = new MySqlCommand(query, connection);
+                cmd.Parameters.AddWithValue("@AdvisorId", advisorId);
+                cmd.Parameters.AddWithValue("@Section", section);
+                cmd.Parameters.AddWithValue("@GradeLevel", gradeLevel);
+                using var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    list.Add(ReadClassOffering(reader));
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting class offerings for advisor {AdvisorId}, section {Section}, grade {Grade}", advisorId, section, gradeLevel);
+            }
+            return list;
+        }
+
         /// <summary>Offerings not yet assigned to a teacher (for subject teacher to pick).</summary>
         public async Task<List<ClassOffering>> GetAvailableForTeacherAsync(string? schoolId, int? gradeLevel, string? strand)
         {

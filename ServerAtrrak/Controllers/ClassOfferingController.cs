@@ -24,6 +24,17 @@ namespace ServerAtrrak.Controllers
             return Ok(list);
         }
 
+        [HttpGet("section")]
+        public async Task<ActionResult<List<ClassOffering>>> GetBySection(
+            [FromQuery] string advisorId, 
+            [FromQuery] string section, 
+            [FromQuery] int gradeLevel)
+        {
+            if (string.IsNullOrEmpty(advisorId) || string.IsNullOrEmpty(section)) return BadRequest();
+            var list = await _service.GetBySectionAsync(advisorId, section, gradeLevel);
+            return Ok(list);
+        }
+
         [HttpGet("available")]
         public async Task<ActionResult<List<ClassOffering>>> GetAvailable(
             [FromQuery] string? schoolId,

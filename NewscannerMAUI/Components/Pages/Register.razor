@@ -386,6 +386,58 @@
                         }
                     </div>
                 </div>
+
+                @if (selectedUserType == "Student" && !string.IsNullOrEmpty(selectedSchoolId))
+                {
+                    <div class="mb-2 mt-2">
+                        <label class="form-label">Search My Advisor (Teacher)</label>
+                        @if (string.IsNullOrEmpty(selectedAdvisorName))
+                        {
+                            <div class="search-wrapper">
+                                <div class="d-flex gap-2 align-items-center">
+                                    <span class="position-absolute ms-3 text-muted" style="z-index: 5;">
+                                        <i class="fas fa-search"></i>
+                                    </span>
+                                    <input class="form-control ps-5 @(IsInvalid("Advisor") ? "is-invalid" : "")"
+                                           type="text"
+                                           placeholder="Type advisor's name..."
+                                           value="@advisorSearchText"
+                                           @oninput="OnAdvisorSearchInput" />
+                                    @if (isLoadingAdvisors)
+                                    {
+                                        <span class="spinner-border spinner-border-sm spinner-sm text-primary position-absolute end-0 me-3" role="status"></span>
+                                    }
+                                </div>
+
+                                @if (advisorSearchResults.Count > 0)
+                                {
+                                    <div class="search-result-list">
+                                        @foreach (var adv in advisorSearchResults)
+                                        {
+                                            <div class="search-result-item" @onclick="() => SelectAdvisor(adv)">
+                                                <div class="fw-bold">@adv.FullName</div>
+                                                <div class="search-subtext">@adv.Section • Grade @adv.GradeLevel</div>
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="school-selected-card border-primary">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div class="fw-bold text-primary">
+                                        <i class="fas fa-user-tie me-2"></i>@selectedAdvisorName
+                                    </div>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary border-0 p-0" @onclick="ClearAdvisor">
+                                        <i class="fas fa-sync-alt me-1"></i>Change
+                                    </button>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
             }
 
             <!-- Student-only extra fields -->
@@ -471,9 +523,16 @@
     private bool isLoadingSections = false;
     private System.Threading.CancellationTokenSource? sectionSearchCts;
 
-    // --- Student-only ---
     private string gender = string.Empty;
     private string parentsNumber = string.Empty;
+
+    // --- Advisor Search ---
+    private List<TeacherInfo> advisorSearchResults = new();
+    private string advisorSearchText = string.Empty;
+    private string selectedAdvisorId = string.Empty;
+    private string selectedAdvisorName = string.Empty;
+    private bool isLoadingAdvisors = false;
+    private System.Threading.CancellationTokenSource? advisorSearchCts;
 
     // --- UI State ---
     private bool isLoading = false;
@@ -640,6 +699,60 @@
         sectionSearchResults.Clear();
     }
 
+    private async Task OnAdvisorSearchInput(ChangeEventArgs e)
+    {
+        advisorSearchText = e.Value?.ToString() ?? string.Empty;
+        advisorSearchResults.Clear();
+
+        if (advisorSearchText.Length < 2 || string.IsNullOrEmpty(selectedSchoolId)) return;
+
+        advisorSearchCts?.Cancel();
+        advisorSearchCts = new System.Threading.CancellationTokenSource();
+        var token = advisorSearchCts.Token;
+
+        await Task.Delay(300, token).ContinueWith(_ => { }, TaskContinuationOptions.None);
+        if (token.IsCancellationRequested) return;
+
+        isLoadingAdvisors = true;
+        StateHasChanged();
+
+        try
+        {
+            var http = HttpClientFactory.CreateClient("AttrakAPI");
+            var result = await http.GetFromJsonAsync<List<TeacherInfo>>($"api/register/advisors/search?schoolId={selectedSchoolId}&name={Uri.EscapeDataString(advisorSearchText)}", token);
+            if (!token.IsCancellationRequested && result != null)
+            {
+                advisorSearchResults = result;
+            }
+        }
+        catch (Exception) { }
+        finally
+        {
+            if (!token.IsCancellationRequested)
+            {
+                isLoadingAdvisors = false;
+                StateHasChanged();
+            }
+        }
+    }
+
+    private void SelectAdvisor(TeacherInfo advisor)
+    {
+        selectedAdvisorId = advisor.TeacherId;
+        selectedAdvisorName = advisor.FullName;
+        advisorSearchResults.Clear();
+        advisorSearchText = string.Empty;
+        StateHasChanged();
+    }
+
+    private void ClearAdvisor()
+    {
+        selectedAdvisorId = string.Empty;
+        selectedAdvisorName = string.Empty;
+        advisorSearchResults.Clear();
+        advisorSearchText = string.Empty;
+    }
+
     private void OnParentsNumberInput(ChangeEventArgs e)
     {
         var input = e.Value?.ToString() ?? string.Empty;
@@ -715,6 +828,12 @@
             {
                 errorMessage = "Please complete additional information.";
             }
+
+            if (string.IsNullOrEmpty(selectedAdvisorId))
+            {
+                errorMessage = "Please select your advisor.";
+                invalidFields.Add("Advisor");
+            }
         }
 
         // Section/Grade Validation
@@ -774,7 +893,8 @@
                     SchoolName = selectedSchoolName,
                     SchoolId = selectedSchoolId,
                     ParentsNumber = parentsNumber.Trim(),
-                    Gender = gender
+                    Gender = gender,
+                    AdvisorId = selectedAdvisorId
                 }, cts.Token);
             }
             else if (selectedUserType == "GuidanceCounselor" || selectedUserType == "Admin")

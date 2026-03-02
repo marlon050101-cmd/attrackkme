@@ -354,6 +354,52 @@ namespace ServerAtrrak.Controllers
             }
         }
 
+        [HttpGet("advisors/search")]
+        public async Task<ActionResult<List<TeacherInfo>>> SearchAdvisors([FromQuery] string schoolId, [FromQuery] string name)
+        {
+            try
+            {
+                using var connection = new MySqlConnection(_dbConnection.GetConnection());
+                await connection.OpenAsync();
+
+                // UserType 5 is Advisor
+                var query = @"
+                    SELECT t.TeacherId, t.FullName, t.Email, s.SchoolName, s.SchoolId, t.Gradelvl, t.Section, t.Strand
+                    FROM teacher t
+                    INNER JOIN school s ON t.SchoolId = s.SchoolId
+                    INNER JOIN user u ON t.TeacherId = u.TeacherId
+                    WHERE t.SchoolId = @SchoolId AND t.FullName LIKE @Name AND u.UserType = 'Advisor'
+                    LIMIT 20";
+
+                using var command = new MySqlCommand(query, connection);
+                command.Parameters.AddWithValue("@SchoolId", schoolId);
+                command.Parameters.AddWithValue("@Name", $"%{name}%");
+
+                var list = new List<TeacherInfo>();
+                using var reader = await command.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    list.Add(new TeacherInfo
+                    {
+                        TeacherId = reader.GetString("TeacherId"),
+                        FullName = reader.GetString("FullName"),
+                        Email = reader.GetString("Email"),
+                        SchoolName = reader.GetString("SchoolName"),
+                        SchoolId = reader.GetString("SchoolId"),
+                        GradeLevel = reader.IsDBNull("Gradelvl") ? 0 : reader.GetInt32("Gradelvl"),
+                        Section = reader.IsDBNull("Section") ? "" : reader.GetString("Section"),
+                        Strand = reader.IsDBNull("Strand") ? null : reader.GetString("Strand")
+                    });
+                }
+                return Ok(list);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error searching advisors");
+                return StatusCode(500, new List<TeacherInfo>());
+            }
+        }
+
         [HttpGet("student/{studentId}/qr")]
         public async Task<ActionResult<string>> GetStudentQRCode(string studentId)
         {
@@ -730,8 +776,8 @@ namespace ServerAtrrak.Controllers
 
             var studentId = Guid.NewGuid().ToString();
             var query = @"
-                INSERT INTO student (StudentId, FullName, Email, GradeLevel, Section, Strand, SchoolId, ParentsNumber, Gender, QRImage)
-                VALUES (@StudentId, @FullName, @Email, @GradeLevel, @Section, @Strand, @SchoolId, @ParentsNumber, @Gender, @QRImage)";
+                INSERT INTO student (StudentId, FullName, Email, GradeLevel, Section, Strand, SchoolId, ParentsNumber, Gender, QRImage, AdvisorId)
+                VALUES (@StudentId, @FullName, @Email, @GradeLevel, @Section, @Strand, @SchoolId, @ParentsNumber, @Gender, @QRImage, @AdvisorId)";
 
             using var command = new MySqlCommand(query, connection);
             command.Parameters.AddWithValue("@StudentId", studentId);
@@ -744,6 +790,7 @@ namespace ServerAtrrak.Controllers
             command.Parameters.AddWithValue("@ParentsNumber", request.ParentsNumber);
             command.Parameters.AddWithValue("@Gender", request.Gender);
             command.Parameters.AddWithValue("@QRImage", ""); // Will be updated after QR generation
+            command.Parameters.AddWithValue("@AdvisorId", request.AdvisorId ?? (object)DBNull.Value);
 
             await command.ExecuteNonQueryAsync();
             return studentId;
@@ -998,7 +1045,8 @@ namespace ServerAtrrak.Controllers
                     SchoolId = reader.IsDBNull("SchoolId") ? "" : reader.GetString("SchoolId"),
                     ParentsNumber = reader.IsDBNull("ParentsNumber") ? "" : reader.GetString("ParentsNumber"),
                     Gender = reader.IsDBNull("Gender") ? "" : reader.GetString("Gender"),
-                    QRImage = reader.IsDBNull("QRImage") ? null : System.Text.Encoding.UTF8.GetString((byte[])reader["QRImage"]),
+                    QRImage = reader.IsDBNull("QRImage") ? "" : reader.GetString("QRImage"),
+                    AdvisorId = reader.IsDBNull("AdvisorId") ? null : reader.GetString("AdvisorId"),
                     CreatedAt = reader.IsDBNull("CreatedAt") ? DateTime.Now : reader.GetDateTime("CreatedAt"),
                     UpdatedAt = reader.IsDBNull("UpdatedAt") ? DateTime.Now : reader.GetDateTime("UpdatedAt"),
                     IsActive = reader.IsDBNull("IsActive") ? true : reader.GetBoolean("IsActive")
@@ -1093,7 +1141,7 @@ namespace ServerAtrrak.Controllers
             await connection.OpenAsync();
 
             var query = @"
-                SELECT s.StudentId, s.FullName, s.GradeLevel, s.Section, s.Strand, s.SchoolId, s.ParentsNumber, s.Gender, sch.SchoolName, s.QRImage
+                SELECT s.StudentId, s.FullName, s.GradeLevel, s.Section, s.Strand, s.SchoolId, s.ParentsNumber, s.Gender, sch.SchoolName, s.QRImage, s.AdvisorId
                 FROM student s
                 INNER JOIN school sch ON s.SchoolId = sch.SchoolId
                 WHERE s.StudentId = @StudentId";
@@ -1121,6 +1169,8 @@ namespace ServerAtrrak.Controllers
                     ParentsNumber = reader.GetString("ParentsNumber"),
                     Gender = reader.GetString("Gender"),
                     SchoolName = reader.GetString("SchoolName"),
+                    QRImage = reader.IsDBNull("QRImage") ? "" : reader.GetString("QRImage"),
+                    AdvisorId = reader.IsDBNull("AdvisorId") ? null : reader.GetString("AdvisorId"),
                     QRCodeData = qrCodeData,
                     IsValid = true,
                     Message = "Student information retrieved successfully"
@@ -1340,6 +1390,8 @@ namespace ServerAtrrak.Controllers
         
         [Required]
         public string Gender { get; set; } = string.Empty;
+
+        public string? AdvisorId { get; set; }
     }
 
     public class StudentRegisterResponse

@@ -4,36 +4,368 @@
 @layout StudentLayout
 
 @inject AuthService AuthService
+@inject IHttpClientFactory HttpClientFactory
+@inject IJSRuntime JSRuntime
 
 <div class="student-profile">
-    <div class="dashboard-header mb-4">
-        <h2 class="fw-bold text-primary">My Profile</h2>
-        <p class="text-muted">Manage your personal information</p>
+    <div class="dashboard-header text-center mb-4">
+        <h2 class="fw-bold text-primary">Personal Information</h2>
+        <p class="text-muted">Manage your profile and QR code</p>
     </div>
 
-    <div class="card border-0 shadow-sm rounded-4 overlay-card">
-        <div class="card-body p-5 text-center">
-            <div class="mb-4">
-                <i class="fas fa-user-circle fa-5x text-light"></i>
+    @if (isLoading)
+    {
+        <div class="d-flex flex-column align-items-center justify-content-center p-5">
+            <div class="spinner-border text-primary mb-3" role="status">
+                <span class="visually-hidden">Loading...</span>
             </div>
-            <h4 class="fw-bold">Profile Management</h4>
-            <p class="text-muted">This feature is coming soon. You can view your current information on the dashboard.</p>
-            <hr class="my-4 mx-auto" style="max-width: 100px;">
-            <a href="/student-dashboard" class="btn btn-primary rounded-pill px-4">
-                <i class="fas fa-arrow-left me-2"></i>Back to Dashboard
-            </a>
+            <p class="text-muted">Loading your profile...</p>
         </div>
-    </div>
+    }
+    else if (studentData == null)
+    {
+        <div class="alert alert-warning mx-2">
+            <i class="fas fa-exclamation-circle me-2"></i>
+            Unable to load profile information.
+        </div>
+    }
+    else
+    {
+        <!-- Tab Navigation -->
+        <div class="profile-tabs mb-4 transition-fade">
+            <button class="tab-btn @(activeTab == 0 ? "active" : "")" @onclick="() => activeTab = 0">
+                <i class="fas fa-qrcode me-2"></i> Attendance QR
+            </button>
+            <button class="tab-btn @(activeTab == 1 ? "active" : "")" @onclick="() => activeTab = 1">
+                <i class="fas fa-user-circle me-2"></i> Personal Details
+            </button>
+        </div>
+
+        <div class="tab-content transition-fade">
+            @if (activeTab == 0)
+            {
+                <!-- QR Code Tab -->
+                <div class="card profile-card border-0 shadow-sm text-center">
+                    <div class="card-body p-5">
+                        <div class="info-header mb-4 d-flex align-items-center justify-content-center gap-3">
+                            <div class="icon-circle bg-primary text-white">
+                                <i class="fas fa-qrcode"></i>
+                            </div>
+                            <h5 class="fw-bold mb-0">My Attendance QR</h5>
+                        </div>
+
+                        <div class="qr-container p-3 bg-white rounded-4 shadow-sm mb-4 d-inline-block">
+                            @if (!string.IsNullOrEmpty(studentData.QRImage))
+                            {
+                                <img src="data:image/png;base64,@studentData.QRImage" alt="QR Code" class="img-fluid" style="max-width: 250px;" />
+                            }
+                            else
+                            {
+                                <div class="qr-placeholder d-flex flex-column align-items-center justify-content-center" style="width: 200px; height: 200px; background: #f8f9fa; border: 2px dashed #dee2e6;">
+                                    <i class="fas fa-qrcode fa-4x text-light mb-2"></i>
+                                    @if (isGeneratingQR)
+                                    {
+                                        <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                                    }
+                                </div>
+                                <p class="text-muted mt-3 small">QR Code not generated</p>
+                                <button class="btn btn-sm btn-outline-primary mt-2" @onclick="GenerateQRCode" disabled="@isGeneratingQR">
+                                    <i class="fas fa-sync me-1"></i> Generate QR Code
+                                </button>
+                            }
+                        </div>
+                        
+                        <div class="d-block mt-3">
+                            @if (!string.IsNullOrEmpty(studentData.QRImage))
+                            {
+                                <button class="btn btn-primary rounded-pill px-4 py-2 mb-3 shadow-sm btn-hover-scale" @onclick="DownloadQR">
+                                    <i class="fas fa-download me-2"></i>Download QR Code
+                                </button>
+                            }
+                            <p class="small text-muted mb-0 px-3">Present this QR code for attendance recording.</p>
+                        </div>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <!-- Info Tab -->
+                <div class="card profile-card border-0 shadow-sm">
+                    <div class="card-body p-4">
+                        <div class="info-header mb-4 d-flex align-items-center gap-3">
+                            <div class="icon-circle bg-primary text-white">
+                                <i class="fas fa-id-card"></i>
+                            </div>
+                            <h5 class="fw-bold mb-0">Personal Details</h5>
+                        </div>
+
+                        <div class="info-list">
+                            <div class="info-group mb-4">
+                                <div class="info-label">Full Name</div>
+                                <div class="info-value fs-4 text-primary">@studentData.FullName</div>
+                            </div>
+
+                            <div class="row g-4 mb-4">
+                                <div class="col-6">
+                                    <div class="info-group">
+                                        <div class="info-label">Gender</div>
+                                        <div class="info-value">@studentData.Gender</div>
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="info-group">
+                                        <div class="info-label">Email</div>
+                                        <div class="info-value text-truncate">@studentData.Email</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="row g-4 mb-4">
+                                <div class="col-6">
+                                    <div class="info-group">
+                                        <div class="info-label">Grade Level</div>
+                                        <div class="info-value">Grade @studentData.GradeLevel</div>
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="info-group">
+                                        <div class="info-label">Section</div>
+                                        <div class="info-value">@studentData.Section</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            @if (!string.IsNullOrEmpty(studentData.Strand))
+                            {
+                                <div class="info-group mb-4">
+                                    <div class="info-label">Strand</div>
+                                    <div class="info-value">@studentData.Strand</div>
+                                </div>
+                            }
+
+                            <div class="info-group">
+                                <div class="info-label">Parent's/Guardian's Contact</div>
+                                <div class="info-value fs-5">@studentData.ParentsNumber</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
 </div>
+
+@code {
+    private Student? studentData;
+    private bool isLoading = true;
+    private int activeTab = 0; // 0: QR, 1: Info
+    private bool isGeneratingQR = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadStudentData();
+    }
+
+    private async Task LoadStudentData()
+    {
+        isLoading = true;
+        try
+        {
+            var user = await AuthService.GetCurrentUserAsync();
+            if (user != null && !string.IsNullOrEmpty(user.StudentId))
+            {
+                var httpClient = HttpClientFactory.CreateClient("AttrakAPI");
+                studentData = await httpClient.GetFromJsonAsync<Student>($"api/register/student/{user.StudentId}");
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Error loading profile: {ex.Message}");
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task GenerateQRCode()
+    {
+        if (studentData == null || isGeneratingQR) return;
+
+        isGeneratingQR = true;
+        StateHasChanged();
+
+        try
+        {
+            var httpClient = HttpClientFactory.CreateClient("AttrakAPI");
+            var response = await httpClient.GetAsync($"api/register/student/{studentData.StudentId}/qr");
+            
+            if (response.IsSuccessStatusCode)
+            {
+                var qrData = await response.Content.ReadAsStringAsync();
+                if (!string.IsNullOrEmpty(qrData))
+                {
+                    studentData.QRImage = qrData;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Error generating QR code: {ex.Message}");
+        }
+        finally
+        {
+            isGeneratingQR = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task DownloadQR()
+    {
+        if (studentData == null || string.IsNullOrEmpty(studentData.QRImage)) return;
+
+        try
+        {
+            var fileName = $"{studentData.FullName.Replace(" ", "_")}_QR.png";
+            await JSRuntime.InvokeVoidAsync("downloadBase64Item", studentData.QRImage, fileName);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Error downloading QR: {ex.Message}");
+        }
+    }
+}
+
+@* Javascript helper for download *@
+<script>
+    window.downloadBase64Item = function (base64Data, fileName) {
+        const link = document.createElement('a');
+        link.href = 'data:image/png;base64,' + base64Data;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+</script>
 
 <style>
     .student-profile {
         max-width: 800px;
         margin: 0 auto;
-        padding: 1rem;
+        padding: 0.5rem;
     }
 
-    .overlay-card {
-        background-color: white;
+    /* Tabs Styling */
+    .profile-tabs {
+        display: flex;
+        gap: 0.5rem;
+        background: #f0f2f5;
+        padding: 0.4rem;
+        border-radius: 15px;
+    }
+
+    .tab-btn {
+        flex: 1;
+        padding: 0.8rem;
+        border: none;
+        background: transparent;
+        border-radius: 12px;
+        font-weight: 700;
+        color: #64748b;
+        transition: all 0.3s ease;
+        font-size: 0.9rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .tab-btn.active {
+        background: white;
+        color: #0d6efd;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    }
+
+    .tab-btn:hover:not(.active) {
+        background: rgba(255, 255, 255, 0.5);
+        color: #334155;
+    }
+
+    .profile-card {
+        border-radius: 24px;
+        background: white;
+    }
+
+    .icon-circle {
+        width: 42px;
+        height: 42px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.2rem;
+        box-shadow: 0 4px 10px rgba(13, 110, 253, 0.2);
+    }
+
+    .qr-container {
+        border: 2px solid #f1f5f9;
+        transition: all 0.3s ease;
+    }
+
+    .info-group {
+        border-left: 3.5px solid #edf2f7;
+        padding-left: 1.25rem;
+        transition: border-color 0.3s ease;
+    }
+
+    .info-group:hover {
+        border-color: #0d6efd;
+    }
+
+    .info-label {
+        font-size: 0.7rem;
+        font-weight: 800;
+        text-transform: uppercase;
+        color: #94a3b8;
+        letter-spacing: 0.06em;
+        margin-bottom: 0.3rem;
+    }
+
+    .info-value {
+        font-weight: 700;
+        color: #1e293b;
+    }
+
+    .btn-hover-scale {
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .btn-hover-scale:hover {
+        transform: scale(1.02);
+        box-shadow: 0 4px 12px rgba(13, 110, 253, 0.2) !important;
+    }
+
+    .transition-fade {
+        animation: fadeIn 0.4s ease-out;
+    }
+
+    @@keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    @@media (max-width: 768px) {
+        .student-profile {
+            padding: 0.75rem;
+        }
+
+        .tab-btn {
+            font-size: 0.8rem;
+            padding: 0.7rem 0.4rem;
+        }
+        
+        .tab-btn i {
+            display: none;
+        }
     }
 </style>

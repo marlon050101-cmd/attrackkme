@@ -6,11 +6,12 @@
 @inject AuthService AuthService
 @inject IHttpClientFactory HttpClientFactory
 @inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
 
 <div class="student-dashboard">
-    <div class="dashboard-header mb-4">
-        <h2 class="fw-bold text-primary">My Dashboard</h2>
-        <p class="text-muted">Welcome back, @studentName!</p>
+    <div class="dashboard-header text-center mb-4">
+        <h2 class="fw-bold text-primary">Student Dashboard</h2>
+        <p class="text-muted">Welcome back, <span class="fw-bold text-dark">@studentName</span>!</p>
     </div>
 
     @if (isLoading)
@@ -24,97 +25,98 @@
     }
     else if (studentData == null)
     {
-        <div class="alert alert-warning">
+        <div class="alert alert-warning mx-2">
             <i class="fas fa-exclamation-circle me-2"></i>
             Unable to load student information. Please try again later.
         </div>
     }
     else
     {
-        <div class="row g-4">
-            <!-- QR Code Card -->
-            <div class="col-md-5">
-                <div class="card qr-card border-0 shadow-sm h-100">
-                    <div class="card-body text-center d-flex flex-column align-items-center justify-content-center p-4">
-                        <h5 class="card-title fw-bold mb-4">My Attendance QR Code</h5>
-                        <div class="qr-container p-3 bg-white rounded-3 shadow-sm mb-4">
-                            @if (!string.IsNullOrEmpty(studentData.QRImage))
-                            {
-                                <img src="data:image/png;base64,@studentData.QRImage" alt="QR Code" class="img-fluid" style="max-width: 250px;" />
-                            }
-                            else
-                            {
-                                <div class="qr-placeholder d-flex flex-column align-items-center justify-content-center" style="width: 200px; height: 200px; background: #f8f9fa; border: 2px dashed #dee2e6;">
-                                    <i class="fas fa-qrcode fa-4x text-light mb-2"></i>
-                                    @if (isGeneratingQR)
-                                    {
-                                        <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
-                                    }
-                                </div>
-                                <p class="text-muted mt-2 small">QR Code not generated</p>
-                                <button class="btn btn-sm btn-outline-primary mt-2" @onclick="GenerateQRCode" disabled="@isGeneratingQR">
-                                    <i class="fas fa-sync me-1"></i> Generate QR Code
-                                </button>
-                            }
+        <div class="dashboard-content transition-fade">
+            <div class="row g-4">
+                <!-- QR Code Section -->
+                <div class="col-lg-5">
+                    <div class="card qr-card border-0 shadow-sm h-100 text-center">
+                        <div class="card-body p-4 d-flex flex-column align-items-center justify-content-center">
+                            <h5 class="fw-bold mb-4">Attendance QR Code</h5>
+                            <div class="qr-container p-3 bg-white rounded-4 shadow-sm mb-4">
+        <div class="row">
+            <!-- Summary Stats -->
+            <div class="col-md-4 mb-4">
+                <div class="stats-card glass-card h-100">
+                    <div class="card-body">
+                        <div class="d-flex align-items-center mb-3">
+                            <div class="icon-box bg-primary-soft text-primary me-3">
+                                <i class="fas fa-school"></i>
+                            </div>
+                            <div>
+                                <h6 class="text-muted mb-0">Grade & Section</h6>
+                                <div class="fw-bold fs-5 text-dark">Grade @student.GradeLevel - @student.Section</div>
+                            </div>
                         </div>
-                        <p class="small text-muted mb-0">Present this QR code to your teacher for attendance.</p>
+                        <div class="d-flex align-items-center">
+                            <div class="icon-box bg-success-soft text-success me-3">
+                                <i class="fas fa-user-check"></i>
+                            </div>
+                            <div>
+                                <h6 class="text-muted mb-0">Attendance Status</h6>
+                                <div class="badge bg-success">@student.Status</div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
 
-            <!-- Student Info Card -->
-            <div class="col-md-7">
-                <div class="card info-card border-0 shadow-sm h-100">
-                    <div class="card-header bg-white border-0 pt-4 px-4">
-                        <h5 class="fw-bold mb-0">Personal Information</h5>
+            <div class="col-md-8 mb-4">
+                <div class="subjects-container glass-card">
+                    <div class="card-header bg-transparent border-0 pt-4 px-4 pb-0">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h5 class="fw-bold mb-0">Today's Subjects</h5>
+                            <span class="badge bg-light text-dark">@classOfferings.Count Subjects</span>
+                        </div>
                     </div>
                     <div class="card-body p-4">
-                        <div class="info-grid">
-                            <div class="info-item mb-3">
-                                <label class="text-muted small text-uppercase fw-bold">Full Name</label>
-                                <div class="fw-bold fs-5">@studentData.FullName</div>
-                            </div>
-                            
-                            <div class="row mb-3">
-                                <div class="col-6">
-                                    <label class="text-muted small text-uppercase fw-bold">Student ID</label>
-                                    <div class="fw-semibold">@studentData.StudentId</div>
+                        @if (classOfferings == null || classOfferings.Count == 0)
+                        {
+                            <div class="text-center py-5">
+                                <div class="empty-state-icon mb-3">
+                                    <i class="fas fa-book-open fa-3x text-muted opacity-50"></i>
                                 </div>
-                                <div class="col-6">
-                                    <label class="text-muted small text-uppercase fw-bold">Gender</label>
-                                    <div class="fw-semibold">@studentData.Gender</div>
-                                </div>
+                                <p class="text-muted">No specific subjects found for your section today.</p>
+                                @if (string.IsNullOrEmpty(student.AdvisorId))
+                                {
+                                    <p class="small text-danger">Note: You have no Advisor linked. Please update your profile or contact administration.</p>
+                                }
                             </div>
-
-                            <div class="row mb-3">
-                                <div class="col-6">
-                                    <label class="text-muted small text-uppercase fw-bold">Grade Level</label>
-                                    <div class="fw-semibold">Grade @studentData.GradeLevel</div>
-                                </div>
-                                <div class="col-6">
-                                    <label class="text-muted small text-uppercase fw-bold">Section</label>
-                                    <div class="fw-semibold">@studentData.Section</div>
-                                </div>
+                        }
+                        else
+                        {
+                            <div class="subject-list">
+                                @foreach (var offering in classOfferings.OrderBy(o => o.ScheduleStart))
+                                {
+                                    <div class="subject-item d-flex align-items-center p-3 mb-3">
+                                        <div class="time-column text-center me-4">
+                                            <div class="start-time fw-bold text-primary">@DateTime.Today.Add(offering.ScheduleStart).ToString("hh:mm tt")</div>
+                                            <div class="end-time text-muted small">@DateTime.Today.Add(offering.ScheduleEnd).ToString("hh:mm tt")</div>
+                                        </div>
+                                        <div class="divider-v"></div>
+                                        <div class="subject-details ms-4 flex-grow-1">
+                                            <h6 class="fw-bold text-dark mb-1">@offering.SubjectName</h6>
+                                            <div class="teacher-info text-muted small">
+                                                <i class="fas fa-chalkboard-teacher me-1"></i>
+                                                @(string.IsNullOrEmpty(offering.TeacherName) ? "TBA" : offering.TeacherName)
+                                            </div>
+                                        </div>
+                                        <div class="status-indicator">
+                                            @if (IsCurrentlyOngoing(offering.ScheduleStart, offering.ScheduleEnd))
+                                            {
+                                                <span class="badge bg-primary pulse">Ongoing</span>
+                                            }
+                                        </div>
+                                    </div>
+                                }
                             </div>
-
-                            @if (!string.IsNullOrEmpty(studentData.Strand))
-                            {
-                                <div class="info-item mb-3">
-                                    <label class="text-muted small text-uppercase fw-bold">Strand</label>
-                                    <div class="fw-semibold">@studentData.Strand</div>
-                                </div>
-                            }
-
-                            <div class="info-item mb-3">
-                                <label class="text-muted small text-uppercase fw-bold">Email Address</label>
-                                <div class="fw-semibold text-primary">@studentData.Email</div>
-                            </div>
-
-                            <div class="info-item">
-                                <label class="text-muted small text-uppercase fw-bold">Parent's/Guardian's Contact</label>
-                                <div class="fw-semibold">@studentData.ParentsNumber</div>
-                            </div>
-                        </div>
+                        }
                     </div>
                 </div>
             </div>
@@ -122,69 +124,116 @@
     }
 </div>
 
+<style>
+    .glass-card {
+        background: rgba(255, 255, 255, 0.9);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 20px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.05);
+    }
+
+    .bg-primary-soft { background-color: rgba(13, 110, 253, 0.1); }
+    .bg-success-soft { background-color: rgba(25, 135, 84, 0.1); }
+
+    .icon-box {
+        width: 45px;
+        height: 45px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.2rem;
+    }
+
+    .stats-card {
+        transition: transform 0.3s ease;
+    }
+    .stats-card:hover {
+        transform: translateY(-5px);
+    }
+
+    .subject-item {
+        background: #f8f9fa;
+        border-radius: 15px;
+        transition: all 0.2s ease;
+        border: 1px solid transparent;
+    }
+    .subject-item:hover {
+        background: #fff;
+        border-color: #dee2e6;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.03);
+    }
+
+    .divider-v {
+        width: 1px;
+        height: 40px;
+        background: #dee2e6;
+    }
+
+    .time-column {
+        min-width: 80px;
+    }
+
+    .pulse {
+        animation: pulse-animation 2s infinite;
+    }
+
+    @@keyframes pulse-animation {
+        0% { opacity: 1; }
+        50% { opacity: 0.6; }
+        100% { opacity: 1; }
+    }
+
+    .date-badge {
+        background: #fff;
+        padding: 8px 16px;
+        border-radius: 100px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+        font-weight: 600;
+        color: #495057;
+    }
+</style>
+
 @code {
-    private string studentName = "Student";
-    private Student? studentData;
+    private StudentDisplayInfo? student;
+    private List<ClassOffering> classOfferings = new();
     private bool isLoading = true;
-    private bool isGeneratingQR = false;
 
     protected override async Task OnInitializedAsync()
     {
-        await LoadStudentData();
+        await LoadDashboardData();
     }
 
-    private async Task LoadStudentData()
+    private async Task LoadDashboardData()
     {
         isLoading = true;
         try
         {
-            var user = await AuthService.GetCurrentUserAsync();
-            if (user != null)
+            var currentUser = await AuthService.GetCurrentUserAsync();
+            if (currentUser != null && !string.IsNullOrEmpty(currentUser.StudentId))
             {
-                studentName = user.Username;
+                var http = HttpClientFactory.CreateClient("AttrakAPI");
+                student = await http.GetFromJsonAsync<StudentDisplayInfo>($"api/register/student/{currentUser.StudentId}");
                 
-                if (!string.IsNullOrEmpty(user.StudentId))
+                if (student != null && !string.IsNullOrEmpty(student.AdvisorId))
                 {
-                    var httpClient = HttpClientFactory.CreateClient("AttrakAPI");
-                    // Fetch full student details including QR image
-                    studentData = await httpClient.GetFromJsonAsync<Student>($"api/register/student/{user.StudentId}");
+                    // Fetch Subjects
+                    var offerings = await http.GetFromJsonAsync<List<ClassOffering>>($"api/ClassOffering/section?advisorId={student.AdvisorId}&section={Uri.EscapeDataString(student.Section)}&gradeLevel={student.GradeLevel}");
+                    if (offerings != null)
+                    {
+                        classOfferings = offerings;
+                    }
                 }
             }
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Error loading student data: {ex.Message}");
+            Console.WriteLine($"Error loading dashboard: {ex.Message}");
         }
         finally
         {
             isLoading = false;
-            StateHasChanged();
-        }
-    }
-
-    private async Task GenerateQRCode()
-    {
-        if (studentData == null || isGeneratingQR) return;
-
-        isGeneratingQR = true;
-        StateHasChanged();
-
-        try
-        {
-            var httpClient = HttpClientFactory.CreateClient("AttrakAPI");
-            var response = await httpClient.GetAsync($"api/register/student/{studentData.StudentId}/qr");
-            
-            if (response.IsSuccessStatusCode)
-            {
-                var qrData = await response.Content.ReadAsStringAsync();
-                if (!string.IsNullOrEmpty(qrData))
-                {
-                    studentData.QRImage = qrData;
-                }
-            }
-        }
-        catch (Exception ex)
-        {
             System.Diagnostics.Debug.WriteLine($"Error generating QR code: {ex.Message}");
         }
         finally
@@ -193,51 +242,166 @@
             StateHasChanged();
         }
     }
+
+    private async Task DownloadQR()
+    {
+        if (studentData == null || string.IsNullOrEmpty(studentData.QRImage)) return;
+
+        try
+        {
+            var fileName = $"{studentData.FullName.Replace(" ", "_")}_QR.png";
+            await JSRuntime.InvokeVoidAsync("downloadBase64Item", studentData.QRImage, fileName);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Error downloading QR: {ex.Message}");
+        }
+    }
 }
+
+@* Javascript helper for download *@
+<script>
+    window.downloadBase64Item = function (base64Data, fileName) {
+        const link = document.createElement('a');
+        link.href = 'data:image/png;base64,' + base64Data;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+</script>
 
 <style>
     .student-dashboard {
-        max-width: 1000px;
+        max-width: 800px;
         margin: 0 auto;
-        padding: 1rem;
+        padding: 0.5rem;
     }
 
+    /* Tabs Styling */
+    .dashboard-tabs {
+        display: flex;
+        gap: 0.5rem;
+        background: #f0f2f5;
+        padding: 0.4rem;
+        border-radius: 15px;
+    }
+
+    .tab-btn {
+        flex: 1;
+        padding: 0.8rem;
+        border: none;
+        background: transparent;
+        border-radius: 12px;
+        font-weight: 700;
+        color: #64748b;
+        transition: all 0.3s ease;
+        font-size: 0.9rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .tab-btn.active {
+        background: white;
+        color: #0d6efd;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    }
+
+    .tab-btn:hover:not(.active) {
+        background: rgba(255, 255, 255, 0.5);
+        color: #334155;
+    }
+
+    /* QR Card Styling */
     .qr-card {
-        border-radius: 20px;
-        background: linear-gradient(145deg, #ffffff, #f0f4ff);
-    }
-
-    .info-card {
-        border-radius: 20px;
+        border-radius: 24px;
+        background: white;
     }
 
     .qr-container {
-        border: 1px solid #e3e6f0;
+        border: 2px solid #f1f5f9;
         display: inline-block;
-        transition: transform 0.3s ease;
+        transition: all 0.3s ease;
     }
 
     .qr-container:hover {
+        border-color: #e2e8f0;
+        transform: translateY(-2px);
+    }
+
+    .btn-hover-scale {
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .btn-hover-scale:hover {
         transform: scale(1.02);
+        box-shadow: 0 4px 12px rgba(13, 110, 253, 0.2) !important;
     }
 
-    .info-item label {
-        display: block;
-        margin-bottom: 2px;
-        letter-spacing: 0.05em;
+    @* Info Card Styling *@
+    .info-card {
+        border-radius: 24px;
+        background: white;
     }
 
-    .card {
-        transition: box-shadow 0.3s ease;
+    .icon-circle {
+        width: 42px;
+        height: 42px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.2rem;
+        box-shadow: 0 4px 10px rgba(13, 110, 253, 0.2);
     }
 
-    .card:hover {
-        box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.1) !important;
+    .info-group {
+        border-left: 3.5px solid #edf2f7;
+        padding-left: 1.25rem;
+        transition: border-color 0.3s ease;
+    }
+
+    .info-group:hover {
+        border-color: #0d6efd;
+    }
+
+    .info-label {
+        font-size: 0.7rem;
+        font-weight: 800;
+        text-transform: uppercase;
+        color: #94a3b8;
+        letter-spacing: 0.06em;
+        margin-bottom: 0.3rem;
+    }
+
+    .info-value {
+        font-weight: 700;
+        color: #1e293b;
+    }
+
+    /* Animations */
+    .transition-fade {
+        animation: fadeIn 0.4s ease-out;
+    }
+
+    @@keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
     }
 
     @@media (max-width: 768px) {
         .student-dashboard {
-            padding: 0.5rem;
+            padding: 0.75rem;
+        }
+        
+        .tab-btn {
+            font-size: 0.8rem;
+            padding: 0.7rem 0.4rem;
+        }
+        
+        .tab-btn i {
+            display: none;
         }
     }
 </style>
