@@ -53,5 +53,6 @@ namespace AttrackSharedClass.Models
         // Additional properties for dashboard display
         public int AbsenceCount { get; set; } = 0;
         public string Status { get; set; } = "Good";
+        public string EnrollmentStatus { get; set; } = "Pending";
     }
 }

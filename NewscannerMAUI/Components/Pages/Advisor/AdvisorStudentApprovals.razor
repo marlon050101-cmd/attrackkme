@@ -1,0 +1,217 @@
+@page "/advisor/student-approvals"
+@layout AdvisorLayout
+@using AttrackSharedClass.Models
+@using NewscannerMAUI.Services
+@using System.Net.Http.Json
+@inject IHttpClientFactory HttpClientFactory
+@inject AuthService AuthService
+
+<div class="approvals-container">
+    <div class="header-section mb-4">
+        <h2 class="fw-bold text-dark">Student Enrollment Approvals</h2>
+        <p class="text-muted">Review and accept students who have selected you as their advisor.</p>
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="d-flex justify-content-center align-items-center" style="height: 300px;">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+        </div>
+    }
+    else if (students == null || students.Count == 0)
+    {
+        <div class="glass-card p-5 text-center">
+            <div class="mb-3">
+                <i class="fas fa-users-slash fa-3x text-muted opacity-50"></i>
+            </div>
+            <h5 class="text-muted">No students found matching your advisor profile.</h5>
+            <p class="small text-muted">Students need to select you as their advisor during registration.</p>
+        </div>
+    }
+    else
+    {
+        <div class="row">
+            @foreach (var student in students)
+            {
+                <div class="col-md-6 mb-4">
+                    <div class="student-approval-card glass-card">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start mb-3">
+                                <div class="d-flex align-items-center">
+                                    <div class="avatar-box bg-primary-soft text-primary me-3">
+                                        <i class="fas fa-user-graduate"></i>
+                                    </div>
+                                    <div>
+                                        <h5 class="fw-bold mb-0">@student.FullName</h5>
+                                        <div class="text-muted small">Grade @student.GradeLevel - @student.Section</div>
+                                    </div>
+                                </div>
+                                <span class="badge @GetStatusBadgeClass(student.EnrollmentStatus)">
+                                    @student.EnrollmentStatus
+                                </span>
+                            </div>
+
+                            <div class="info-grid mb-4">
+                                <div class="info-item">
+                                    <label>Gender</label>
+                                    <span>@student.Gender</span>
+                                </div>
+                                <div class="info-item">
+                                    <label>Guardian Contact</label>
+                                    <span>@student.ParentsNumber</span>
+                                </div>
+                                @if (!string.IsNullOrEmpty(student.Strand))
+                                {
+                                    <div class="info-item">
+                                        <label>Strand</label>
+                                        <span>@student.Strand</span>
+                                    </div>
+                                }
+                            </div>
+
+                            <div class="d-flex gap-2">
+                                @if (student.EnrollmentStatus == "Pending")
+                                {
+                                    <button class="btn btn-success flex-grow-1 rounded-pill" @onclick="() => UpdateStatus(student, "Approved")">
+                                        <i class="fas fa-check me-2"></i>Approve
+                                    </button>
+                                    <button class="btn btn-outline-danger flex-grow-1 rounded-pill" @onclick="() => UpdateStatus(student, "Rejected")">
+                                        <i class="fas fa-times me-2"></i>Reject
+                                    </button>
+                                }
+                                else if (student.EnrollmentStatus == "Approved")
+                                {
+                                    <button class="btn btn-outline-secondary w-100 rounded-pill" @onclick="() => UpdateStatus(student, "Pending")">
+                                        <i class="fas fa-undo me-2"></i>Move back to Pending
+                                    </button>
+                                }
+                                else
+                                {
+                                    <button class="btn btn-primary w-100 rounded-pill" @onclick="() => UpdateStatus(student, "Pending")">
+                                        <i class="fas fa-redo me-2"></i>Review Again
+                                    </button>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+<style>
+    .glass-card {
+        background: rgba(255, 255, 255, 0.9);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 20px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.05);
+    }
+
+    .bg-primary-soft { background-color: rgba(13, 110, 253, 0.1); }
+
+    .avatar-box {
+        width: 48px;
+        height: 48px;
+        border-radius: 14px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.4rem;
+    }
+
+    .info-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+        background: #f8f9fa;
+        padding: 1rem;
+        border-radius: 12px;
+    }
+
+    .info-item label {
+        display: block;
+        font-size: 0.65rem;
+        text-transform: uppercase;
+        font-weight: 700;
+        color: #adb5bd;
+        margin-bottom: 0.2rem;
+    }
+
+    .info-item span {
+        font-weight: 600;
+        color: #495057;
+        font-size: 0.85rem;
+    }
+
+    .approvals-container {
+        padding: 1rem;
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+
+    .badge-pending { background-color: #ffc107; color: #000; }
+    .badge-approved { background-color: #198754; color: #fff; }
+    .badge-rejected { background-color: #dc3545; color: #fff; }
+</style>
+
+@code {
+    private List<StudentDisplayInfo>? students;
+    private bool isLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadStudents();
+    }
+
+    private async Task LoadStudents()
+    {
+        isLoading = true;
+        try
+        {
+            var currentUser = await AuthService.GetCurrentUserAsync();
+            if (currentUser != null && !string.IsNullOrEmpty(currentUser.TeacherId))
+            {
+                var http = HttpClientFactory.CreateClient("AttrakAPI");
+                students = await http.GetFromJsonAsync<List<StudentDisplayInfo>>($"api/register/advisor/{currentUser.TeacherId}/students");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading students: {ex.Message}");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task UpdateStatus(StudentDisplayInfo student, string newStatus)
+    {
+        try
+        {
+            var http = HttpClientFactory.CreateClient("AttrakAPI");
+            var response = await http.PostAsJsonAsync($"api/register/student/{student.StudentId}/status", new { status = newStatus });
+            
+            if (response.IsSuccessStatusCode)
+            {
+                student.EnrollmentStatus = newStatus;
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error updating status: {ex.Message}");
+        }
+    }
+
+    private string GetStatusBadgeClass(string status) => status switch
+    {
+        "Approved" => "badge-approved",
+        "Rejected" => "badge-rejected",
+        _ => "badge-pending"
+    };
+}

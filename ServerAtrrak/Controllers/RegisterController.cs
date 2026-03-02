@@ -776,8 +776,8 @@ namespace ServerAtrrak.Controllers
 
             var studentId = Guid.NewGuid().ToString();
             var query = @"
-                INSERT INTO student (StudentId, FullName, Email, GradeLevel, Section, Strand, SchoolId, ParentsNumber, Gender, QRImage, AdvisorId)
-                VALUES (@StudentId, @FullName, @Email, @GradeLevel, @Section, @Strand, @SchoolId, @ParentsNumber, @Gender, @QRImage, @AdvisorId)";
+                INSERT INTO student (StudentId, FullName, Email, GradeLevel, Section, Strand, SchoolId, ParentsNumber, Gender, QRImage, AdvisorId, EnrollmentStatus)
+                VALUES (@StudentId, @FullName, @Email, @GradeLevel, @Section, @Strand, @SchoolId, @ParentsNumber, @Gender, @QRImage, @AdvisorId, @EnrollmentStatus)";
 
             using var command = new MySqlCommand(query, connection);
             command.Parameters.AddWithValue("@StudentId", studentId);
@@ -791,6 +791,7 @@ namespace ServerAtrrak.Controllers
             command.Parameters.AddWithValue("@Gender", request.Gender);
             command.Parameters.AddWithValue("@QRImage", ""); // Will be updated after QR generation
             command.Parameters.AddWithValue("@AdvisorId", request.AdvisorId ?? (object)DBNull.Value);
+            command.Parameters.AddWithValue("@EnrollmentStatus", "Pending");
 
             await command.ExecuteNonQueryAsync();
             return studentId;
@@ -1008,9 +1009,9 @@ namespace ServerAtrrak.Controllers
 
                 // Use the EXACT query that works in MySQL Workbench
                 query = @"
-                    SELECT s.StudentId, s.FullName, s.GradeLevel, s.Section, s.Strand, s.SchoolId, s.ParentsNumber, s.Gender, s.QRImage, s.CreatedAt, s.UpdatedAt, s.IsActive
+                    SELECT s.StudentId, s.FullName, s.GradeLevel, s.Section, s.Strand, s.SchoolId, s.ParentsNumber, s.Gender, s.QRImage, s.CreatedAt, s.UpdatedAt, s.IsActive, s.EnrollmentStatus, s.AdvisorId
                     FROM student s
-                    WHERE s.SchoolId = @SchoolId AND s.Section = @Section AND s.IsActive = 1
+                    WHERE s.SchoolId = @SchoolId AND s.Section = @Section AND s.IsActive = 1 AND s.EnrollmentStatus = 'Approved'
                     ORDER BY s.FullName";
 
                 Console.WriteLine($"DEBUG: Using EXACT query from MySQL Workbench");
@@ -1023,7 +1024,7 @@ namespace ServerAtrrak.Controllers
             else
             {
                 // Get all students if no teacher ID provided
-                query = "SELECT StudentId, FullName, GradeLevel, Section, Strand, SchoolId, ParentsNumber, Gender, QRImage, CreatedAt, UpdatedAt, IsActive FROM student WHERE IsActive = 1 ORDER BY FullName";
+                query = "SELECT StudentId, FullName, GradeLevel, Section, Strand, SchoolId, ParentsNumber, Gender, QRImage, CreatedAt, UpdatedAt, IsActive, EnrollmentStatus, AdvisorId FROM student WHERE IsActive = 1 AND EnrollmentStatus = 'Approved' ORDER BY FullName";
                 command = new MySqlCommand(query, connection);
             }
 
@@ -1047,6 +1048,7 @@ namespace ServerAtrrak.Controllers
                     Gender = reader.IsDBNull("Gender") ? "" : reader.GetString("Gender"),
                     QRImage = reader.IsDBNull("QRImage") ? "" : reader.GetString("QRImage"),
                     AdvisorId = reader.IsDBNull("AdvisorId") ? null : reader.GetString("AdvisorId"),
+                    EnrollmentStatus = reader.IsDBNull("EnrollmentStatus") ? "Pending" : reader.GetString("EnrollmentStatus"),
                     CreatedAt = reader.IsDBNull("CreatedAt") ? DateTime.Now : reader.GetDateTime("CreatedAt"),
                     UpdatedAt = reader.IsDBNull("UpdatedAt") ? DateTime.Now : reader.GetDateTime("UpdatedAt"),
                     IsActive = reader.IsDBNull("IsActive") ? true : reader.GetBoolean("IsActive")
@@ -1141,7 +1143,7 @@ namespace ServerAtrrak.Controllers
             await connection.OpenAsync();
 
             var query = @"
-                SELECT s.StudentId, s.FullName, s.GradeLevel, s.Section, s.Strand, s.SchoolId, s.ParentsNumber, s.Gender, sch.SchoolName, s.QRImage, s.AdvisorId, s.Status
+                SELECT s.StudentId, s.FullName, s.GradeLevel, s.Section, s.Strand, s.SchoolId, s.ParentsNumber, s.Gender, sch.SchoolName, s.QRImage, s.AdvisorId, s.Status, s.EnrollmentStatus
                 FROM student s
                 INNER JOIN school sch ON s.SchoolId = sch.SchoolId
                 WHERE s.StudentId = @StudentId";
@@ -1172,6 +1174,7 @@ namespace ServerAtrrak.Controllers
                     QRImage = reader.IsDBNull("QRImage") ? "" : reader.GetString("QRImage"),
                     AdvisorId = reader.IsDBNull("AdvisorId") ? null : reader.GetString("AdvisorId"),
                     Status = reader.IsDBNull("Status") ? "Good" : reader.GetString("Status"),
+                    EnrollmentStatus = reader.IsDBNull("EnrollmentStatus") ? "Pending" : reader.GetString("EnrollmentStatus"),
                     QRCodeData = qrCodeData,
                     IsValid = true,
                     Message = "Student information retrieved successfully"
@@ -1179,6 +1182,79 @@ namespace ServerAtrrak.Controllers
             }
 
             return null;
+        }
+
+        [HttpGet("advisor/{advisorId}/students")]
+        public async Task<ActionResult<List<StudentDisplayInfo>>> GetStudentsByAdvisor(string advisorId)
+        {
+            try
+            {
+                using var connection = new MySqlConnection(_dbConnection.GetConnection());
+                await connection.OpenAsync();
+
+                var query = @"
+                    SELECT s.StudentId, s.FullName, s.GradeLevel, s.Section, s.Strand, s.SchoolId, s.ParentsNumber, s.Gender, sch.SchoolName, s.QRImage, s.AdvisorId, s.Status, s.EnrollmentStatus
+                    FROM student s
+                    INNER JOIN school sch ON s.SchoolId = sch.SchoolId
+                    WHERE s.AdvisorId = @AdvisorId
+                    ORDER BY s.EnrollmentStatus DESC, s.FullName ASC";
+
+                using var command = new MySqlCommand(query, connection);
+                command.Parameters.AddWithValue("@AdvisorId", advisorId);
+
+                var students = new List<StudentDisplayInfo>();
+                using var reader = await command.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    students.Add(new StudentDisplayInfo
+                    {
+                        StudentId = reader.GetString("StudentId"),
+                        FullName = reader.GetString("FullName"),
+                        GradeLevel = reader.GetInt32("GradeLevel"),
+                        Section = reader.GetString("Section"),
+                        Strand = reader.IsDBNull("Strand") ? null : reader.GetString("Strand"),
+                        ParentsNumber = reader.GetString("ParentsNumber"),
+                        Gender = reader.GetString("Gender"),
+                        SchoolName = reader.GetString("SchoolName"),
+                        QRImage = reader.IsDBNull("QRImage") ? "" : reader.GetString("QRImage"),
+                        AdvisorId = reader.IsDBNull("AdvisorId") ? null : reader.GetString("AdvisorId"),
+                        Status = reader.IsDBNull("Status") ? "Good" : reader.GetString("Status"),
+                        EnrollmentStatus = reader.IsDBNull("EnrollmentStatus") ? "Pending" : reader.GetString("EnrollmentStatus"),
+                        IsValid = true
+                    });
+                }
+                return Ok(students);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, $"Internal server error: {ex.Message}");
+            }
+        }
+
+        [HttpPost("student/{studentId}/status")]
+        public async Task<ActionResult> UpdateStudentStatus(string studentId, [FromBody] UpdateStatusRequest request)
+        {
+            try
+            {
+                using var connection = new MySqlConnection(_dbConnection.GetConnection());
+                await connection.OpenAsync();
+
+                var query = "UPDATE student SET EnrollmentStatus = @Status WHERE StudentId = @StudentId";
+                using var command = new MySqlCommand(query, connection);
+                command.Parameters.AddWithValue("@Status", request.Status);
+                command.Parameters.AddWithValue("@StudentId", studentId);
+
+                await command.ExecuteNonQueryAsync();
+                return Ok(new { success = true, message = $"Student status updated to {request.Status}" });
+            }
+            catch (MySqlException ex)
+            {
+                return StatusCode(500, $"Database error: {ex.Message}");
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, $"Internal server error: {ex.Message}");
+            }
         }
 
         [HttpPost("advisor")]
@@ -1393,6 +1469,11 @@ namespace ServerAtrrak.Controllers
         public string Gender { get; set; } = string.Empty;
 
         public string? AdvisorId { get; set; }
+    }
+
+    public class UpdateStatusRequest
+    {
+        public string Status { get; set; } = string.Empty;
     }
 
     public class StudentRegisterResponse

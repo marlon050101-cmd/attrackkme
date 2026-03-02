@@ -128,6 +128,7 @@ namespace AttrackSharedClass.Models
         public string? QRImage { get; set; }
         public string? AdvisorId { get; set; }
         public string Status { get; set; } = "Good";
+        public string EnrollmentStatus { get; set; } = "Pending";
         public bool IsValid { get; set; }
         public string Message { get; set; } = string.Empty;
     }
