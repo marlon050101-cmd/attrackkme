@@ -1141,7 +1141,7 @@ namespace ServerAtrrak.Controllers
             await connection.OpenAsync();
 
             var query = @"
-                SELECT s.StudentId, s.FullName, s.GradeLevel, s.Section, s.Strand, s.SchoolId, s.ParentsNumber, s.Gender, sch.SchoolName, s.QRImage, s.AdvisorId
+                SELECT s.StudentId, s.FullName, s.GradeLevel, s.Section, s.Strand, s.SchoolId, s.ParentsNumber, s.Gender, sch.SchoolName, s.QRImage, s.AdvisorId, s.Status
                 FROM student s
                 INNER JOIN school sch ON s.SchoolId = sch.SchoolId
                 WHERE s.StudentId = @StudentId";
@@ -1171,6 +1171,7 @@ namespace ServerAtrrak.Controllers
                     SchoolName = reader.GetString("SchoolName"),
                     QRImage = reader.IsDBNull("QRImage") ? "" : reader.GetString("QRImage"),
                     AdvisorId = reader.IsDBNull("AdvisorId") ? null : reader.GetString("AdvisorId"),
+                    Status = reader.IsDBNull("Status") ? "Good" : reader.GetString("Status"),
                     QRCodeData = qrCodeData,
                     IsValid = true,
                     Message = "Student information retrieved successfully"

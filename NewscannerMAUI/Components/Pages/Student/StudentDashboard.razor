@@ -1,45 +1,43 @@
 @page "/student-dashboard"
+@layout StudentLayout
 @using AttrackSharedClass.Models
 @using NewscannerMAUI.Services
-@layout StudentLayout
-
-@inject AuthService AuthService
+@using System.Net.Http.Json
 @inject IHttpClientFactory HttpClientFactory
-@inject NavigationManager Navigation
-@inject IJSRuntime JSRuntime
+@inject NavigationManager NavigationManager
+@inject AuthService AuthService
 
-<div class="student-dashboard">
-    <div class="dashboard-header text-center mb-4">
-        <h2 class="fw-bold text-primary">Student Dashboard</h2>
-        <p class="text-muted">Welcome back, <span class="fw-bold text-dark">@studentName</span>!</p>
+<div class="dashboard-container">
+    <div class="header-section mb-4">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <h2 class="fw-bold text-dark mb-1">My Class Schedule</h2>
+                <p class="text-muted">Stay updated with your daily subjects and activities.</p>
+            </div>
+            <div class="date-badge">
+                <i class="far fa-calendar-alt me-2"></i>
+                @DateTime.Now.ToString("MMMM dd, yyyy")
+            </div>
+        </div>
     </div>
 
     @if (isLoading)
     {
-        <div class="d-flex flex-column align-items-center justify-content-center p-5">
-            <div class="spinner-border text-primary mb-3" role="status">
+        <div class="d-flex justify-content-center align-items-center" style="height: 300px;">
+            <div class="spinner-border text-primary" role="status">
                 <span class="visually-hidden">Loading...</span>
             </div>
-            <p class="text-muted">Fetching your information...</p>
         </div>
     }
-    else if (studentData == null)
+    else if (student == null)
     {
-        <div class="alert alert-warning mx-2">
-            <i class="fas fa-exclamation-circle me-2"></i>
+        <div class="alert alert-warning shadow-sm border-0 rounded-3">
+            <i class="fas fa-exclamation-triangle me-2"></i>
             Unable to load student information. Please try again later.
         </div>
     }
     else
     {
-        <div class="dashboard-content transition-fade">
-            <div class="row g-4">
-                <!-- QR Code Section -->
-                <div class="col-lg-5">
-                    <div class="card qr-card border-0 shadow-sm h-100 text-center">
-                        <div class="card-body p-4 d-flex flex-column align-items-center justify-content-center">
-                            <h5 class="fw-bold mb-4">Attendance QR Code</h5>
-                            <div class="qr-container p-3 bg-white rounded-4 shadow-sm mb-4">
         <div class="row">
             <!-- Summary Stats -->
             <div class="col-md-4 mb-4">
@@ -60,7 +58,7 @@
                             </div>
                             <div>
                                 <h6 class="text-muted mb-0">Attendance Status</h6>
-                                <div class="badge bg-success">@student.Status</div>
+                                <div class="badge bg-success">@(string.IsNullOrEmpty(student.Status) ? "Good" : student.Status)</div>
                             </div>
                         </div>
                     </div>
@@ -193,6 +191,12 @@
         font-weight: 600;
         color: #495057;
     }
+
+    .dashboard-container {
+        padding: 1rem;
+        max-width: 1200px;
+        margin: 0 auto;
+    }
 </style>
 
 @code {
@@ -234,174 +238,12 @@
         finally
         {
             isLoading = false;
-            System.Diagnostics.Debug.WriteLine($"Error generating QR code: {ex.Message}");
-        }
-        finally
-        {
-            isGeneratingQR = false;
-            StateHasChanged();
         }
     }
 
-    private async Task DownloadQR()
+    private bool IsCurrentlyOngoing(TimeSpan start, TimeSpan end)
     {
-        if (studentData == null || string.IsNullOrEmpty(studentData.QRImage)) return;
-
-        try
-        {
-            var fileName = $"{studentData.FullName.Replace(" ", "_")}_QR.png";
-            await JSRuntime.InvokeVoidAsync("downloadBase64Item", studentData.QRImage, fileName);
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"Error downloading QR: {ex.Message}");
-        }
+        var now = DateTime.Now.TimeOfDay;
+        return now >= start && now <= end;
     }
 }
-
-@* Javascript helper for download *@
-<script>
-    window.downloadBase64Item = function (base64Data, fileName) {
-        const link = document.createElement('a');
-        link.href = 'data:image/png;base64,' + base64Data;
-        link.download = fileName;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    };
-</script>
-
-<style>
-    .student-dashboard {
-        max-width: 800px;
-        margin: 0 auto;
-        padding: 0.5rem;
-    }
-
-    /* Tabs Styling */
-    .dashboard-tabs {
-        display: flex;
-        gap: 0.5rem;
-        background: #f0f2f5;
-        padding: 0.4rem;
-        border-radius: 15px;
-    }
-
-    .tab-btn {
-        flex: 1;
-        padding: 0.8rem;
-        border: none;
-        background: transparent;
-        border-radius: 12px;
-        font-weight: 700;
-        color: #64748b;
-        transition: all 0.3s ease;
-        font-size: 0.9rem;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-
-    .tab-btn.active {
-        background: white;
-        color: #0d6efd;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-    }
-
-    .tab-btn:hover:not(.active) {
-        background: rgba(255, 255, 255, 0.5);
-        color: #334155;
-    }
-
-    /* QR Card Styling */
-    .qr-card {
-        border-radius: 24px;
-        background: white;
-    }
-
-    .qr-container {
-        border: 2px solid #f1f5f9;
-        display: inline-block;
-        transition: all 0.3s ease;
-    }
-
-    .qr-container:hover {
-        border-color: #e2e8f0;
-        transform: translateY(-2px);
-    }
-
-    .btn-hover-scale {
-        transition: transform 0.2s ease, box-shadow 0.2s ease;
-    }
-
-    .btn-hover-scale:hover {
-        transform: scale(1.02);
-        box-shadow: 0 4px 12px rgba(13, 110, 253, 0.2) !important;
-    }
-
-    @* Info Card Styling *@
-    .info-card {
-        border-radius: 24px;
-        background: white;
-    }
-
-    .icon-circle {
-        width: 42px;
-        height: 42px;
-        border-radius: 12px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 1.2rem;
-        box-shadow: 0 4px 10px rgba(13, 110, 253, 0.2);
-    }
-
-    .info-group {
-        border-left: 3.5px solid #edf2f7;
-        padding-left: 1.25rem;
-        transition: border-color 0.3s ease;
-    }
-
-    .info-group:hover {
-        border-color: #0d6efd;
-    }
-
-    .info-label {
-        font-size: 0.7rem;
-        font-weight: 800;
-        text-transform: uppercase;
-        color: #94a3b8;
-        letter-spacing: 0.06em;
-        margin-bottom: 0.3rem;
-    }
-
-    .info-value {
-        font-weight: 700;
-        color: #1e293b;
-    }
-
-    /* Animations */
-    .transition-fade {
-        animation: fadeIn 0.4s ease-out;
-    }
-
-    @@keyframes fadeIn {
-        from { opacity: 0; transform: translateY(10px); }
-        to { opacity: 1; transform: translateY(0); }
-    }
-
-    @@media (max-width: 768px) {
-        .student-dashboard {
-            padding: 0.75rem;
-        }
-        
-        .tab-btn {
-            font-size: 0.8rem;
-            padding: 0.7rem 0.4rem;
-        }
-        
-        .tab-btn i {
-            display: none;
-        }
-    }
-</style>
