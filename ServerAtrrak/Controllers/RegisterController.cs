@@ -389,16 +389,16 @@ namespace ServerAtrrak.Controllers
         }
 
         [HttpGet("student/{studentId}")]
-        public async Task<ActionResult<StudentInfo>> GetStudentInfo(string studentId)
+        public async Task<ActionResult<Student>> GetStudentInfo(string studentId)
         {
             try
             {
-                var studentInfo = await GetStudentByIdAsync(studentId);
-                if (studentInfo == null)
+                var student = await GetFullStudentByIdAsync(studentId);
+                if (student == null)
                 {
                     return NotFound("Student not found");
                 }
-                return Ok(studentInfo);
+                return Ok(student);
             }
             catch (Exception ex)
             {
@@ -850,28 +850,33 @@ namespace ServerAtrrak.Controllers
             return null;
         }
 
-        private async Task<StudentInfo?> GetStudentByIdAsync(string studentId)
+        private async Task<Student?> GetFullStudentByIdAsync(string studentId)
         {
             using var connection = new MySqlConnection(_dbConnection.GetConnection());
             await connection.OpenAsync();
 
-            var query = "SELECT StudentId, FullName, GradeLevel, Section, Strand, SchoolId, ParentsNumber, Gender FROM student WHERE StudentId = @StudentId";
+            var query = "SELECT StudentId, FullName, Email, GradeLevel, Section, Strand, SchoolId, ParentsNumber, Gender, QRImage, CreatedAt, UpdatedAt, IsActive FROM student WHERE StudentId = @StudentId";
             using var command = new MySqlCommand(query, connection);
             command.Parameters.AddWithValue("@StudentId", studentId);
 
             using var reader = await command.ExecuteReaderAsync();
             if (await reader.ReadAsync())
             {
-                return new StudentInfo
+                return new Student
                 {
                     StudentId = reader.GetString("StudentId"),
                     FullName = reader.GetString("FullName"),
+                    Email = reader.GetString("Email"),
                     GradeLevel = reader.GetInt32("GradeLevel"),
                     Section = reader.GetString("Section"),
                     Strand = reader.IsDBNull("Strand") ? null : reader.GetString("Strand"),
                     SchoolId = reader.GetString("SchoolId"),
                     ParentsNumber = reader.GetString("ParentsNumber"),
-                    Gender = reader.GetString("Gender")
+                    Gender = reader.GetString("Gender"),
+                    QRImage = reader.IsDBNull("QRImage") ? null : System.Text.Encoding.UTF8.GetString((byte[])reader["QRImage"]),
+                    CreatedAt = reader.IsDBNull("CreatedAt") ? DateTime.Now : reader.GetDateTime("CreatedAt"),
+                    UpdatedAt = reader.IsDBNull("UpdatedAt") ? DateTime.Now : reader.GetDateTime("UpdatedAt"),
+                    IsActive = reader.IsDBNull("IsActive") ? true : reader.GetBoolean("IsActive")
                 };
             }
 
@@ -993,7 +998,7 @@ namespace ServerAtrrak.Controllers
                     SchoolId = reader.IsDBNull("SchoolId") ? "" : reader.GetString("SchoolId"),
                     ParentsNumber = reader.IsDBNull("ParentsNumber") ? "" : reader.GetString("ParentsNumber"),
                     Gender = reader.IsDBNull("Gender") ? "" : reader.GetString("Gender"),
-                    QRImage = reader.IsDBNull("QRImage") ? null : Convert.ToBase64String((byte[])reader["QRImage"]),
+                    QRImage = reader.IsDBNull("QRImage") ? null : System.Text.Encoding.UTF8.GetString((byte[])reader["QRImage"]),
                     CreatedAt = reader.IsDBNull("CreatedAt") ? DateTime.Now : reader.GetDateTime("CreatedAt"),
                     UpdatedAt = reader.IsDBNull("UpdatedAt") ? DateTime.Now : reader.GetDateTime("UpdatedAt"),
                     IsActive = reader.IsDBNull("IsActive") ? true : reader.GetBoolean("IsActive")

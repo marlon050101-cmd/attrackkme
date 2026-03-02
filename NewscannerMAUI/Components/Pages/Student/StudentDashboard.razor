@@ -44,10 +44,17 @@
                             }
                             else
                             {
-                                <div class="qr-placeholder d-flex align-items-center justify-content-center" style="width: 200px; height: 200px; background: #f8f9fa; border: 2px dashed #dee2e6;">
-                                    <i class="fas fa-qrcode fa-4x text-light"></i>
+                                <div class="qr-placeholder d-flex flex-column align-items-center justify-content-center" style="width: 200px; height: 200px; background: #f8f9fa; border: 2px dashed #dee2e6;">
+                                    <i class="fas fa-qrcode fa-4x text-light mb-2"></i>
+                                    @if (isGeneratingQR)
+                                    {
+                                        <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                                    }
                                 </div>
                                 <p class="text-muted mt-2 small">QR Code not generated</p>
+                                <button class="btn btn-sm btn-outline-primary mt-2" @onclick="GenerateQRCode" disabled="@isGeneratingQR">
+                                    <i class="fas fa-sync me-1"></i> Generate QR Code
+                                </button>
                             }
                         </div>
                         <p class="small text-muted mb-0">Present this QR code to your teacher for attendance.</p>
@@ -119,6 +126,7 @@
     private string studentName = "Student";
     private Student? studentData;
     private bool isLoading = true;
+    private bool isGeneratingQR = false;
 
     protected override async Task OnInitializedAsync()
     {
@@ -150,6 +158,38 @@
         finally
         {
             isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task GenerateQRCode()
+    {
+        if (studentData == null || isGeneratingQR) return;
+
+        isGeneratingQR = true;
+        StateHasChanged();
+
+        try
+        {
+            var httpClient = HttpClientFactory.CreateClient("AttrakAPI");
+            var response = await httpClient.GetAsync($"api/register/student/{studentData.StudentId}/qr");
+            
+            if (response.IsSuccessStatusCode)
+            {
+                var qrData = await response.Content.ReadAsStringAsync();
+                if (!string.IsNullOrEmpty(qrData))
+                {
+                    studentData.QRImage = qrData;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Error generating QR code: {ex.Message}");
+        }
+        finally
+        {
+            isGeneratingQR = false;
             StateHasChanged();
         }
     }

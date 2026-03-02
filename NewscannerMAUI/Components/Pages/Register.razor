@@ -7,6 +7,7 @@
 
 @inject IHttpClientFactory HttpClientFactory
 @inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
 
 <PageTitle>Sardo-TrackCare — Register</PageTitle>
 
@@ -161,6 +162,20 @@
             margin: 0;
         }
     }
+    .form-control.is-invalid, .form-select.is-invalid {
+        border-color: #dc3545 !important;
+        background-image: none !important;
+        box-shadow: 0 0 0 0.25rem rgba(220, 53, 69, 0.25) !important;
+    }
+
+    .error-container {
+        animation: slideDown 0.3s ease-out;
+    }
+
+    @@keyframes slideDown {
+        from { transform: translateY(-10px); opacity: 0; }
+        to { transform: translateY(0); opacity: 1; }
+    }
 </style>
 
 <div class="register-card">
@@ -202,7 +217,7 @@
             <label class="form-label fw-semibold">
                 <i class="fas fa-id-badge me-2 text-primary"></i>User Type
             </label>
-            <select class="form-select" @onchange="OnUserTypeChanged" value="@selectedUserType">
+            <select class="form-select @(IsInvalid("UserType") ? "is-invalid" : "")" @onchange="OnUserTypeChanged" value="@selectedUserType">
                 <option value="">— Select user type —</option>
                 <option value="Admin">Admin</option>
                 <option value="SubjectTeacher">Subject Teacher</option>
@@ -221,29 +236,29 @@
 
             <div class="mb-2">
                 <label class="form-label">Full Name</label>
-                <input class="form-control text-uppercase-input" type="text" placeholder="E.G. JUAN DELA CRUZ" 
+                <input class="form-control text-uppercase-input @(IsInvalid("FullName") ? "is-invalid" : "")" type="text" placeholder="E.G. JUAN DELA CRUZ"
                        value="@fullName" @oninput="(e) => fullName = e.Value?.ToString()?.ToUpper() ?? string.Empty" />
             </div>
 
             <div class="row g-2 mb-2">
                 <div class="col-6">
                     <label class="form-label">Username</label>
-                    <input class="form-control" type="text" placeholder="username" @bind="username" autocomplete="username" />
+                    <input class="form-control @(IsInvalid("Username") ? "is-invalid" : "")" type="text" placeholder="username" @bind="username" autocomplete="username" />
                 </div>
                 <div class="col-6">
                     <label class="form-label">Email</label>
-                    <input class="form-control" type="email" placeholder="email@school.edu" @bind="email" autocomplete="email" />
+                    <input class="form-control @(IsInvalid("Email") ? "is-invalid" : "")" type="email" placeholder="email@school.edu" @bind="email" autocomplete="email" />
                 </div>
             </div>
 
             <div class="row g-2 mb-3">
                 <div class="col-6">
                     <label class="form-label">Password</label>
-                    <input class="form-control" type="password" placeholder="Min. 6 characters" @bind="password" autocomplete="new-password" />
+                    <input class="form-control @(IsInvalid("Password") ? "is-invalid" : "")" type="password" placeholder="Min. 6 characters" @bind="password" autocomplete="new-password" />
                 </div>
                 <div class="col-6">
                     <label class="form-label">Confirm Password</label>
-                    <input class="form-control" type="password" placeholder="Repeat password" @bind="confirmPassword" autocomplete="new-password" />
+                    <input class="form-control @(IsInvalid("ConfirmPassword") ? "is-invalid" : "")" type="password" placeholder="Repeat password" @bind="confirmPassword" autocomplete="new-password" />
                 </div>
             </div>
 
@@ -262,7 +277,7 @@
                                 <span class="position-absolute ms-3 text-muted" style="z-index: 5;">
                                     <i class="fas fa-search"></i>
                                 </span>
-                                <input class="form-control ps-5"
+                                <input class="form-control ps-5 @(IsInvalid("School") ? "is-invalid" : "")"
                                        type="text"
                                        placeholder="Start typing school name..."
                                        value="@schoolSearchText"
@@ -323,7 +338,7 @@
                 <div class="row g-2 mb-2 mt-1">
                     <div class="col-4">
                         <label class="form-label">Grade</label>
-                        <select class="form-select" @bind="gradeLevel" @bind:after="OnGradeLevelChanged">
+                        <select class="form-select @(IsInvalid("GradeLevel") ? "is-invalid" : "")" @bind="gradeLevel" @bind:after="OnGradeLevelChanged">
                             <option value="0">Select</option>
                             @for (int g = 7; g <= 12; g++)
                             {
@@ -334,13 +349,13 @@
                     <div class="col-4">
                         <label class="form-label">Section</label>
                         <div class="search-wrapper">
-                            <input class="form-control text-uppercase-input" 
-                                   type="text" 
-                                   placeholder="E.G. ZEUS" 
-                                   @bind="userSection" 
+                            <input class="form-control text-uppercase-input @(IsInvalid("Section") ? "is-invalid" : "")"
+                                   type="text"
+                                   placeholder="E.G. ZEUS"
+                                   @bind="userSection"
                                    @oninput="OnSectionSearchInput"
                                    @onfocus="OnSectionSearchFocus" />
-                            
+
                             @if (isLoadingSections)
                             {
                                 <span class="spinner-border spinner-border-sm spinner-sm text-primary position-absolute end-0 me-2" style="top: 12px;" role="status"></span>
@@ -363,7 +378,7 @@
                         @if (gradeLevel >= 11)
                         {
                             <label class="form-label">Strand</label>
-                            <select class="form-select" @bind="strand">
+                            <select class="form-select @(IsInvalid("Strand") ? "is-invalid" : "")" @bind="strand">
                                 <option value="">— Select —</option>
                                 <option value="Academic Track">Academic Track</option>
                                 <option value="Technical-Professional (TechPro)">Technical-Professional (TechPro)</option>
@@ -382,7 +397,7 @@
                 <div class="row g-2 mb-2">
                     <div class="col-6">
                         <label class="form-label">Gender</label>
-                        <select class="form-select" @bind="gender">
+                        <select class="form-select @(IsInvalid("Gender") ? "is-invalid" : "")" @bind="gender">
                             <option value="">— Select —</option>
                             <option value="Male">Male</option>
                             <option value="Female">Female</option>
@@ -390,7 +405,12 @@
                     </div>
                     <div class="col-6">
                         <label class="form-label">Parent's Number</label>
-                        <input class="form-control" type="tel" placeholder="09XXXXXXXXX" @bind="parentsNumber" />
+                        <input class="form-control @(IsInvalid("ParentsNumber") ? "is-invalid" : "")"
+                               type="tel"
+                               placeholder="09XXXXXXXXX"
+                               maxlength="11"
+                               value="@parentsNumber"
+                               @oninput="OnParentsNumberInput" />
                     </div>
                 </div>
             }
@@ -458,8 +478,18 @@
     // --- UI State ---
     private bool isLoading = false;
     private bool registrationSuccess = false;
-    private string errorMessage = string.Empty;
     private string successMessage = string.Empty;
+
+    // --- Validation State ---
+    private HashSet<string> invalidFields = new();
+    private string errorMessage = string.Empty;
+
+    private bool IsInvalid(string fieldName) => invalidFields.Contains(fieldName);
+
+    private async Task ScrollToTop()
+    {
+        await JSRuntime.InvokeVoidAsync("window.scrollTo", 0, 0);
+    }
 
     private async Task OnSchoolSearchInput(ChangeEventArgs e)
     {
@@ -604,6 +634,20 @@
         StateHasChanged();
     }
 
+    private void ClearSection()
+    {
+        userSection = string.Empty;
+        sectionSearchResults.Clear();
+    }
+
+    private void OnParentsNumberInput(ChangeEventArgs e)
+    {
+        var input = e.Value?.ToString() ?? string.Empty;
+        // Numeric only and limit to 11
+        var filtered = new string(input.Where(char.IsDigit).Take(11).ToArray());
+        parentsNumber = filtered;
+    }
+
 
     private void OnUserTypeChanged(ChangeEventArgs e)
     {
@@ -616,51 +660,96 @@
     {
         if (isLoading) return;
         errorMessage = string.Empty;
+        invalidFields.Clear();
 
         // --- Basic Validation ---
         if (string.IsNullOrWhiteSpace(selectedUserType))
-        { errorMessage = "Please select a user type."; StateHasChanged(); return; }
-
-        if (string.IsNullOrWhiteSpace(fullName) || string.IsNullOrWhiteSpace(username) ||
-            string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password))
-        { errorMessage = "Please fill in all account fields."; StateHasChanged(); return; }
-
-        if (password != confirmPassword)
-        { errorMessage = "Passwords do not match."; StateHasChanged(); return; }
-
-        if (password.Length < 6)
-        { errorMessage = "Password must be at least 6 characters."; StateHasChanged(); return; }
-
-        // School Validation (conditional)
-        if (selectedUserType != "Admin")
         {
-            if (string.IsNullOrWhiteSpace(selectedSchoolId) || string.IsNullOrWhiteSpace(selectedSchoolName))
-            { errorMessage = "Please search and select your school."; StateHasChanged(); return; }
+            errorMessage = "Please select a user type.";
+            invalidFields.Add("UserType");
         }
 
-        // Student/Advisor Validation
-        if (selectedUserType == "Student" || selectedUserType == "Advisor")
+        if (string.IsNullOrWhiteSpace(fullName)) { invalidFields.Add("FullName"); }
+        if (string.IsNullOrWhiteSpace(username)) { invalidFields.Add("Username"); }
+        if (string.IsNullOrWhiteSpace(email)) { invalidFields.Add("Email"); }
+        if (string.IsNullOrWhiteSpace(password)) { invalidFields.Add("Password"); }
+        if (string.IsNullOrWhiteSpace(confirmPassword)) { invalidFields.Add("ConfirmPassword"); }
+
+        if (invalidFields.Any() && string.IsNullOrEmpty(errorMessage))
         {
-            if (gradeLevel < 7 || gradeLevel > 12)
-            { errorMessage = "Please select a grade level."; StateHasChanged(); return; }
-            if (string.IsNullOrWhiteSpace(userSection))
-            { errorMessage = "Please enter your section."; StateHasChanged(); return; }
+            errorMessage = "Please fill in all mandatory fields.";
+        }
+
+        if (password != confirmPassword && !invalidFields.Contains("Password"))
+        {
+            errorMessage = "Passwords do not match.";
+            invalidFields.Add("Password");
+            invalidFields.Add("ConfirmPassword");
+        }
+
+        if (password.Length < 6 && !invalidFields.Contains("Password"))
+        {
+            errorMessage = "Password must be at least 6 characters.";
+            invalidFields.Add("Password");
+        }
+
+        // School Validation (conditional)
+        if (selectedUserType != "Admin" && string.IsNullOrEmpty(selectedSchoolName))
+        {
+            errorMessage = "Please select a school.";
+            invalidFields.Add("School");
+        }
+
+        // Student-specific Validation
+        if (selectedUserType == "Student")
+        {
+            if (string.IsNullOrWhiteSpace(gender)) { invalidFields.Add("Gender"); }
+            if (string.IsNullOrWhiteSpace(parentsNumber)) { invalidFields.Add("ParentsNumber"); }
+            else if (parentsNumber.Length != 11)
+            {
+                errorMessage = "Parent's number must be exactly 11 digits.";
+                invalidFields.Add("ParentsNumber");
+            }
+
+            if (invalidFields.Any(f => f == "Gender" || f == "ParentsNumber") && (errorMessage == "Please fill in all mandatory fields." || string.IsNullOrEmpty(errorMessage)))
+            {
+                errorMessage = "Please complete additional information.";
+            }
+        }
+
+        // Section/Grade Validation
+        if (selectedUserType == "Advisor" || selectedUserType == "Student")
+        {
+            if (gradeLevel <= 0) { invalidFields.Add("GradeLevel"); }
+            if (string.IsNullOrWhiteSpace(userSection)) { invalidFields.Add("Section"); }
             
             // Only require strand for Senior High (11-12)
             if (gradeLevel >= 11 && string.IsNullOrWhiteSpace(strand))
-            { errorMessage = "Please select your strand."; StateHasChanged(); return; }
+            { 
+                invalidFields.Add("Strand"); 
+            }
+
+            if (invalidFields.Any(f => f == "GradeLevel" || f == "Section" || f == "Strand") && (errorMessage == "Please fill in all mandatory fields." || string.IsNullOrEmpty(errorMessage)))
+            {
+                errorMessage = "Please provide grade, section, and strand (if applicable).";
+            }
         }
 
-        if (selectedUserType == "Student")
+        if (invalidFields.Any())
         {
-            if (string.IsNullOrWhiteSpace(gender))
-            { errorMessage = "Please select gender."; StateHasChanged(); return; }
-            if (!System.Text.RegularExpressions.Regex.IsMatch(parentsNumber, @"^09\d{9}$"))
-            { errorMessage = "Parent's number must be a valid 11-digit number starting with 09."; StateHasChanged(); return; }
+            if (string.IsNullOrEmpty(errorMessage))
+            {
+                errorMessage = "Please fill in all mandatory fields and correct errors.";
+            }
+            StateHasChanged();
+            await ScrollToTop();
+            return;
         }
 
         isLoading = true;
-        await InvokeAsync(StateHasChanged);
+        errorMessage = string.Empty;
+        successMessage = string.Empty;
+        StateHasChanged();
 
         try
         {

@@ -11,6 +11,7 @@ namespace AttrackSharedClass.Models
         public string SchoolId { get; set; } = string.Empty;
         public string ParentsNumber { get; set; } = string.Empty;
         public string Gender { get; set; } = string.Empty;
+        public string? QRImage { get; set; }
         public bool IsActive { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }
