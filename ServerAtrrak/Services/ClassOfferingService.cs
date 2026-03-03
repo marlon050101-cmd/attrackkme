@@ -90,26 +90,43 @@ namespace ServerAtrrak.Services
             {
                 using var connection = new MySqlConnection(_dbConnection.GetConnection());
                 await connection.OpenAsync();
+                
                 var query = $@"SELECT {SelectColumns.Replace("t.FullName as AdvisorName", "adv.FullName as AdvisorName")}
                     FROM class_offering co
                     INNER JOIN subject s ON co.SubjectId = s.SubjectId
                     LEFT JOIN teacher adv ON co.AdvisorId = adv.TeacherId
                     LEFT JOIN teacher t2 ON co.TeacherId = t2.TeacherId
                     WHERE co.TeacherId IS NULL";
-                if (!string.IsNullOrEmpty(schoolId)) query += " AND adv.SchoolId = @SchoolId";
-                if (gradeLevel.HasValue) query += " AND co.GradeLevel = @GradeLevel";
-                if (!string.IsNullOrEmpty(strand)) query += " AND (co.Strand = @Strand OR (co.Strand IS NULL AND @Strand IS NULL))";
+
+                var cmd = new MySqlCommand("", connection);
+
+                if (!string.IsNullOrEmpty(schoolId))
+                {
+                    query += " AND adv.SchoolId = @SchoolId";
+                    cmd.Parameters.AddWithValue("@SchoolId", schoolId);
+                }
+                
+                if (gradeLevel.HasValue && gradeLevel.Value > 0)
+                {
+                    query += " AND co.GradeLevel = @GradeLevel";
+                    cmd.Parameters.AddWithValue("@GradeLevel", gradeLevel.Value);
+                }
+                
+                if (!string.IsNullOrEmpty(strand))
+                {
+                    query += " AND (co.Strand = @Strand OR (co.Strand IS NULL AND @Strand IS NULL))";
+                    cmd.Parameters.AddWithValue("@Strand", strand);
+                }
+                
                 query += " ORDER BY co.GradeLevel, co.Section, co.ScheduleStart";
-                using var cmd = new MySqlCommand(query, connection);
-                cmd.Parameters.AddWithValue("@SchoolId", schoolId ?? "");
-                if (gradeLevel.HasValue) cmd.Parameters.AddWithValue("@GradeLevel", gradeLevel.Value);
-                cmd.Parameters.AddWithValue("@Strand", strand ?? (object)DBNull.Value);
+                cmd.CommandText = query;
+
                 using var reader = await cmd.ExecuteReaderAsync();
                 while (await reader.ReadAsync()) list.Add(ReadClassOffering(reader));
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting available class offerings");
+                _logger.LogError(ex, "Error getting available class offerings for School: {SchoolId}, Grade: {Grade}", schoolId, gradeLevel);
             }
             return list;
         }

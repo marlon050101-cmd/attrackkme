@@ -58,39 +58,139 @@
                 <p class="text-muted mb-4">You have not picked any class yet. Choose from available classes below.</p>
             }
 
-            <h5 class="mb-3">Available classes (pick to teach)</h5>
+            <div class="row g-3 mb-4 p-3 bg-light rounded border">
+                <div class="col-md-4">
+                    <label class="form-label small fw-bold">GRADE LEVEL</label>
+                    <select class="form-select" @bind="selectedGrade" @bind:after="LoadAvailable">
+                        <option value="0">All Grades</option>
+                        <option value="7">Grade 7</option>
+                        <option value="8">Grade 8</option>
+                        <option value="9">Grade 9</option>
+                        <option value="10">Grade 10</option>
+                        <option value="11">Grade 11</option>
+                        <option value="12">Grade 12</option>
+                    </select>
+                </div>
+                <div class="col-md-8">
+                    <label class="form-label small fw-bold">SEARCH SUBJECT</label>
+                    <div class="input-group">
+                        <span class="input-group-text bg-white"><i class="fas fa-search text-muted"></i></span>
+                        <input type="text" class="form-control" placeholder="Search by subject name..." 
+                               @bind="searchKeyword" @bind:event="oninput" @onkeyup="HandleSearchKeyUp" />
+                        @if (!string.IsNullOrEmpty(searchKeyword))
+                        {
+                            <button class="btn btn-outline-secondary" @onclick="ClearSearch"><i class="fas fa-times"></i></button>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <h5 class="mb-3">My classes</h5>
+            @if (myClasses.Any())
+            {
+                <div class="table-responsive mb-4">
+                    <table class="table table-hover align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Subject</th>
+                                <th>Grade/Section/Strand</th>
+                                <th>Time</th>
+                                <th>Advisor</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var c in myClasses)
+                            {
+                                <tr>
+                                    <td><span class="fw-bold">@c.SubjectName</span></td>
+                                    <td>
+                                        <span class="badge bg-primary me-1">G@c.GradeLevel</span>
+                                        <span class="text-dark">@c.Section</span>
+                                        @if (!string.IsNullOrEmpty(c.Strand))
+                                        {
+                                            <span class="ms-1 text-muted small">(@c.Strand)</span>
+                                        }
+                                    </td>
+                                    <td><i class="far fa-clock me-1 text-muted"></i> @c.ScheduleStart.ToString("hh\\:mm") - @c.ScheduleEnd.ToString("hh\\:mm")</td>
+                                    <td>
+                                        <div class="d-flex align-items-center">
+                                            <i class="fas fa-chalkboard-teacher me-2 text-secondary"></i>
+                                            <span>@(c.AdvisorName ?? "-")</span>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+            else
+            {
+                <div class="text-center p-4 border rounded mb-4 bg-white shadow-sm">
+                    <i class="fas fa-book-open fa-3x text-light mb-3"></i>
+                    <p class="text-muted">You have not picked any class yet. Choose from available classes below.</p>
+                </div>
+            }
+
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="mb-0">Available classes (pick to teach)</h5>
+                <button class="btn btn-sm btn-outline-primary" @onclick="LoadAvailable" disabled="@isLoading">
+                    <i class="fas fa-sync-alt @(isLoading ? "fa-spin" : "")"></i> Refresh
+                </button>
+            </div>
+
             @if (isLoading)
             {
-                <p class="text-muted">Loading...</p>
+                <div class="text-center p-5">
+                    <div class="spinner-border text-primary" role="status"></div>
+                    <p class="text-muted mt-2">Loading classes...</p>
+                </div>
             }
-            else if (!availableClasses.Any())
+            else if (!FilterAvailableClasses().Any())
             {
-                <p class="text-muted">No available classes. Advisors must add section classes first.</p>
+                <div class="text-center p-5 border rounded bg-white shadow-sm">
+                    <i class="fas fa-search fa-3x text-light mb-3"></i>
+                    <p class="text-muted">No available classes found matching your criteria.</p>
+                    <button class="btn btn-link" @onclick="ClearFilters">Clear Filters</button>
+                </div>
             }
             else
             {
                 <div class="table-responsive">
-                    <table class="table table-hover">
-                        <thead>
+                    <table class="table table-hover align-middle">
+                        <thead class="table-light">
                             <tr>
                                 <th>Subject</th>
-                                <th>Grade / Section / Strand</th>
+                                <th>Grade/Section/Strand</th>
                                 <th>Time</th>
                                 <th>Advisor</th>
-                                <th></th>
+                                <th class="text-end">Action</th>
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach (var c in availableClasses)
+                            @foreach (var c in FilterAvailableClasses())
                             {
                                 <tr>
-                                    <td>@c.SubjectName</td>
-                                    <td>G@c.GradeLevel @c.Section @(string.IsNullOrEmpty(c.Strand) ? "" : c.Strand)</td>
-                                    <td>@c.ScheduleStart.ToString("hh\\:mm") - @c.ScheduleEnd.ToString("hh\\:mm")</td>
-                                    <td>@(c.AdvisorName ?? "-")</td>
+                                    <td><span class="fw-bold">@c.SubjectName</span></td>
                                     <td>
-                                        <button class="btn btn-sm btn-success" @onclick="() => AssignMe(c)" disabled="@isAssigning">
-                                            @if (isAssigning) { <span class="spinner-border spinner-border-sm"></span> } else { <i class="fas fa-check me-1"></i><text> Pick to teach</text> }
+                                        <span class="badge bg-info text-white me-1">G@c.GradeLevel</span>
+                                        <span class="text-dark">@c.Section</span>
+                                        @if (!string.IsNullOrEmpty(c.Strand))
+                                        {
+                                            <span class="ms-1 text-muted small">(@c.Strand)</span>
+                                        }
+                                    </td>
+                                    <td><i class="far fa-clock me-1 text-muted"></i> @c.ScheduleStart.ToString("hh\\:mm") - @c.ScheduleEnd.ToString("hh\\:mm")</td>
+                                    <td>
+                                        <div class="d-flex align-items-center">
+                                            <i class="fas fa-user-tie me-2 text-secondary"></i>
+                                            <span>@(c.AdvisorName ?? "-")</span>
+                                        </div>
+                                    </td>
+                                    <td class="text-end">
+                                        <button class="btn btn-success btn-sm px-3 rounded-pill shadow-sm" @onclick="() => AssignMe(c)" disabled="@isAssigning">
+                                            @if (isAssigning) { <span class="spinner-border spinner-border-sm me-1"></span> } else { <i class="fas fa-plus-circle me-1"></i> }
+                                            Pick
                                         </button>
                                     </td>
                                 </tr>
@@ -112,6 +212,10 @@
     private bool isAssigning = false;
     private string errorMessage = "";
     private string successMessage = "";
+
+    // Filters
+    private int selectedGrade = 0;
+    private string searchKeyword = "";
 
     protected override async Task OnInitializedAsync()
     {
@@ -161,16 +265,59 @@
 
     private async Task LoadAvailable()
     {
+        isLoading = true;
         try
         {
-            var q = string.IsNullOrEmpty(schoolId) ? "" : $"?schoolId={Uri.EscapeDataString(schoolId)}";
-            var list = await Http.GetFromJsonAsync<List<ClassOffering>>($"{ApiConfig.BaseUrl}api/ClassOffering/available{q}");
+            var url = $"{ApiConfig.BaseUrl}api/ClassOffering/available";
+            var queryParams = new List<string>();
+            
+            if (!string.IsNullOrEmpty(schoolId)) 
+                queryParams.Add($"schoolId={Uri.EscapeDataString(schoolId)}");
+            
+            if (selectedGrade > 0)
+                queryParams.Add($"gradeLevel={selectedGrade}");
+
+            if (queryParams.Any())
+                url += "?" + string.Join("&", queryParams);
+
+            var list = await Http.GetFromJsonAsync<List<ClassOffering>>(url);
             availableClasses = list ?? new List<ClassOffering>();
         }
         catch (Exception ex)
         {
-            errorMessage = "Failed to load available: " + ex.Message;
+            errorMessage = "Failed to load available classes: " + ex.Message;
         }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private IEnumerable<ClassOffering> FilterAvailableClasses()
+    {
+        if (string.IsNullOrWhiteSpace(searchKeyword))
+            return availableClasses;
+
+        return availableClasses.Where(c => 
+            c.SubjectName.Contains(searchKeyword, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private void HandleSearchKeyUp(KeyboardEventArgs e)
+    {
+        // Search happens automatically via @bind:event="oninput"
+        // This is here in case we want to specifically trigger something on Enter
+    }
+
+    private void ClearSearch()
+    {
+        searchKeyword = "";
+    }
+
+    private void ClearFilters()
+    {
+        searchKeyword = "";
+        selectedGrade = 0;
+        LoadAvailable();
     }
 
     private async Task AssignMe(ClassOffering c)
@@ -184,12 +331,15 @@
             var response = await Http.PutAsJsonAsync($"{ApiConfig.BaseUrl}api/ClassOffering/{c.ClassOfferingId}/assign", new { TeacherId = teacherId });
             if (response.IsSuccessStatusCode)
             {
-                successMessage = "You are now assigned to this class.";
+                successMessage = $"You are now assigned to teach {c.SubjectName} for {c.Section}.";
                 await LoadMyClasses();
                 await LoadAvailable();
             }
             else
-                errorMessage = "Failed to assign.";
+            {
+                var result = await response.Content.ReadFromJsonAsync<ClassOfferingResponse>();
+                errorMessage = result?.Message ?? "Failed to assign.";
+            }
         }
         catch (Exception ex)
         {

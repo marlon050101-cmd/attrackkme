@@ -36,6 +36,13 @@
                 <span class="action-text">Open Scanner</span>
             </button>
             
+            <button class="action-card subjects" @onclick='() => Navigation.NavigateTo("/teacher/subject-selection")'>
+                <div class="action-icon">
+                    <i class="fas fa-book-medical"></i>
+                </div>
+                <span class="action-text">Join Classes</span>
+            </button>
+            
             <button class="action-card load" @onclick="() => Navigation.NavigateTo(Navigation.Uri)">
                 <div class="action-icon">
                     <i class="fas fa-sync"></i>
@@ -171,6 +178,11 @@
 
     .action-card.scanner .action-icon {
         background: linear-gradient(135deg, #4e73df 0%, #224abe 100%);
+        color: white;
+    }
+
+    .action-card.subjects .action-icon {
+        background: linear-gradient(135deg, #f6c23e 0%, #dda20a 100%);
         color: white;
     }
 

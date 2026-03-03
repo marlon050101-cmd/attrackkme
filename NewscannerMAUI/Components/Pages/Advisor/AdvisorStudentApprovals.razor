@@ -58,13 +58,13 @@
                         <span class="status-pill @GetStatusClass(student.EnrollmentStatus)">@student.EnrollmentStatus</span>
                     </div>
 
-                    <div class="meta-row">
-                        <div class="meta-item">
-                            <span class="meta-label">Gender</span>
+                    <div class="meta-row-compact">
+                        <div class="meta-inline">
+                            <span class="meta-label">Gender:</span>
                             <span class="meta-val">@student.Gender</span>
                         </div>
-                        <div class="meta-item">
-                            <span class="meta-label">Guardian #</span>
+                        <div class="meta-inline">
+                            <span class="meta-label">Guardian:</span>
                             <span class="meta-val">@student.ParentsNumber</span>
                         </div>
                     </div>
@@ -72,22 +72,22 @@
                     <div class="action-row">
                         @if (student.EnrollmentStatus == "Pending")
                         {
-                            <button class="btn-action btn-approve" @onclick='() => UpdateStatus(student, "Approved")'>
+                            <button class="btn-action-sm btn-approve" @onclick='() => UpdateStatus(student, "Approved")'>
                                 <i class="fas fa-check me-1"></i>Approve
                             </button>
-                            <button class="btn-action btn-reject" @onclick='() => UpdateStatus(student, "Rejected")'>
+                            <button class="btn-action-sm btn-reject-outline" @onclick='() => UpdateStatus(student, "Rejected")'>
                                 <i class="fas fa-times me-1"></i>Reject
                             </button>
                         }
                         else if (student.EnrollmentStatus == "Approved")
                         {
-                            <button class="btn-action btn-secondary w-100" @onclick='() => UpdateStatus(student, "Pending")'>
-                                <i class="fas fa-undo me-1"></i>Move back to Pending
+                            <button class="btn-action-sm btn-remove" @onclick='() => UpdateStatus(student, "Pending")'>
+                                <i class="fas fa-undo me-1"></i>Remove/Revert to Pending
                             </button>
                         }
-                        else
+                        else if (student.EnrollmentStatus == "Rejected")
                         {
-                            <button class="btn-action btn-secondary w-100" @onclick='() => UpdateStatus(student, "Pending")'>
+                            <button class="btn-action-sm btn-secondary" @onclick='() => UpdateStatus(student, "Pending")'>
                                 <i class="fas fa-redo me-1"></i>Review Again
                             </button>
                         }
@@ -183,58 +183,56 @@
     .pill-approved { background: #d1e7dd; color: #0f5132; }
     .pill-rejected { background: #f8d7da; color: #842029; }
 
-    /* ---- Meta Row ---- */
-    .meta-row {
+    /* ---- Meta Row Compact ---- */
+    .meta-row-compact {
         display: flex;
+        flex-wrap: wrap;
         gap: 1rem;
-        background: #f8f9fa;
-        border-radius: 10px;
-        padding: 0.45rem 0.7rem;
-        margin-bottom: 0.65rem;
+        padding: 0.25rem 0.5rem;
+        margin-bottom: 0.75rem;
+        border-bottom: 1px solid #f1f3f5;
     }
 
-    .meta-item {
+    .meta-inline {
         display: flex;
-        flex-direction: column;
+        align-items: center;
+        gap: 0.35rem;
     }
 
     .meta-label {
-        font-size: 0.6rem;
+        font-size: 0.65rem;
         font-weight: 700;
         text-transform: uppercase;
         color: #adb5bd;
-        letter-spacing: 0.05em;
     }
 
     .meta-val {
-        font-size: 0.8rem;
+        font-size: 0.75rem;
         font-weight: 600;
         color: #495057;
     }
 
-    /* ---- Action Buttons ---- */
+    /* ---- Action Buttons Smaller ---- */
     .action-row {
         display: flex;
         gap: 0.5rem;
+        margin-top: 0.25rem;
     }
 
-    .btn-action {
+    .btn-action-sm {
         flex: 1;
-        padding: 0.42rem 0.75rem;
-        font-size: 0.8rem;
-        font-weight: 600;
-        border-radius: 30px;
+        padding: 0.35rem 0.8rem;
+        font-size: 0.75rem;
+        font-weight: 700;
+        border-radius: 8px;
         border: none;
         cursor: pointer;
-        transition: opacity 0.15s, transform 0.1s;
         display: flex;
         align-items: center;
         justify-content: center;
-    }
-
-    .btn-action:active {
-        transform: scale(0.97);
-        opacity: 0.85;
+        transition: all 0.2s;
+        text-transform: uppercase;
+        letter-spacing: 0.02em;
     }
 
     .btn-approve {
@@ -242,18 +240,32 @@
         color: #fff;
     }
 
-    .btn-reject {
+    .btn-reject-outline {
         background: transparent;
         color: #dc3545;
-        border: 1.5px solid #dc3545 !important;
+        border: 1px solid #dc3545 !important;
+    }
+
+    .btn-remove {
+        background: #f8f9fa;
+        color: #6c757d;
+        border: 1px solid #dee2e6 !important;
+        font-size: 0.7rem;
     }
 
     .btn-secondary {
-        background: #f1f3f5;
+        background: #e9ecef;
         color: #495057;
     }
 
-    .w-100 { width: 100%; }
+    .btn-action-sm:hover {
+        opacity: 0.85;
+        transform: translateY(-1px);
+    }
+
+    .btn-action-sm:active {
+        transform: scale(0.98);
+    }
 </style>
 
 @code {

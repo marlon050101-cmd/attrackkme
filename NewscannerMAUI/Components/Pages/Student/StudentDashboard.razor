@@ -8,116 +8,128 @@
 @inject AuthService AuthService
 
 <div class="dashboard-container">
-        <div class="header-section mb-4">
-            <div class="d-flex justify-content-between align-items-center">
-                <div>
-                    <h2 class="fw-bold text-dark mb-1">My Class Schedule</h2>
-                    <p class="text-muted">Stay updated with your daily subjects and activities.</p>
-                </div>
-                <div class="date-badge">
-                    <i class="far fa-calendar-alt me-2"></i>
-                    @DateTime.Now.ToString("MMMM dd, yyyy")<br />
-                    <span class="fw-bold text-primary" style="font-size:0.8rem">@DateTime.Now.DayOfWeek</span>
-                </div>
-            </div>
-        </div>
-
     @if (isLoading)
     {
-        <div class="d-flex justify-content-center align-items-center" style="height: 300px;">
-            <div class="spinner-border text-primary" role="status">
-                <span class="visually-hidden">Loading...</span>
-            </div>
+        <div class="loading-full">
+            <div class="spinner-premium"></div>
+            <span class="mt-3 text-muted fw-medium">Preparing your schedule...</span>
         </div>
     }
     else if (student == null)
     {
-        <div class="alert alert-warning shadow-sm border-0 rounded-3">
-            <i class="fas fa-exclamation-triangle me-2"></i>
-            Unable to load student information. Please try again later.
+        <div class="error-container glass-card p-4 text-center mx-auto" style="max-width: 400px;">
+            <div class="error-icon mb-3">
+                <i class="fas fa-exclamation-circle fa-2x text-danger"></i>
+            </div>
+            <h5 class="fw-bold">Connection Issue</h5>
+            <p class="text-muted small">Unable to load your information. Please check your connection.</p>
+            <button class="btn btn-primary btn-sm px-4 rounded-pill" @onclick="LoadDashboardData">
+                <i class="fas fa-sync-alt me-2"></i>Retry
+            </button>
         </div>
     }
     else
     {
-        <div class="row">
-            <!-- Summary Stats -->
-            <div class="col-md-4 mb-4">
-                <div class="stats-card glass-card h-100">
-                    <div class="card-body">
-                        <div class="d-flex align-items-center mb-3">
-                            <div class="icon-box bg-primary-soft text-primary me-3">
-                                <i class="fas fa-school"></i>
-                            </div>
-                            <div>
-                                <h6 class="text-muted mb-0">Grade & Section</h6>
-                                <div class="fw-bold fs-5 text-dark">Grade @student.GradeLevel - @student.Section</div>
-                            </div>
-                        </div>
-                        <div class="d-flex align-items-center">
-                            <div class="icon-box bg-success-soft text-success me-3">
-                                <i class="fas fa-user-check"></i>
-                            </div>
-                            <div>
-                                <h6 class="text-muted mb-0">Attendance Status</h6>
-                                <div class="badge bg-success">@(string.IsNullOrEmpty(student.Status) ? "Good" : student.Status)</div>
-                            </div>
-                        </div>
+        <!-- Header Banner (Mobile Friendly) -->
+        <div class="header-section mb-3">
+            <div class="day-banner glass-card p-3 p-md-4 d-flex align-items-center justify-content-between overflow-hidden position-relative">
+                <div class="position-relative z-1">
+                    <span class="text-uppercase tracking-wider text-primary fw-bold small-caps">Today</span>
+                    <h1 class="display-6 fw-black text-dark mb-0 day-title">@DateTime.Now.DayOfWeek</h1>
+                    <div class="text-muted fw-medium small">
+                        <i class="far fa-calendar-alt me-1"></i> @DateTime.Now.ToString("MMM dd, yyyy")
                     </div>
                 </div>
-            </div>
-
-            <div class="col-md-8 mb-4">
-                <div class="subjects-container glass-card">
-                    <div class="card-header bg-transparent border-0 pt-4 px-4 pb-0">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <h5 class="fw-bold mb-0">Today's Subjects</h5>
-                            <span class="badge bg-light text-dark">@classOfferings.Count Subjects</span>
-                        </div>
+                <div class="stats-mini z-1">
+                    <div class="stat-pill">
+                        <span class="stat-value">@classOfferings.Count</span>
+                        <span class="stat-label">Subjects</span>
                     </div>
-                    <div class="card-body p-4">
+                </div>
+                <div class="accent-circle"></div>
+            </div>
+        </div>
+
+        <div class="row g-3 justify-content-center">
+            <!-- Schedule Panel (Full Width) -->
+            <div class="col-12 col-lg-10">
+                <div class="schedule-panel glass-card h-100">
+                    <div class="p-3 p-md-4 border-bottom d-flex align-items-center justify-content-between">
+                        <h6 class="fw-bold mb-0 text-primary">Daily Schedule</h6>
+                        @if (classOfferings.Any(o => IsCurrentlyOngoing(o)))
+                        {
+                            <span class="badge bg-blue-intense status-badge-mini">
+                                <span class="pulse-dot"></span> ONGOING
+                            </span>
+                        }
+                    </div>
+
+                    <div class="p-3 p-md-4 scroll-container">
                         @if (student.EnrollmentStatus != "Approved")
                         {
-                            <div class="text-center py-5">
-                                <div class="empty-state-icon mb-3">
-                                    <i class="fas fa-user-clock fa-3x text-warning opacity-75"></i>
-                                </div>
-                                <h5 class="fw-bold text-dark">Enrollment Pending</h5>
-                                <p class="text-muted">Your registration is currently waiting for your Advisor's approval.</p>
-                                <p class="small text-muted">Once approved, your class schedule and subjects will appear here automatically.</p>
+                            <div class="empty-state py-4 text-center">
+                                <i class="fas fa-clock text-warning fa-2x mb-2 pulse-slow"></i>
+                                <h6 class="fw-bold">Pending Approval</h6>
+                                <p class="text-muted extra-small">Your subjects will appear here once approved.</p>
                             </div>
                         }
-                        else if (classOfferings == null || classOfferings.Count == 0)
+                        else if (!classOfferings.Any())
                         {
-                            <div class="text-center py-5">
-                                <div class="empty-state-icon mb-3">
-                                    <i class="fas fa-book-open fa-3x text-muted opacity-50"></i>
+                            <div class="empty-state py-5 text-center px-3">
+                                <div class="mb-4">
+                                    <i class="fas fa-calendar-times text-muted opacity-25 fa-4x"></i>
                                 </div>
-                                <p class="text-muted">No specific subjects found for your section today.</p>
+                                <h5 class="fw-bold text-muted mb-2">No Classes Today</h5>
+                                <p class="text-muted small mb-4">No scheduled subjects for you today.</p>
+                                
+                                <div class="advisor-alert p-3 rounded-4 bg-primary-soft border border-primary border-opacity-10 d-inline-block">
+                                    <p class="mb-0 small fw-bold text-primary">
+                                        <i class="fas fa-user-tie me-2"></i>
+                                        Please visit your Advisor to have your subjects added to your schedule.
+                                    </p>
+                                </div>
                             </div>
                         }
                         else
                         {
-                            <div class="subject-list">
+                            <div class="subject-timeline">
                                 @foreach (var offering in classOfferings.OrderBy(o => o.ScheduleStart))
                                 {
-                                    <div class="subject-item d-flex align-items-center p-3 mb-3">
-                                        <div class="time-column text-center me-4">
-                                            <div class="start-time fw-bold text-primary">@DateTime.Today.Add(offering.ScheduleStart).ToString("hh:mm tt")</div>
-                                            <div class="end-time text-muted small">@DateTime.Today.Add(offering.ScheduleEnd).ToString("hh:mm tt")</div>
+                                    bool isOngoing = IsCurrentlyOngoing(offering);
+                                    <div class="schedule-item @(isOngoing ? "ongoing" : "")">
+                                        <div class="time-meta">
+                                            <span class="start">@DateTime.Today.Add(offering.ScheduleStart).ToString("hh:mm tt")</span>
+                                            <span class="separator">-</span>
+                                            <span class="end">@DateTime.Today.Add(offering.ScheduleEnd).ToString("hh:mm tt")</span>
                                         </div>
-                                        <div class="divider-v"></div>
-                                        <div class="subject-details ms-4 flex-grow-1">
-                                            <h6 class="fw-bold text-dark mb-1">@offering.SubjectName</h6>
-                                            <div class="teacher-info text-muted small">
-                                                <i class="fas fa-chalkboard-teacher me-1"></i>
-                                                @(string.IsNullOrEmpty(offering.TeacherName) ? "TBA" : offering.TeacherName)
+                                        <div class="schedule-card glass-card p-3">
+                                            <div class="d-flex justify-content-between align-items-start gap-2">
+                                                <div class="flex-grow-1">
+                                                    <h6 class="subject-title mb-1">@offering.SubjectName</h6>
+                                                    
+                                                    @* Day Pills *@
+                                                    <div class="day-pills-row mb-2">
+                                                        @foreach (var day in ParseDays(offering.DayOfWeek))
+                                                        {
+                                                            <span class="day-tag @(day.Equals(DateTime.Now.DayOfWeek.ToString(), StringComparison.OrdinalIgnoreCase) ? "active" : "")">
+                                                                @day.Substring(0, 3)
+                                                            </span>
+                                                        }
+                                                    </div>
+
+                                                    <div class="instructor">
+                                                        <i class="fas fa-user-tie me-1"></i>
+                                                        @(string.IsNullOrEmpty(offering.TeacherName) ? "TBA" : offering.TeacherName)
+                                                    </div>
+                                                </div>
+                                                @if (isOngoing)
+                                                {
+                                                    <div class="ongoing-indicator text-blue-intense">
+                                                        <span class="pulse-ring bg-blue-intense"></span>
+                                                        <span class="text">ONGOING</span>
+                                                    </div>
+                                                }
                                             </div>
-                                        </div>
-                                        <div class="status-indicator">
-                                            @if (IsCurrentlyOngoing(offering.ScheduleStart, offering.ScheduleEnd))
-                                            {
-                                                <span class="badge bg-primary pulse">Ongoing</span>
-                                            }
                                         </div>
                                     </div>
                                 }
@@ -131,79 +143,163 @@
 </div>
 
 <style>
-    .glass-card {
-        background: rgba(255, 255, 255, 0.9);
-        backdrop-filter: blur(10px);
-        border: 1px solid rgba(255, 255, 255, 0.2);
-        border-radius: 20px;
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.05);
-    }
-
-    .bg-primary-soft { background-color: rgba(13, 110, 253, 0.1); }
-    .bg-success-soft { background-color: rgba(25, 135, 84, 0.1); }
-
-    .icon-box {
-        width: 45px;
-        height: 45px;
-        border-radius: 12px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 1.2rem;
-    }
-
-    .stats-card {
-        transition: transform 0.3s ease;
-    }
-    .stats-card:hover {
-        transform: translateY(-5px);
-    }
-
-    .subject-item {
-        background: #f8f9fa;
-        border-radius: 15px;
-        transition: all 0.2s ease;
-        border: 1px solid transparent;
-    }
-    .subject-item:hover {
-        background: #fff;
-        border-color: #dee2e6;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.03);
-    }
-
-    .divider-v {
-        width: 1px;
-        height: 40px;
-        background: #dee2e6;
-    }
-
-    .time-column {
-        min-width: 80px;
-    }
-
-    .pulse {
-        animation: pulse-animation 2s infinite;
-    }
-
-    @@keyframes pulse-animation {
-        0% { opacity: 1; }
-        50% { opacity: 0.6; }
-        100% { opacity: 1; }
-    }
-
-    .date-badge {
-        background: #fff;
-        padding: 8px 16px;
-        border-radius: 100px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-        font-weight: 600;
-        color: #495057;
+    :root {
+        --primary: #4f46e5;
+        --primary-soft: #eef2ff;
+        --secondary: #64748b;
+        --success: #10b981;
+        --warning: #f59e0b;
+        --danger: #ef4444;
+        --blue: #3b82f6;
+        --green: #22c55e;
+        --bg: #f8fafc;
+        --card-bg: rgba(255, 255, 255, 0.98);
     }
 
     .dashboard-container {
-        padding: 1rem;
+        padding: 0.75rem;
         max-width: 1200px;
         margin: 0 auto;
+        animation: fadeIn 0.4s ease-out;
+    }
+
+    .glass-card {
+        background: var(--card-bg);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        border: 1px solid rgba(0, 0, 0, 0.05);
+        border-radius: 20px;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.03);
+    }
+
+    /* Day Banner */
+    .day-banner {
+        background: linear-gradient(135deg, #ffffff 0%, #f5f7ff 100%);
+        border-left: 4px solid var(--primary);
+    }
+
+    .day-title { font-size: 1.5rem; font-weight: 800; }
+    .small-caps { letter-spacing: 0.1em; font-size: 0.65rem; }
+
+    .stat-pill {
+        background: white;
+        padding: 8px 16px;
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        min-width: 70px;
+    }
+    .stat-value { font-size: 1.1rem; font-weight: 800; color: var(--primary); line-height: 1; }
+    .stat-label { font-size: 0.6rem; font-weight: 700; color: var(--secondary); margin-top: 2px; }
+
+    /* Info Sidebar */
+    .status-card.approved { border-top: 3px solid var(--success); }
+    .status-card.pending { border-top: 3px solid var(--warning); }
+
+    .profile-avatar-mini {
+        width: 40px; height: 40px;
+        background: var(--primary);
+        border-radius: 12px;
+        display: flex; align-items: center; justify-content: center;
+        color: white; font-weight: 800;
+        box-shadow: 0 4px 8px rgba(79, 70, 229, 0.2);
+    }
+
+    .info-grid { display: flex; flex-direction: column; gap: 0.75rem; }
+    .info-row { display: flex; align-items: center; }
+    .info-icon {
+        width: 32px; height: 32px;
+        border-radius: 8px;
+        display: flex; align-items: center; justify-content: center;
+        margin-right: 10px; font-size: 0.8rem;
+    }
+    .bg-blue-soft { background: #eff6ff; }
+    .bg-green-soft { background: #f0fdf4; }
+
+    .text-blue-intense { color: #1d4ed8 !important; }
+    .bg-blue-intense { background-color: #1d4ed8 !important; }
+
+    .info-text .label { display: block; font-size: 0.65rem; color: var(--secondary); font-weight: 600; text-transform: uppercase; }
+    .info-text .value { display: block; font-size: 0.85rem; font-weight: 700; color: #1e293b; }
+
+    /* Schedule Timeline */
+    .subject-timeline { position: relative; padding-left: 15px; }
+    .subject-timeline::before {
+        content: ''; position: absolute; left: 0; top: 8px; bottom: 8px;
+        width: 2px; background: #e2e8f0;
+    }
+
+    .schedule-item { position: relative; margin-bottom: 1.25rem; }
+    .schedule-item::before {
+        content: ''; position: absolute; left: -19px; top: 10px;
+        width: 10px; height: 10px; border-radius: 50%;
+        background: #cbd5e1; border: 2px solid white; z-index: 1;
+    }
+    .schedule-item.ongoing::before { background: #1d4ed8; box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.2); }
+
+    .time-meta { display: flex; gap: 6px; font-size: 0.7rem; font-weight: 700; margin-bottom: 5px; color: var(--secondary); }
+    .time-meta .start { color: var(--primary); }
+
+    .subject-title { font-weight: 800; color: #1e293b; font-size: 0.95rem; }
+    .instructor { font-size: 0.75rem; color: var(--secondary); }
+
+    /* Day Tags */
+    .day-pills-row { display: flex; gap: 4px; flex-wrap: wrap; }
+    .day-tag {
+        font-size: 0.6rem; font-weight: 700; padding: 2px 6px;
+        border-radius: 4px; background: #f1f5f9; color: #64748b;
+        text-transform: uppercase;
+    }
+    .day-tag.active { background: var(--primary-soft); color: var(--primary); border: 1px solid rgba(79, 70, 229, 0.2); }
+
+    /* Ongoing Mini Badge */
+    .status-badge-mini {
+        font-size: 0.6rem; padding: 4px 10px; border-radius: 100px;
+        display: flex; align-items: center; gap: 4px; letter-spacing: 0.02em;
+    }
+    .pulse-dot {
+        width: 6px; height: 6px; background: white; border-radius: 50%;
+        animation: pulse-ring 1.5s infinite;
+    }
+
+    .ongoing-indicator {
+        display: flex; align-items: center; gap: 5px; color: var(--danger);
+        font-weight: 900; font-size: 0.65rem; position: relative;
+    }
+    .pulse-ring {
+        width: 8px; height: 8px; background: var(--danger); border-radius: 50%;
+        animation: blink 1s infinite;
+    }
+
+    /* Helpers */
+    .extra-small { font-size: 0.65rem; }
+    .accent-circle {
+        position: absolute; top: -30px; right: -30px;
+        width: 120px; height: 120px;
+        background: radial-gradient(circle, rgba(79, 70, 229, 0.05) 0%, rgba(79, 70, 229, 0) 70%);
+        border-radius: 50%;
+    }
+    .divider-h { height: 1px; background: #f1f5f9; }
+
+    /* Animations */
+    @@keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
+    @@keyframes pulse-ring { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(2.2); opacity: 0; } }
+    @@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* Mobile (Phone/Android) Specific Fixes */
+    @@media (max-width: 576px) {
+        .dashboard-container { padding: 0.5rem; }
+        .day-title { font-size: 1.25rem; }
+        .subject-timeline { padding-left: 12px; }
+        .schedule-item::before { left: -16px; top: 9px; width: 8px; height: 8px; }
+        .subject-title { font-size: 0.9rem; }
+        .schedule-card { border-radius: 16px !important; }
+        .time-meta { font-size: 0.65rem; }
+        .stat-pill { min-width: 60px; padding: 6px 10px; }
+        .stat-value { font-size: 1rem; }
+        .day-tag { font-size: 0.55rem; padding: 1px 4px; }
     }
 </style>
 
@@ -231,7 +327,7 @@
                 if (student != null && student.EnrollmentStatus == "Approved" && !string.IsNullOrEmpty(student.AdvisorId))
                 {
                     // Fetch only today's subjects
-                    var todayName = DateTime.Now.DayOfWeek.ToString(); // e.g. "Monday"
+                    var todayName = DateTime.Now.DayOfWeek.ToString();
                     try
                     {
                         var offerings = await http.GetFromJsonAsync<List<ClassOffering>>(
@@ -258,9 +354,26 @@
         }
     }
 
-    private bool IsCurrentlyOngoing(TimeSpan start, TimeSpan end)
+    private bool IsCurrentlyOngoing(ClassOffering offering)
     {
-        var now = DateTime.Now.TimeOfDay;
-        return now >= start && now <= end;
+        var now = DateTime.Now;
+        var today = now.DayOfWeek.ToString();
+        var scheduleDays = ParseDays(offering.DayOfWeek);
+        if (!scheduleDays.Contains(today, StringComparer.OrdinalIgnoreCase))
+            return false;
+
+        var currentTime = now.TimeOfDay;
+        return currentTime >= offering.ScheduleStart && currentTime <= offering.ScheduleEnd;
+    }
+
+    private static List<string> ParseDays(string? dayOfWeek)
+    {
+        if (string.IsNullOrWhiteSpace(dayOfWeek))
+            return new List<string> { "Monday", "Tuesday", "Wednesday", "Thursday", "Friday" };
+        
+        return dayOfWeek.Split(',')
+                      .Select(d => d.Trim())
+                      .Where(d => !string.IsNullOrEmpty(d))
+                      .ToList();
     }
 }

@@ -1,0 +1,510 @@
+@page "/teacher/subject-selection"
+@layout TeacherLayout
+@using NewscannerMAUI.Services
+@using AttrackSharedClass.Models
+@inject AuthService AuthService
+@inject HttpClient Http
+@inject NavigationManager Navigation
+
+<div class="selection-container">
+    <div class="page-header">
+        <button class="btn-back" @onclick='() => Navigation.NavigateTo("/teacher-dashboard")'>
+            <i class="fas fa-chevron-left"></i>
+        </button>
+        <div class="header-text">
+            <h2>Select Subjects</h2>
+            <p>Claim classes you are teaching</p>
+        </div>
+    </div>
+
+    <!-- Filters Section -->
+    <div class="filters-card">
+        <div class="search-box">
+            <i class="fas fa-search"></i>
+            <input type="text" placeholder="Search subject name..." @bind="searchTerm" @bind:event="oninput" @onkeyup="HandleSearch" />
+        </div>
+        
+        <div class="filter-row">
+            <div class="filter-group">
+                <label>Grade Level</label>
+                <select @bind="selectedGrade" @bind:after="LoadAvailableOfferings">
+                    <option value="0">All Grades</option>
+                    @for (int i = 7; i <= 12; i++)
+                    {
+                        <option value="@i">Grade @i</option>
+                    }
+                </select>
+            </div>
+
+            @if (selectedGrade >= 11)
+            {
+                <div class="filter-group">
+                    <label>Strand</label>
+                    <select @bind="selectedStrand" @bind:after="LoadAvailableOfferings">
+                        <option value="">All Strands</option>
+                        <option value="STEM">STEM</option>
+                        <option value="ABM">ABM</option>
+                        <option value="HUMSS">HUMSS</option>
+                        <option value="GAS">GAS</option>
+                        <option value="TVL">TVL</option>
+                    </select>
+                </div>
+            }
+        </div>
+    </div>
+
+    <!-- Results List -->
+    <div class="offerings-list">
+        @if (isLoading)
+        {
+            <div class="loading-state">
+                <div class="spinner"></div>
+                <p>Finding available classes...</p>
+            </div>
+        }
+        else if (!offerings.Any())
+        {
+            <div class="empty-state">
+                <i class="fas fa-book-open"></i>
+                <p>No available classes found matching your criteria.</p>
+                @if (selectedGrade != 0)
+                {
+                    <button class="btn-reset" @onclick="ResetFilters">Clear Filters</button>
+                }
+            </div>
+        }
+        else
+        {
+            <div class="grid-container">
+                @foreach (var offering in offerings)
+                {
+                    <div class="offering-card">
+                        <div class="card-edge grade-@offering.GradeLevel"></div>
+                        <div class="card-content">
+                            <div class="card-main">
+                                <span class="grade-badge">Grade @offering.GradeLevel</span>
+                                <h3>@offering.SubjectName</h3>
+                                <div class="info-row">
+                                    <i class="fas fa-users"></i>
+                                    <span>Section: <strong>@offering.Section</strong></span>
+                                </div>
+                                <div class="info-row">
+                                    <i class="fas fa-clock"></i>
+                                    <span>@FormatTime(offering.ScheduleStart) - @FormatTime(offering.ScheduleEnd)</span>
+                                </div>
+                                <div class="info-row">
+                                    <i class="fas fa-user-tie"></i>
+                                    <span>Advisor: @offering.AdvisorName</span>
+                                </div>
+                            </div>
+                            
+                            <button class="btn-claim" @onclick="() => ClaimOffering(offering)">
+                                <i class="fas fa-plus-circle me-1"></i> Claim This Class
+                            </button>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@if (showSuccessModal)
+{
+    <div class="modal-overlay">
+        <div class="success-card">
+            <div class="success-icon">
+                <i class="fas fa-check-circle"></i>
+            </div>
+            <h3>Class Claimed!</h3>
+            <p>You have been assigned to <strong>@claimedSubject</strong> (@claimedSection).</p>
+            <button class="btn-done" @onclick="CloseModal">Great!</button>
+        </div>
+    </div>
+}
+
+@code {
+    private List<ClassOffering> offerings = new();
+    private bool isLoading = true;
+    private int selectedGrade = 0;
+    private string selectedStrand = "";
+    private string searchTerm = "";
+    private string? schoolId;
+    private string? teacherId;
+
+    private bool showSuccessModal = false;
+    private string claimedSubject = "";
+    private string claimedSection = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var user = await AuthService.GetCurrentUserAsync();
+        if (user != null)
+        {
+            teacherId = user.TeacherId;
+            // In a real app, we'd get schoolId from the teacher profile or user claims
+            // For now, it will filter by school if schoolId is provided to the API
+        }
+        await LoadAvailableOfferings();
+    }
+
+    private async Task LoadAvailableOfferings()
+    {
+        isLoading = true;
+        try
+        {
+            var url = $"api/ClassOffering/available";
+            var queryParams = new List<string>();
+            
+            if (selectedGrade > 0) queryParams.Add($"gradeLevel={selectedGrade}");
+            if (!string.IsNullOrEmpty(selectedStrand)) queryParams.Add($"strand={Uri.EscapeDataString(selectedStrand)}");
+            
+            if (queryParams.Any())
+            {
+                url += "?" + string.Join("&", queryParams);
+            }
+
+            var result = await Http.GetFromJsonAsync<List<ClassOffering>>(url);
+            offerings = result ?? new();
+
+            // Apply client-side search filter
+            if (!string.IsNullOrEmpty(searchTerm))
+            {
+                offerings = offerings.Where(o => o.SubjectName.Contains(searchTerm, StringComparison.OrdinalIgnoreCase)).ToList();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading offerings: {ex.Message}");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task HandleSearch()
+    {
+        await LoadAvailableOfferings();
+    }
+
+    private void ResetFilters()
+    {
+        selectedGrade = 0;
+        selectedStrand = "";
+        searchTerm = "";
+        _ = LoadAvailableOfferings();
+    }
+
+    private async Task ClaimOffering(ClassOffering offering)
+    {
+        if (string.IsNullOrEmpty(teacherId)) return;
+
+        try
+        {
+            var response = await Http.PutAsJsonAsync($"api/ClassOffering/{offering.ClassOfferingId}/assign", new { TeacherId = teacherId });
+            
+            if (response.IsSuccessStatusCode)
+            {
+                claimedSubject = offering.SubjectName;
+                claimedSection = offering.Section;
+                showSuccessModal = true;
+                offerings.Remove(offering);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error claiming offering: {ex.Message}");
+        }
+    }
+
+    private void CloseModal() => showSuccessModal = false;
+
+    private string FormatTime(TimeSpan ts)
+    {
+        return DateTime.Today.Add(ts).ToString("h:mm tt");
+    }
+}
+
+<style>
+    .selection-container {
+        padding: 1rem;
+        background: #f8f9fa;
+        min-height: 100vh;
+    }
+
+    .page-header {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .btn-back {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        border: none;
+        background: white;
+        color: #2c3e50;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .header-text h2 {
+        font-weight: 800;
+        font-size: 1.4rem;
+        margin: 0;
+        color: #1a2a3a;
+    }
+
+    .header-text p {
+        margin: 0;
+        font-size: 0.85rem;
+        color: #6c757d;
+    }
+
+    /* Filters */
+    .filters-card {
+        background: white;
+        padding: 1.25rem;
+        border-radius: 16px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.04);
+        margin-bottom: 1.5rem;
+    }
+
+    .search-box {
+        position: relative;
+        margin-bottom: 1rem;
+    }
+
+    .search-box i {
+        position: absolute;
+        left: 12px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #adb5bd;
+    }
+
+    .search-box input {
+        width: 100%;
+        padding: 0.75rem 1rem 0.75rem 2.5rem;
+        border: 1px solid #e9ecef;
+        border-radius: 10px;
+        font-size: 0.9rem;
+        outline: none;
+        transition: border-color 0.2s;
+    }
+
+    .search-box input:focus {
+        border-color: #4e73df;
+    }
+
+    .filter-row {
+        display: flex;
+        gap: 1rem;
+    }
+
+    .filter-group {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
+    }
+
+    .filter-group label {
+        font-size: 0.7rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        color: #adb5bd;
+        letter-spacing: 0.05em;
+    }
+
+    .filter-group select {
+        padding: 0.6rem;
+        border: 1px solid #e9ecef;
+        border-radius: 8px;
+        background: #f8f9fa;
+        font-size: 0.9rem;
+        outline: none;
+    }
+
+    /* Grid */
+    .grid-container {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    .offering-card {
+        background: white;
+        border-radius: 12px;
+        overflow: hidden;
+        display: flex;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.03);
+        border: 1px solid #edf2f7;
+    }
+
+    .card-edge {
+        width: 6px;
+    }
+
+    .grade-7 { background: #4e73df; }
+    .grade-8 { background: #1cc88a; }
+    .grade-9 { background: #36b9cc; }
+    .grade-10 { background: #f6c23e; }
+    .grade-11 { background: #e74a3b; }
+    .grade-12 { background: #858796; }
+
+    .card-content {
+        flex: 1;
+        padding: 1rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .card-main h3 {
+        font-size: 1.05rem;
+        font-weight: 800;
+        margin: 0.25rem 0 0.5rem;
+        color: #2c3e50;
+    }
+
+    .grade-badge {
+        font-size: 0.65rem;
+        font-weight: 800;
+        background: #f0f4ff;
+        color: #4e73df;
+        padding: 0.2rem 0.5rem;
+        border-radius: 4px;
+        text-transform: uppercase;
+    }
+
+    .info-row {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        font-size: 0.85rem;
+        color: #6c757d;
+        margin-bottom: 0.2rem;
+    }
+
+    .info-row i {
+        width: 14px;
+        color: #adb5bd;
+    }
+
+    .btn-claim {
+        width: 100%;
+        padding: 0.6rem;
+        border: none;
+        border-radius: 8px;
+        background: #4e73df;
+        color: white;
+        font-weight: 700;
+        font-size: 0.85rem;
+        transition: all 0.2s;
+    }
+
+    .btn-claim:active {
+        transform: scale(0.96);
+    }
+
+    /* States */
+    .loading-state, .empty-state {
+        padding: 3rem 1rem;
+        text-align: center;
+        color: #adb5bd;
+    }
+
+    .empty-state i {
+        font-size: 3rem;
+        margin-bottom: 1rem;
+        opacity: 0.3;
+    }
+
+    .btn-reset {
+        margin-top: 1rem;
+        background: transparent;
+        border: 1px solid #4e73df;
+        color: #4e73df;
+        padding: 0.5rem 1rem;
+        border-radius: 8px;
+        font-weight: 600;
+    }
+
+    .spinner {
+        width: 40px;
+        height: 40px;
+        border: 3px solid #e9ecef;
+        border-top-color: #4e73df;
+        border-radius: 50%;
+        margin: 0 auto 1rem;
+        animation: spin 1s linear infinite;
+    }
+
+    @@keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+
+    /* Modal */
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0,0,0,0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+        backdrop-filter: blur(4px);
+        padding: 2rem;
+    }
+
+    .success-card {
+        background: white;
+        padding: 2rem;
+        border-radius: 20px;
+        text-align: center;
+        width: 100%;
+        max-width: 320px;
+        animation: slideUp 0.3s ease-out;
+    }
+
+    .success-icon {
+        font-size: 4rem;
+        color: #1cc88a;
+        margin-bottom: 1rem;
+    }
+
+    .success-card h3 {
+        font-weight: 800;
+        margin-bottom: 0.5rem;
+    }
+
+    .success-card p {
+        color: #6c757d;
+        font-size: 0.9rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .btn-done {
+        width: 100%;
+        padding: 0.8rem;
+        background: #1cc88a;
+        border: none;
+        color: white;
+        border-radius: 12px;
+        font-weight: 700;
+    }
+
+    @@keyframes slideUp {
+        from { transform: translateY(30px); opacity: 0; }
+        to { transform: translateY(0); opacity: 1; }
+    }
+</style>
