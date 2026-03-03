@@ -15,6 +15,8 @@ namespace AttrackSharedClass.Models
         public string? Strand { get; set; }
         public TimeSpan ScheduleStart { get; set; }
         public TimeSpan ScheduleEnd { get; set; }
+        /// <summary>Comma-separated days e.g. "Monday,Wednesday,Friday"</summary>
+        public string DayOfWeek { get; set; } = "Monday,Tuesday,Wednesday,Thursday,Friday";
         /// <summary>Set when a subject teacher assigns themselves to teach this class.</summary>
         public string? TeacherId { get; set; }
         public string? TeacherName { get; set; }
@@ -38,12 +40,17 @@ namespace AttrackSharedClass.Models
         public TimeSpan ScheduleStart { get; set; }
         [Required]
         public TimeSpan ScheduleEnd { get; set; }
+        /// <summary>Comma-separated days e.g. "Monday,Wednesday,Friday"</summary>
+        public string DayOfWeek { get; set; } = "Monday,Tuesday,Wednesday,Thursday,Friday";
     }
 
     public class UpdateClassOfferingRequest
     {
         public TimeSpan? ScheduleStart { get; set; }
         public TimeSpan? ScheduleEnd { get; set; }
+        public string? DayOfWeek { get; set; }
+        public string? SubjectName { get; set; }
+        public string? SubjectId { get; set; }
     }
 
     public class ClassOfferingResponse

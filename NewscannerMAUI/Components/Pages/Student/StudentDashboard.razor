@@ -8,18 +8,19 @@
 @inject AuthService AuthService
 
 <div class="dashboard-container">
-    <div class="header-section mb-4">
-        <div class="d-flex justify-content-between align-items-center">
-            <div>
-                <h2 class="fw-bold text-dark mb-1">My Class Schedule</h2>
-                <p class="text-muted">Stay updated with your daily subjects and activities.</p>
-            </div>
-            <div class="date-badge">
-                <i class="far fa-calendar-alt me-2"></i>
-                @DateTime.Now.ToString("MMMM dd, yyyy")
+        <div class="header-section mb-4">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h2 class="fw-bold text-dark mb-1">My Class Schedule</h2>
+                    <p class="text-muted">Stay updated with your daily subjects and activities.</p>
+                </div>
+                <div class="date-badge">
+                    <i class="far fa-calendar-alt me-2"></i>
+                    @DateTime.Now.ToString("MMMM dd, yyyy")<br />
+                    <span class="fw-bold text-primary" style="font-size:0.8rem">@DateTime.Now.DayOfWeek</span>
+                </div>
             </div>
         </div>
-    </div>
 
     @if (isLoading)
     {
@@ -229,10 +230,12 @@
                 
                 if (student != null && student.EnrollmentStatus == "Approved" && !string.IsNullOrEmpty(student.AdvisorId))
                 {
-                    // Fetch Subjects using the advisor's section roster
+                    // Fetch only today's subjects
+                    var todayName = DateTime.Now.DayOfWeek.ToString(); // e.g. "Monday"
                     try
                     {
-                        var offerings = await http.GetFromJsonAsync<List<ClassOffering>>($"api/ClassOffering/section?advisorId={student.AdvisorId}&section={Uri.EscapeDataString(student.Section)}&gradeLevel={student.GradeLevel}");
+                        var offerings = await http.GetFromJsonAsync<List<ClassOffering>>(
+                            $"api/ClassOffering/section?advisorId={student.AdvisorId}&section={Uri.EscapeDataString(student.Section)}&gradeLevel={student.GradeLevel}&dayOfWeek={Uri.EscapeDataString(todayName)}");
                         if (offerings != null)
                         {
                             classOfferings = offerings;

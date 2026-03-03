@@ -33,7 +33,7 @@
 
     <div class="px-3 mb-3">
         <button class="btn-add" @onclick="ShowAddModal" disabled="@IsAddDisabled">
-            <i class="fas fa-plus me-1"></i> Add Subject & Time
+            <i class="fas fa-plus me-1"></i> Add Subject &amp; Time
         </button>
     </div>
 
@@ -55,12 +55,12 @@
         else
         {
             <div class="class-list">
-                @foreach (var c in classes)
+                @foreach (var c in classes.OrderBy(x => x.ScheduleStart))
                 {
                     <div class="class-card">
                         <div class="card-body">
                             <div class="d-flex justify-content-between align-items-start">
-                                <div>
+                                <div class="flex-grow-1">
                                     <h5 class="subject-name">@c.SubjectName</h5>
                                     <div class="class-details">
                                         <span class="badge bg-light text-dark">G-@c.GradeLevel @c.Section</span>
@@ -73,14 +73,25 @@
                                         <i class="far fa-clock me-1"></i>
                                         @c.ScheduleStart.ToString("hh\\:mm") - @c.ScheduleEnd.ToString("hh\\:mm")
                                     </div>
+                                    <div class="day-pills mt-1">
+                                        @foreach (var day in ParseDays(c.DayOfWeek))
+                                        {
+                                            <span class="day-pill day-@day.ToLower()">@day.Substring(0,3)</span>
+                                        }
+                                    </div>
                                     <div class="teacher-name mt-1">
                                         <i class="fas fa-user-graduate me-1"></i>
                                         @(c.TeacherName ?? "No teacher assigned yet")
                                     </div>
                                 </div>
-                                <button class="btn-remove" @onclick="() => DeleteClass(c)" disabled="@isDeleting">
-                                    <i class="fas fa-trash-alt"></i>
-                                </button>
+                                <div class="d-flex flex-column gap-1 ms-2">
+                                    <button class="btn-icon btn-edit" @onclick="() => ShowEditModal(c)" title="Edit">
+                                        <i class="fas fa-pen"></i>
+                                    </button>
+                                    <button class="btn-icon btn-remove" @onclick="() => DeleteClass(c)" disabled="@isDeleting" title="Remove">
+                                        <i class="fas fa-trash-alt"></i>
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -90,6 +101,7 @@
     </div>
 </div>
 
+@* ─── Delete Confirm ─── *@
 @if (showDeleteConfirm && classToDelete != null)
 {
     <div class="modal-overlay">
@@ -114,39 +126,35 @@
     </div>
 }
 
+@* ─── Add Modal ─── *@
 @if (showAddModal)
 {
     <div class="modal-overlay">
         <div class="modal-card">
             <div class="modal-header">
-                <h5 class="modal-title">Add Subject & Class Time</h5>
+                <h5 class="modal-title">Add Subject &amp; Class Time</h5>
                 <button type="button" class="btn-close" @onclick="HideAddModal"></button>
             </div>
             <div class="modal-body">
                 @if (!string.IsNullOrEmpty(modalErrorMessage))
                 {
-                    <div class="alert alert-danger py-2 mb-2 small">
-                        <i class="fas fa-exclamation-circle me-1"></i> @modalErrorMessage
-                    </div>
+                    <div class="alert alert-danger py-2 mb-2 small"><i class="fas fa-exclamation-circle me-1"></i> @modalErrorMessage</div>
                 }
                 @if (!string.IsNullOrEmpty(modalSuccessMessage))
                 {
-                    <div class="alert alert-success py-2 mb-2 small">
-                        <i class="fas fa-check-circle me-1"></i> @modalSuccessMessage
-                    </div>
+                    <div class="alert alert-success py-2 mb-2 small"><i class="fas fa-check-circle me-1"></i> @modalSuccessMessage</div>
                 }
                 <div class="form-group mb-3">
                     <label>Grade Level</label>
                     <div class="info-badge-row">
                         <span class="info-badge">Grade @newGrade</span>
                         <span class="info-badge">@newSection</span>
-                        @if (!string.IsNullOrEmpty(newStrand))
-                        {
-                            <span class="info-badge strand-badge">@newStrand</span>
-                        }
+                        @if (!string.IsNullOrEmpty(newStrand)) { <span class="info-badge strand-badge">@newStrand</span> }
                     </div>
                     <small class="text-muted">Automatic based on your profile</small>
                 </div>
+
+                @* Subject Picker *@
                 <div class="form-group mb-3 subject-search-container">
                     <label>Subject</label>
                     @if (isLoadingSubjects)
@@ -158,19 +166,17 @@
                     }
                     else
                     {
-                        <!-- Search Input -->
                         <div class="position-relative">
-                            <input type="text" class="form-control" placeholder="Type here to search or type the subject name..."
+                            <input type="text" class="form-control" placeholder="Type to search or enter subject name..."
                                    value="@subjectSearchText"
                                    @oninput="OnSubjectSearch"
                                    @onfocus="() => showSubjectDropdown = true" />
-                             @if (showSubjectDropdown)
+                            @if (showSubjectDropdown)
                             {
                                 <div class="subject-dropdown">
                                     @foreach (var sub in filteredSubjects)
                                     {
-                                        <div class="subject-option @(sub.SubjectId == newSubjectId ? "selected" : "")"
-                                             @onclick="() => SelectSubject(sub)">
+                                        <div class="subject-option @(sub.SubjectId == newSubjectId ? "selected" : "")" @onclick="() => SelectSubject(sub)">
                                             @if (string.IsNullOrEmpty(sub.SubjectId))
                                             {
                                                 <span class="text-primary"><i class="fas fa-plus-circle me-1"></i> Add "<strong>@sub.SubjectName</strong>" as new subject</span>
@@ -178,10 +184,7 @@
                                             else
                                             {
                                                 <strong>@sub.SubjectName</strong>
-                                                @if (!string.IsNullOrEmpty(sub.Strand))
-                                                {
-                                                    <span class="badge badge-strand ms-1">@sub.Strand</span>
-                                                }
+                                                @if (!string.IsNullOrEmpty(sub.Strand)) { <span class="badge badge-strand ms-1">@sub.Strand</span> }
                                             }
                                         </div>
                                     }
@@ -198,7 +201,6 @@
                                 </div>
                             }
                         </div>
-                        <!-- Selected Subject Preview -->
                         @if (!string.IsNullOrEmpty(newSubjectId))
                         {
                             var selectedSub = subjectsForGrade.FirstOrDefault(s => s.SubjectId == newSubjectId);
@@ -213,6 +215,23 @@
                         }
                     }
                 </div>
+
+                @* Day Picker *@
+                <div class="form-group mb-3">
+                    <label>Days</label>
+                    <div class="day-picker">
+                        @foreach (var day in AllDays)
+                        {
+                            var isSelected = newSelectedDays.Contains(day);
+                            <button type="button" class="day-toggle @(isSelected ? "active" : "")" @onclick="() => ToggleDay(day, true)">
+                                @day.Substring(0, 3)
+                            </button>
+                        }
+                    </div>
+                    <small class="text-muted">Select which days this subject is held</small>
+                </div>
+
+                @* Time *@
                 <div class="row">
                     <div class="col-6">
                         <div class="form-group mb-3">
@@ -239,12 +258,198 @@
     </div>
 }
 
+@* ─── Edit Modal ─── *@
+@if (showEditModal && classToEdit != null)
+{
+    <div class="modal-overlay">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-pen me-2 text-primary"></i>Edit Class</h5>
+                <button type="button" class="btn-close" @onclick="HideEditModal"></button>
+            </div>
+            <div class="modal-body">
+                @if (!string.IsNullOrEmpty(editErrorMessage))
+                {
+                    <div class="alert alert-danger py-2 mb-2 small"><i class="fas fa-exclamation-circle me-1"></i> @editErrorMessage</div>
+                }
+                @if (!string.IsNullOrEmpty(editSuccessMessage))
+                {
+                    <div class="alert alert-success py-2 mb-2 small"><i class="fas fa-check-circle me-1"></i> @editSuccessMessage</div>
+                }
+
+                @* Subject *@
+                <div class="form-group mb-3 subject-search-container">
+                    <label>Subject</label>
+                    <div class="position-relative">
+                        <input type="text" class="form-control" placeholder="Type to search or enter subject name..."
+                               value="@editSubjectSearchText"
+                               @oninput="OnEditSubjectSearch"
+                               @onfocus="() => showEditSubjectDropdown = true" />
+                        @if (showEditSubjectDropdown)
+                        {
+                            <div class="subject-dropdown">
+                                @foreach (var sub in editFilteredSubjects)
+                                {
+                                    <div class="subject-option @(sub.SubjectId == editSubjectId ? "selected" : "")" @onclick="() => SelectEditSubject(sub)">
+                                        @if (string.IsNullOrEmpty(sub.SubjectId))
+                                        {
+                                            <span class="text-primary"><i class="fas fa-plus-circle me-1"></i> Add "<strong>@sub.SubjectName</strong>"</span>
+                                        }
+                                        else
+                                        {
+                                            <strong>@sub.SubjectName</strong>
+                                            @if (!string.IsNullOrEmpty(sub.Strand)) { <span class="badge badge-strand ms-1">@sub.Strand</span> }
+                                        }
+                                    </div>
+                                }
+                                @if (!string.IsNullOrEmpty(editSubjectSearchText) && !editFilteredSubjects.Any(s => s.SubjectName.Equals(editSubjectSearchText, StringComparison.OrdinalIgnoreCase)))
+                                {
+                                    <div class="subject-option text-primary" @onclick="() => SelectEditManualSubject(editSubjectSearchText)">
+                                        <i class="fas fa-magic me-1"></i> Use "<strong>@editSubjectSearchText</strong>"
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                @* Day Picker *@
+                <div class="form-group mb-3">
+                    <label>Days</label>
+                    <div class="day-picker">
+                        @foreach (var day in AllDays)
+                        {
+                            var isSelected = editSelectedDays.Contains(day);
+                            <button type="button" class="day-toggle @(isSelected ? "active" : "")" @onclick="() => ToggleDay(day, false)">
+                                @day.Substring(0, 3)
+                            </button>
+                        }
+                    </div>
+                </div>
+
+                @* Time *@
+                <div class="row">
+                    <div class="col-6">
+                        <div class="form-group mb-3">
+                            <label>Start Time</label>
+                            <input type="time" class="form-control" value="@editStartTime" @onchange="OnEditStartTimeChanged" />
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="form-group mb-3">
+                            <label>End Time</label>
+                            <input type="time" class="form-control" value="@editEndTime" @onchange="OnEditEndTimeChanged" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" @onclick="HideEditModal">Cancel</button>
+                <button type="button" class="btn btn-primary" @onclick="SaveEdit" disabled="@isSaving">
+                    @if (isSaving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                    Save Changes
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .page-container { display: flex; flex-direction: column; height: 100vh; overflow: hidden; background: #f8fafc; }
+    .header-section { padding: 0.5rem 1rem 0.25rem; margin-bottom: 0.75rem; }
+    .page-title { font-weight: 800; color: #2c3e50; font-size: 1.2rem; margin-bottom: 0; }
+
+    .btn-add { background: #1cc88a; color: white; border: none; padding: 0.6rem 1rem; border-radius: 8px; font-weight: 600; font-size: 0.9rem; box-shadow: 0 4px 10px rgba(28,200,138,0.2); width: 100%; transition: all 0.2s; }
+    .btn-add:active { transform: scale(0.98); background: #17a673; }
+
+    .content-section { flex: 1; overflow-y: auto; padding: 0 1rem 120px; scrollbar-width: thin; }
+    .content-section::-webkit-scrollbar { width: 4px; }
+    .content-section::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+
+    .class-list { display: flex; flex-direction: column; gap: 0.75rem; }
+    .class-card { background: white; border-radius: 12px; border: 1px solid #edf2f7; box-shadow: 0 4px 12px rgba(0,0,0,0.03); }
+    .card-body { padding: 1rem; }
+    .subject-name { font-weight: 700; color: #2d3748; font-size: 1rem; margin-bottom: 0.25rem; }
+    .class-details { display: flex; gap: 0.4rem; }
+    .time-slot, .teacher-name { font-size: 0.8rem; color: #718096; }
+
+    /* Day pills on cards */
+    .day-pills { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
+    .day-pill { font-size: 0.62rem; font-weight: 700; padding: 2px 7px; border-radius: 20px; text-transform: uppercase; letter-spacing: 0.04em; }
+    .day-monday    { background: #dbeafe; color: #1d4ed8; }
+    .day-tuesday   { background: #ede9fe; color: #6d28d9; }
+    .day-wednesday { background: #d1fae5; color: #065f46; }
+    .day-thursday  { background: #fef3c7; color: #92400e; }
+    .day-friday    { background: #fee2e2; color: #991b1b; }
+
+    /* Icon buttons */
+    .btn-icon { background: none; border: 1px solid #e2e8f0; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; cursor: pointer; transition: all 0.15s; }
+    .btn-edit { color: #3b82f6; }
+    .btn-edit:hover { background: #eff6ff; border-color: #3b82f6; }
+    .btn-remove { color: #ef4444; }
+    .btn-remove:hover { background: #fef2f2; border-color: #ef4444; }
+    .btn-remove:active { opacity: 1; }
+
+    /* Day Picker in Modal */
+    .day-picker { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+    .day-toggle { padding: 6px 12px; border-radius: 20px; border: 1.5px solid #e2e8f0; background: #f8fafc; color: #64748b; font-size: 0.78rem; font-weight: 700; cursor: pointer; transition: all 0.15s; }
+    .day-toggle.active { background: #3b82f6; border-color: #3b82f6; color: white; }
+    .day-toggle:active { transform: scale(0.95); }
+
+    /* Modal */
+    .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(45,55,72,0.4); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; z-index: 3000; padding: 1.5rem; animation: fadeIn 0.2s ease-out; }
+    .modal-card { background: white; border-radius: 20px; width: 100%; max-width: 480px; max-height: 85vh; overflow-y: auto; display: flex; flex-direction: column; box-shadow: 0 20px 40px rgba(0,0,0,0.15); animation: slideUp 0.3s cubic-bezier(0.34,1.56,0.64,1); }
+    @@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    @@keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+    .modal-header { padding: 1.25rem 1.5rem 1rem; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center; background: white; position: sticky; top: 0; z-index: 10; }
+    .modal-title { font-weight: 800; color: #1e293b; font-size: 1.1rem; }
+    .modal-body { padding: 1.5rem; }
+    .modal-footer { padding: 1rem 1.5rem 1.25rem; border-top: 1px solid #f1f5f9; display: flex; gap: 0.75rem; justify-content: flex-end; background: white; position: sticky; bottom: 0; z-index: 10; }
+    .mini-modal { max-width: 360px !important; }
+    .btn-close { background: #f8fafc; border: none; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #64748b; font-size: 1.2rem; padding: 0; line-height: 1; cursor: pointer; }
+    .btn-close:hover { background: #fee2e2; color: #ef4444; }
+
+    .form-group label { font-weight: 600; font-size: 0.82rem; color: #374151; margin-bottom: 0.4rem; display: block; }
+    .form-control { border-radius: 10px; border: 1.5px solid #e2e8f0; font-size: 0.88rem; padding: 0.5rem 0.75rem; }
+    .form-control:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
+
+    .info-badge-row { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.25rem; }
+    .info-badge { background: #f1f5f9; border-radius: 20px; padding: 3px 10px; font-size: 0.78rem; font-weight: 600; color: #475569; }
+    .strand-badge { background: #ede9fe; color: #6d28d9; }
+
+    /* Subject dropdown */
+    .subject-search-container { position: relative; }
+    .subject-dropdown { position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1.5px solid #e2e8f0; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.1); z-index: 100; max-height: 200px; overflow-y: auto; }
+    .subject-option { padding: 0.6rem 1rem; cursor: pointer; font-size: 0.88rem; transition: background 0.15s; }
+    .subject-option:hover, .subject-option.selected { background: #f0f9ff; }
+    .selected-subject-badge { display: flex; align-items: center; gap: 0.5rem; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 0.4rem 0.75rem; font-size: 0.85rem; }
+    .btn-clear { background: none; border: none; color: #94a3b8; font-size: 1.1rem; padding: 0 0.25rem; line-height: 1; cursor: pointer; }
+    .badge-strand { background: #ede9fe; color: #6d28d9; font-size: 0.7rem; padding: 2px 8px; border-radius: 20px; }
+
+    /* Toast */
+    .toast-container { position: fixed; bottom: 80px; left: 1rem; right: 1rem; z-index: 9999; display: flex; flex-direction: column; gap: 0.5rem; }
+    .toast { display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 1rem; border-radius: 12px; box-shadow: 0 4px 16px rgba(0,0,0,0.12); animation: slideUp 0.3s ease; }
+    .toast-danger { background: #fef2f2; border: 1px solid #fecaca; }
+    .toast-success { background: #f0fdf4; border: 1px solid #bbf7d0; }
+    .toast-content { flex: 1; font-size: 0.85rem; font-weight: 500; }
+    .toast-close { background: none; border: none; color: #94a3b8; font-size: 1.2rem; padding: 0; cursor: pointer; }
+
+    /* Loading / empty */
+    .loading-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 200px; gap: 1rem; color: #94a3b8; }
+    .spinner { width: 32px; height: 32px; border: 3px solid #e2e8f0; border-top-color: #3b82f6; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @@keyframes spin { to { transform: rotate(360deg); } }
+    .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 200px; gap: 1rem; color: #94a3b8; font-size: 0.9rem; text-align: center; }
+    .empty-state i { font-size: 2.5rem; opacity: 0.4; }
+</style>
+
 @code {
+    private static readonly string[] AllDays = { "Monday", "Tuesday", "Wednesday", "Thursday", "Friday" };
+
     private string? advisorId;
     private int profileGrade;
     private string profileSection = "";
     private string? profileStrand = "";
-    
+
     private bool IsAddDisabled => string.IsNullOrEmpty(advisorId);
     private List<ClassOffering> classes = new();
     private List<TeacherSubjectAssignment> subjectsForGrade = new();
@@ -256,12 +461,11 @@
     private ClassOffering? classToDelete;
     private string errorMessage = "";
     private string successMessage = "";
-    
-    // Subject search
+
+    // ── Add modal ──
     private string subjectSearchText = "";
     private bool showSubjectDropdown = false;
     private List<TeacherSubjectAssignment> filteredSubjects = new();
- 
     private bool showAddModal = false;
     private string modalErrorMessage = "";
     private string modalSuccessMessage = "";
@@ -271,6 +475,20 @@
     private string? newSubjectId = "";
     private string newStartTime = "07:30";
     private string newEndTime = "08:30";
+    private HashSet<string> newSelectedDays = new(AllDays); // all selected by default
+
+    // ── Edit modal ──
+    private bool showEditModal = false;
+    private ClassOffering? classToEdit;
+    private string editSubjectSearchText = "";
+    private string? editSubjectId = "";
+    private bool showEditSubjectDropdown = false;
+    private List<TeacherSubjectAssignment> editFilteredSubjects = new();
+    private string editStartTime = "07:30";
+    private string editEndTime = "08:30";
+    private HashSet<string> editSelectedDays = new();
+    private string editErrorMessage = "";
+    private string editSuccessMessage = "";
 
     protected override async Task OnInitializedAsync()
     {
@@ -282,43 +500,20 @@
             return;
         }
         advisorId = user.TeacherId;
+        if (string.IsNullOrEmpty(advisorId)) { errorMessage = "Advisor profile not found."; isLoading = false; return; }
 
-        if (string.IsNullOrEmpty(advisorId))
-        {
-            errorMessage = "Advisor profile not found.";
-            isLoading = false;
-            return;
-        }
-
-        // Fetch real profile data from DB — the auth token doesn't carry GradeLevel/Section
         TeacherInfo? profile = null;
-        try
-        {
-            profile = await Http.GetFromJsonAsync<TeacherInfo>($"{ApiConfig.BaseUrl}api/register/teacher-by-user/{user.UserId}");
-        }
-        catch (Exception ex)
-        {
-            errorMessage = $"Failed to load advisor profile: {ex.Message}";
-            isLoading = false;
-            return;
-        }
+        try { profile = await Http.GetFromJsonAsync<TeacherInfo>($"{ApiConfig.BaseUrl}api/register/teacher-by-user/{user.UserId}"); }
+        catch (Exception ex) { errorMessage = $"Failed to load advisor profile: {ex.Message}"; isLoading = false; return; }
 
-        if (profile == null)
-        {
-            errorMessage = "Advisor profile not found in the database. Please contact your administrator.";
-            isLoading = false;
-            return;
-        }
+        if (profile == null) { errorMessage = "Advisor profile not found in the database."; isLoading = false; return; }
 
         profileGrade = profile.GradeLevel > 0 ? profile.GradeLevel : 7;
         profileSection = profile.Section ?? "";
         profileStrand = profile.Strand ?? "";
 
         await LoadClasses();
-        // Set initial modal values to profile
-        newGrade = profileGrade;
-        newSection = profileSection;
-        newStrand = profileStrand;
+        newGrade = profileGrade; newSection = profileSection; newStrand = profileStrand;
         await LoadSubjectsForGrade();
         isLoading = false;
     }
@@ -329,12 +524,9 @@
         try
         {
             var list = await Http.GetFromJsonAsync<List<ClassOffering>>($"{ApiConfig.BaseUrl}api/ClassOffering/advisor/{advisorId}");
-            classes = list ?? new List<ClassOffering>();
+            classes = list ?? new();
         }
-        catch (Exception ex)
-        {
-            errorMessage = "Failed to load classes: " + ex.Message;
-        }
+        catch (Exception ex) { errorMessage = "Failed to load classes: " + ex.Message; }
     }
 
     private async Task LoadSubjectsForGrade()
@@ -343,222 +535,186 @@
         try
         {
             var strandParam = string.IsNullOrEmpty(newStrand) ? "" : $"&strand={Uri.EscapeDataString(newStrand)}";
-            var url = $"{ApiConfig.BaseUrl}api/ClassOffering/subjects-for-grade?gradeLevel={newGrade}{strandParam}";
-            var list = await Http.GetFromJsonAsync<List<TeacherSubjectAssignment>>(url);
-            subjectsForGrade = list ?? new List<TeacherSubjectAssignment>();
-            
-            // Filter out subjects already in this section
+            var list = await Http.GetFromJsonAsync<List<TeacherSubjectAssignment>>($"{ApiConfig.BaseUrl}api/ClassOffering/subjects-for-grade?gradeLevel={newGrade}{strandParam}");
+            subjectsForGrade = list ?? new();
             var existingIds = classes.Select(c => c.SubjectId).ToList();
-            filteredSubjects = subjectsForGrade
-                .Where(s => !existingIds.Contains(s.SubjectId))
-                .Take(10).ToList();
-
-            newSubjectId = "";
-            subjectSearchText = "";
+            filteredSubjects = subjectsForGrade.Where(s => !existingIds.Contains(s.SubjectId)).Take(10).ToList();
+            newSubjectId = ""; subjectSearchText = "";
         }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"Error loading subjects: {ex.Message}");
-            subjectsForGrade = new List<TeacherSubjectAssignment>();
-            filteredSubjects = new();
-            newSubjectId = "";
-            subjectSearchText = "";
-        }
-        finally
-        {
-            isLoadingSubjects = false;
-        }
+        catch { subjectsForGrade = new(); filteredSubjects = new(); newSubjectId = ""; subjectSearchText = ""; }
+        finally { isLoadingSubjects = false; }
     }
 
+    // ── Add Modal ──
     private async Task ShowAddModal()
     {
-        newGrade = profileGrade;
-        newSection = profileSection;
-        newStrand = profileStrand;
-        newSubjectId = "";
-        subjectSearchText = "";
-        showSubjectDropdown = false;
-        filteredSubjects = new();
-        
-        // Auto-adjust time: set next start time to the end time of the last class
+        newGrade = profileGrade; newSection = profileSection; newStrand = profileStrand;
+        newSubjectId = ""; subjectSearchText = ""; showSubjectDropdown = false; filteredSubjects = new();
+        newSelectedDays = new HashSet<string>(AllDays);
         if (classes.Any())
         {
             var lastClass = classes.OrderBy(c => c.ScheduleEnd).Last();
-            var nextStart = lastClass.ScheduleEnd;
-            var nextEnd = nextStart.Add(TimeSpan.FromHours(1));
-            
-            // Limit to reasonable school hours if needed, but usually just +1hr is fine
-            newStartTime = nextStart.ToString(@"hh\:mm");
+            var nextEnd = lastClass.ScheduleEnd.Add(TimeSpan.FromHours(1));
+            newStartTime = lastClass.ScheduleEnd.ToString(@"hh\:mm");
             newEndTime = nextEnd.ToString(@"hh\:mm");
         }
-        else
-        {
-            newStartTime = "07:30";
-            newEndTime = "08:30";
-        }
+        else { newStartTime = "07:30"; newEndTime = "08:30"; }
         showAddModal = true;
         await LoadSubjectsForGrade();
     }
 
-    private void HideAddModal()
-    {
-        showAddModal = false;
-        showSubjectDropdown = false;
-        modalErrorMessage = "";
-        modalSuccessMessage = "";
-    }
+    private void HideAddModal() { showAddModal = false; showSubjectDropdown = false; modalErrorMessage = ""; modalSuccessMessage = ""; }
 
     private async Task OnSubjectSearch(ChangeEventArgs e)
     {
         subjectSearchText = e.Value?.ToString() ?? "";
         showSubjectDropdown = true;
         var existingIds = classes.Select(c => c.SubjectId).ToList();
-
         if (string.IsNullOrWhiteSpace(subjectSearchText))
-        {
-            filteredSubjects = subjectsForGrade
-                .Where(s => !existingIds.Contains(s.SubjectId))
-                .Take(10).ToList();
-        }
+            filteredSubjects = subjectsForGrade.Where(s => !existingIds.Contains(s.SubjectId)).Take(10).ToList();
         else
         {
-            var keyword = subjectSearchText.ToLower();
-            filteredSubjects = subjectsForGrade
-                .Where(s => !existingIds.Contains(s.SubjectId) && s.SubjectName.Contains(keyword, StringComparison.OrdinalIgnoreCase))
-                .Take(10)
-                .ToList();
-            
-            // If no local results or keyword is specific, search from server
+            filteredSubjects = subjectsForGrade.Where(s => !existingIds.Contains(s.SubjectId) && s.SubjectName.Contains(subjectSearchText, StringComparison.OrdinalIgnoreCase)).Take(10).ToList();
             if (filteredSubjects.Count < 3)
             {
                 try
                 {
                     var strandParam = string.IsNullOrEmpty(newStrand) ? "" : $"&strand={Uri.EscapeDataString(newStrand)}";
-                    var url = $"{ApiConfig.BaseUrl}api/ClassOffering/search-subjects?gradeLevel={newGrade}{strandParam}&keyword={Uri.EscapeDataString(subjectSearchText)}";
-                    var result = await Http.GetFromJsonAsync<List<TeacherSubjectAssignment>>(url);
-                    if (result != null)
-                    {
-                        var newResults = result.Where(s => !existingIds.Contains(s.SubjectId) && !filteredSubjects.Any(fs => fs.SubjectId == s.SubjectId));
-                        filteredSubjects.AddRange(newResults);
-                    }
+                    var result = await Http.GetFromJsonAsync<List<TeacherSubjectAssignment>>($"{ApiConfig.BaseUrl}api/ClassOffering/search-subjects?gradeLevel={newGrade}{strandParam}&keyword={Uri.EscapeDataString(subjectSearchText)}");
+                    if (result != null) filteredSubjects.AddRange(result.Where(s => !existingIds.Contains(s.SubjectId) && !filteredSubjects.Any(fs => fs.SubjectId == s.SubjectId)));
                 }
                 catch { }
             }
         }
     }
 
-    private void SelectSubject(TeacherSubjectAssignment sub)
-    {
-        newSubjectId = sub.SubjectId;
-        subjectSearchText = sub.SubjectName;
-        showSubjectDropdown = false;
-        modalErrorMessage = "";
-    }
+    private void SelectSubject(TeacherSubjectAssignment sub) { newSubjectId = sub.SubjectId; subjectSearchText = sub.SubjectName; showSubjectDropdown = false; modalErrorMessage = ""; }
+    private void SelectManualSubject(string name) { newSubjectId = ""; subjectSearchText = name; showSubjectDropdown = false; modalErrorMessage = ""; }
+    private void ClearSubject() { newSubjectId = ""; subjectSearchText = ""; showSubjectDropdown = false; var e = classes.Select(c => c.SubjectId).ToList(); filteredSubjects = subjectsForGrade.Where(s => !e.Contains(s.SubjectId)).Take(10).ToList(); }
+    private void OnStartTimeChanged(ChangeEventArgs e) { if (!string.IsNullOrEmpty(e.Value?.ToString())) newStartTime = e.Value.ToString()!; }
+    private void OnEndTimeChanged(ChangeEventArgs e) { if (!string.IsNullOrEmpty(e.Value?.ToString())) newEndTime = e.Value.ToString()!; }
 
-    private void SelectManualSubject(string name)
+    private void ToggleDay(string day, bool isAddModal)
     {
-        newSubjectId = ""; // Empty ID signals manual entry
-        subjectSearchText = name;
-        showSubjectDropdown = false;
-        modalErrorMessage = "";
-    }
-
-    private void ClearSubject()
-    {
-        newSubjectId = "";
-        subjectSearchText = "";
-        showSubjectDropdown = false;
-        var existingIds = classes.Select(c => c.SubjectId).ToList();
-        filteredSubjects = subjectsForGrade
-            .Where(s => !existingIds.Contains(s.SubjectId))
-            .Take(10).ToList();
-    }
-
-    private void OnStartTimeChanged(ChangeEventArgs e)
-    {
-        var v = e.Value?.ToString();
-        if (!string.IsNullOrEmpty(v)) newStartTime = v;
-    }
-
-    private void OnEndTimeChanged(ChangeEventArgs e)
-    {
-        var v = e.Value?.ToString();
-        if (!string.IsNullOrEmpty(v)) newEndTime = v;
+        var set = isAddModal ? newSelectedDays : editSelectedDays;
+        if (set.Contains(day)) { if (set.Count > 1) set.Remove(day); }
+        else set.Add(day);
+        StateHasChanged();
     }
 
     private async Task AddClass()
     {
         if (string.IsNullOrEmpty(advisorId) || (string.IsNullOrEmpty(newSubjectId) && string.IsNullOrEmpty(subjectSearchText))) return;
-        
-        modalErrorMessage = "";
-        modalSuccessMessage = "";
-
+        modalErrorMessage = ""; modalSuccessMessage = "";
         if (!TimeSpan.TryParse(newStartTime, out var start) || !TimeSpan.TryParse(newEndTime, out var end) || end <= start)
         {
-            modalErrorMessage = "Invalid time. End must be after start.";
-            return;
+            modalErrorMessage = "Invalid time. End must be after start."; return;
         }
-
-        // Check for time overlap in the current section
-        var overlappingClass = classes.FirstOrDefault(c => 
-            (start < c.ScheduleEnd && end > c.ScheduleStart));
-        
-        if (overlappingClass != null)
+        // Time conflict only if days overlap
+        var dayStr = string.Join(",", newSelectedDays.OrderBy(d => Array.IndexOf(AllDays, d)));
+        var selectedSet = newSelectedDays;
+        var overlap = classes.FirstOrDefault(c =>
+            ParseDays(c.DayOfWeek).Any(d => selectedSet.Contains(d)) &&
+            start < c.ScheduleEnd && end > c.ScheduleStart);
+        if (overlap != null)
         {
-            modalErrorMessage = $"Time conflict! This slot overlaps with '{overlappingClass.SubjectName}' ({overlappingClass.ScheduleStart:hh\\:mm} - {overlappingClass.ScheduleEnd:hh\\:mm}).";
-            return;
+            modalErrorMessage = $"Time conflict with '{overlap.SubjectName}' ({overlap.ScheduleStart:hh\\:mm}–{overlap.ScheduleEnd:hh\\:mm}) on overlapping days."; return;
         }
-
         isSaving = true;
         try
         {
             var request = new CreateClassOfferingRequest
             {
-                AdvisorId = advisorId,
-                SubjectId = newSubjectId ?? "",
+                AdvisorId = advisorId, SubjectId = newSubjectId ?? "",
                 SubjectName = string.IsNullOrEmpty(newSubjectId) ? subjectSearchText : null,
-                GradeLevel = newGrade,
-                Section = newSection,
+                GradeLevel = newGrade, Section = newSection,
                 Strand = string.IsNullOrEmpty(newStrand) ? null : newStrand,
-                ScheduleStart = start,
-                ScheduleEnd = end
+                ScheduleStart = start, ScheduleEnd = end, DayOfWeek = dayStr
             };
             var response = await Http.PostAsJsonAsync($"{ApiConfig.BaseUrl}api/ClassOffering", request);
             if (response.IsSuccessStatusCode)
             {
-                var result = await response.Content.ReadFromJsonAsync<ClassOfferingResponse>();
                 await LoadClasses();
                 modalSuccessMessage = "Class added successfully!";
-                StateHasChanged();
-                
-                // Clear modal and hide after delay
-                Task.Delay(1500).ContinueWith(_ => {
-                    InvokeAsync(() => {
-                        HideAddModal();
-                        ShowSuccessMessage("Class added successfully!");
-                        StateHasChanged();
-                    });
-                });
+                Task.Delay(1500).ContinueWith(_ => InvokeAsync(() => { HideAddModal(); ShowSuccessMessage("Class added!"); StateHasChanged(); }));
             }
-            else
-            {
-                var error = await response.Content.ReadAsStringAsync();
-                modalErrorMessage = $"Failed to add class: {error}";
-            }
+            else { var err = await response.Content.ReadAsStringAsync(); modalErrorMessage = $"Failed: {err}"; }
         }
-        catch (Exception ex)
-        {
-            modalErrorMessage = ex.Message;
-        }
+        catch (Exception ex) { modalErrorMessage = ex.Message; }
         isSaving = false;
     }
 
-    private void DeleteClass(ClassOffering c)
+    // ── Edit Modal ──
+    private void ShowEditModal(ClassOffering c)
     {
-        classToDelete = c;
-        showDeleteConfirm = true;
+        classToEdit = c;
+        editSubjectId = c.SubjectId;
+        editSubjectSearchText = c.SubjectName;
+        editStartTime = c.ScheduleStart.ToString(@"hh\:mm");
+        editEndTime = c.ScheduleEnd.ToString(@"hh\:mm");
+        editSelectedDays = new HashSet<string>(ParseDays(c.DayOfWeek));
+        editFilteredSubjects = subjectsForGrade.Take(10).ToList();
+        showEditSubjectDropdown = false;
+        editErrorMessage = ""; editSuccessMessage = "";
+        showEditModal = true;
     }
 
+    private void HideEditModal() { showEditModal = false; showEditSubjectDropdown = false; classToEdit = null; editErrorMessage = ""; editSuccessMessage = ""; }
+
+    private void OnEditSubjectSearch(ChangeEventArgs e)
+    {
+        editSubjectSearchText = e.Value?.ToString() ?? "";
+        showEditSubjectDropdown = true;
+        if (string.IsNullOrWhiteSpace(editSubjectSearchText))
+            editFilteredSubjects = subjectsForGrade.Take(10).ToList();
+        else
+            editFilteredSubjects = subjectsForGrade.Where(s => s.SubjectName.Contains(editSubjectSearchText, StringComparison.OrdinalIgnoreCase)).Take(10).ToList();
+    }
+
+    private void SelectEditSubject(TeacherSubjectAssignment sub) { editSubjectId = sub.SubjectId; editSubjectSearchText = sub.SubjectName; showEditSubjectDropdown = false; }
+    private void SelectEditManualSubject(string name) { editSubjectId = ""; editSubjectSearchText = name; showEditSubjectDropdown = false; }
+    private void OnEditStartTimeChanged(ChangeEventArgs e) { if (!string.IsNullOrEmpty(e.Value?.ToString())) editStartTime = e.Value.ToString()!; }
+    private void OnEditEndTimeChanged(ChangeEventArgs e) { if (!string.IsNullOrEmpty(e.Value?.ToString())) editEndTime = e.Value.ToString()!; }
+
+    private async Task SaveEdit()
+    {
+        if (classToEdit == null || string.IsNullOrEmpty(advisorId)) return;
+        editErrorMessage = ""; editSuccessMessage = "";
+        if (!TimeSpan.TryParse(editStartTime, out var start) || !TimeSpan.TryParse(editEndTime, out var end) || end <= start)
+        {
+            editErrorMessage = "Invalid time. End must be after start."; return;
+        }
+        var dayStr = string.Join(",", editSelectedDays.OrderBy(d => Array.IndexOf(AllDays, d)));
+        // Conflict check excluding self
+        var overlap = classes.Where(c => c.ClassOfferingId != classToEdit.ClassOfferingId)
+            .FirstOrDefault(c => ParseDays(c.DayOfWeek).Any(d => editSelectedDays.Contains(d)) && start < c.ScheduleEnd && end > c.ScheduleStart);
+        if (overlap != null) { editErrorMessage = $"Time conflict with '{overlap.SubjectName}'."; return; }
+
+        isSaving = true;
+        try
+        {
+            var request = new UpdateClassOfferingRequest
+            {
+                ScheduleStart = start, ScheduleEnd = end,
+                DayOfWeek = dayStr,
+                SubjectId = string.IsNullOrEmpty(editSubjectId) ? null : editSubjectId,
+                SubjectName = string.IsNullOrEmpty(editSubjectId) ? editSubjectSearchText : null
+            };
+            var response = await Http.PutAsJsonAsync($"{ApiConfig.BaseUrl}api/ClassOffering/{classToEdit.ClassOfferingId}?advisorId={Uri.EscapeDataString(advisorId)}", request);
+            if (response.IsSuccessStatusCode)
+            {
+                await LoadClasses();
+                editSuccessMessage = "Saved!";
+                Task.Delay(1200).ContinueWith(_ => InvokeAsync(() => { HideEditModal(); ShowSuccessMessage("Class updated!"); StateHasChanged(); }));
+            }
+            else { var err = await response.Content.ReadAsStringAsync(); editErrorMessage = $"Failed: {err}"; }
+        }
+        catch (Exception ex) { editErrorMessage = ex.Message; }
+        isSaving = false;
+    }
+
+    // ── Delete ──
+    private void DeleteClass(ClassOffering c) { classToDelete = c; showDeleteConfirm = true; }
     private async Task ConfirmDelete()
     {
         if (classToDelete == null || string.IsNullOrEmpty(advisorId)) return;
@@ -566,396 +722,23 @@
         try
         {
             var response = await Http.DeleteAsync($"{ApiConfig.BaseUrl}api/ClassOffering/{classToDelete.ClassOfferingId}?advisorId={Uri.EscapeDataString(advisorId)}");
-            if (response.IsSuccessStatusCode)
-            {
-                await LoadClasses();
-                showDeleteConfirm = false;
-                ShowSuccessMessage("Class removed.");
-            }
-            else
-                errorMessage = "Failed to remove class.";
+            if (response.IsSuccessStatusCode) { await LoadClasses(); showDeleteConfirm = false; ShowSuccessMessage("Class removed."); }
+            else errorMessage = "Failed to remove class.";
         }
-        catch (Exception ex)
-        {
-            errorMessage = ex.Message;
-        }
+        catch (Exception ex) { errorMessage = ex.Message; }
         isDeleting = false;
     }
 
-    private void ShowSuccessMessage(string message)
+    private void ShowSuccessMessage(string msg)
     {
-        successMessage = message;
-        StateHasChanged();
-        // Clear message after 3 seconds
-        Task.Delay(3000).ContinueWith(_ =>
-        {
-            successMessage = "";
-            InvokeAsync(StateHasChanged);
-        });
+        successMessage = msg;
+        Task.Delay(3000).ContinueWith(_ => InvokeAsync(() => { successMessage = ""; StateHasChanged(); }));
+    }
+
+    private static List<string> ParseDays(string? dayOfWeek)
+    {
+        if (string.IsNullOrWhiteSpace(dayOfWeek))
+            return new List<string> { "Monday", "Tuesday", "Wednesday", "Thursday", "Friday" };
+        return dayOfWeek.Split(',').Select(d => d.Trim()).Where(d => !string.IsNullOrEmpty(d)).ToList();
     }
 }
-
-<style>
-    .page-container {
-        display: flex;
-        flex-direction: column;
-        height: 100vh;
-        overflow: hidden;
-        background: #f8fafc;
-    }
-
-    .header-section {
-        padding: 0.5rem 1rem 0.25rem;
-        margin-bottom: 0.75rem;
-    }
-
-    .page-title {
-        font-weight: 800;
-        color: #2c3e50;
-        font-size: 1.2rem;
-        margin-bottom: 0;
-    }
-
-    .btn-add {
-        background: #1cc88a;
-        color: white;
-        border: none;
-        padding: 0.6rem 1rem;
-        border-radius: 8px;
-        font-weight: 600;
-        font-size: 0.9rem;
-        box-shadow: 0 4px 10px rgba(28, 200, 138, 0.2);
-        width: 100%;
-        transition: all 0.2s;
-    }
-
-    .btn-add:active {
-        transform: scale(0.98);
-        background: #17a673;
-    }
-
-    .content-section {
-        flex: 1;
-        overflow-y: auto;
-        padding: 0 1rem 120px; /* Extra padding at bottom for toast/clearance */
-        scrollbar-width: thin;
-    }
-    
-    .content-section::-webkit-scrollbar {
-        width: 4px;
-    }
-    
-    .content-section::-webkit-scrollbar-thumb {
-        background: #cbd5e1;
-        border-radius: 10px;
-    }
-
-    .class-list {
-        display: flex;
-        flex-direction: column;
-        gap: 0.75rem;
-    }
-
-    .class-card {
-        background: white;
-        border-radius: 12px;
-        border: 1px solid #edf2f7;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.03);
-    }
-
-    .card-body {
-        padding: 1rem;
-    }
-
-    .subject-name {
-        font-weight: 700;
-        color: #2d3748;
-        font-size: 1rem;
-        margin-bottom: 0.25rem;
-    }
-
-    .class-details {
-        display: flex;
-        gap: 0.4rem;
-    }
-
-    .time-slot, .teacher-name {
-        font-size: 0.8rem;
-        color: #718096;
-    }
-
-    .btn-remove {
-        background: none;
-        border: none;
-        color: #e74a3b;
-        padding: 0.5rem;
-        font-size: 1rem;
-        opacity: 0.7;
-    }
-
-    .btn-remove:active {
-        opacity: 1;
-    }
-
-    /* Modal Styles */
-    .modal-overlay {
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: rgba(45, 55, 72, 0.4);
-        backdrop-filter: blur(6px);
-        -webkit-backdrop-filter: blur(6px);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        z-index: 3000;
-        padding: 1.5rem;
-        animation: fadeIn 0.2s ease-out;
-    }
-
-    .modal-card {
-        background: white;
-        border-radius: 20px;
-        width: 100%;
-        max-width: 480px;
-        max-height: 85vh;
-        overflow-y: auto;
-        display: flex;
-        flex-direction: column;
-        box-shadow: 0 20px 40px rgba(0,0,0,0.15);
-        animation: slideUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-        border: 1px solid rgba(255,255,255,0.2);
-    }
-
-    @@keyframes fadeIn {
-        from { opacity: 0; }
-        to { opacity: 1; }
-    }
-
-    @@keyframes slideUp {
-        from { transform: translateY(20px); opacity: 0; }
-        to { transform: translateY(0); opacity: 1; }
-    }
-
-    .modal-header {
-        padding: 1.25rem 1.5rem 1rem;
-        border-bottom: 1px solid #f1f5f9;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        background: white;
-        position: sticky;
-        top: 0;
-        z-index: 10;
-    }
-
-    .modal-title {
-        font-weight: 800;
-        color: #1e293b;
-        font-size: 1.1rem;
-        letter-spacing: -0.02em;
-    }
-
-    .modal-body {
-        padding: 1.5rem;
-    }
-
-    .modal-footer {
-        padding: 1rem 1.5rem 1.25rem;
-        border-top: 1px solid #f1f5f9;
-        display: flex;
-        gap: 0.75rem;
-        justify-content: flex-end;
-        background: white;
-        position: sticky;
-        bottom: 0;
-        z-index: 10;
-    }
-
-    .btn-close {
-        background: #f8fafc;
-        border: none;
-        width: 32px;
-        height: 32px;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: #64748b;
-        transition: all 0.2s;
-        font-size: 1.2rem;
-        padding: 0;
-        line-height: 1;
-    }
-
-    .btn-close:hover {
-        background: #fee2e2;
-        color: #ef4444;
-        transform: rotate(90deg);
-    }
-
-    .mini-modal {
-        max-width: 360px !important;
-    }
-
-    /* Floating Toast Notifications */
-    .toast-container {
-        position: fixed;
-        bottom: 2rem;
-        left: 50%;
-        transform: translateX(-50%);
-        z-index: 9999;
-        display: flex;
-        flex-direction: column;
-        gap: 0.75rem;
-        width: calc(100% - 2rem);
-        max-width: 400px;
-        pointer-events: none;
-    }
-
-    .toast {
-        background: white;
-        padding: 1rem 1.25rem;
-        border-radius: 16px;
-        box-shadow: 0 12px 30px rgba(0,0,0,0.15);
-        display: flex;
-        align-items: center;
-        gap: 0.75rem;
-        pointer-events: auto;
-        animation: toastPop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-        border: 1px solid #f1f5f9;
-    }
-
-    @@keyframes toastPop {
-        0% { transform: translateY(100%) scale(0.9); opacity: 0; }
-        100% { transform: translateY(0) scale(1); opacity: 1; }
-    }
-
-    .toast-content {
-        flex: 1;
-        font-size: 0.9rem;
-        font-weight: 600;
-        color: #334155;
-    }
-
-    .toast-close {
-        background: none;
-        border: none;
-        color: #94a3b8;
-        font-size: 1.25rem;
-        padding: 0;
-        line-height: 1;
-    }
-
-    .toast-success { border-left: 5px solid #10b981; }
-    .toast-danger { border-left: 5px solid #ef4444; }
-
-    .form-group label {
-        font-size: 0.8rem;
-        font-weight: 600;
-        color: #4a5568;
-        margin-bottom: 0.3rem;
-    }
-
-    .loading-state, .empty-state {
-        text-align: center;
-        padding: 3rem 1rem;
-        color: #718096;
-    }
-
-    .empty-state i {
-        font-size: 3rem;
-        margin-bottom: 1rem;
-        opacity: 0.3;
-    }
-
-    .spinner {
-        width: 30px;
-        height: 30px;
-        border: 3px solid rgba(28, 200, 138, 0.1);
-        border-top: 3px solid #1cc88a;
-        border-radius: 50%;
-        animation: spin 1s linear infinite;
-        margin: 0 auto 1rem;
-    }
-
-    @@keyframes spin {
-        0% { transform: rotate(0deg); }
-        100% { transform: rotate(360deg); }
-    }
-
-    /* Info Badge Row (locked section display) */
-    .info-badge-row {
-        display: flex;
-        gap: 0.4rem;
-        flex-wrap: wrap;
-        margin-bottom: 0.25rem;
-    }
-    .info-badge {
-        background: #edf2f7;
-        color: #2d3748;
-        border-radius: 8px;
-        padding: 0.3rem 0.7rem;
-        font-size: 0.85rem;
-        font-weight: 600;
-    }
-    .strand-badge {
-        background: #ebf8f0;
-        color: #1cc88a;
-    }
-
-    /* Subject Search */
-    .subject-search-container { position: relative; }
-    .subject-dropdown {
-        position: absolute;
-        top: calc(100% + 2px);
-        left: 0;
-        right: 0;
-        background: white;
-        border: 1px solid #e2e8f0;
-        border-radius: 10px;
-        box-shadow: 0 8px 20px rgba(0,0,0,0.1);
-        z-index: 3000;
-        max-height: 220px;
-        overflow-y: auto;
-    }
-    .subject-option {
-        padding: 0.6rem 0.9rem;
-        cursor: pointer;
-        font-size: 0.88rem;
-        border-bottom: 1px solid #f7fafc;
-        transition: background 0.15s;
-    }
-    .subject-option:hover, .subject-option.selected {
-        background: #f0fff8;
-        color: #1cc88a;
-    }
-    .badge-strand {
-        background: #ebf8f0;
-        color: #1cc88a;
-        font-size: 0.7rem;
-    }
-    .selected-subject-badge {
-        display: flex;
-        align-items: center;
-        gap: 0.4rem;
-        background: #f0fff8;
-        border: 1px solid #1cc88a30;
-        border-radius: 8px;
-        padding: 0.4rem 0.7rem;
-        font-size: 0.85rem;
-    }
-    .btn-clear {
-        background: none;
-        border: none;
-        color: #a0aec0;
-        font-size: 1rem;
-        line-height: 1;
-        cursor: pointer;
-        padding: 0;
-        margin-left: auto;
-    }
-    .btn-clear:hover { color: #e74a3b; }
-</style>

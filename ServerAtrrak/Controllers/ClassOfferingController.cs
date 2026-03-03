@@ -26,12 +26,13 @@ namespace ServerAtrrak.Controllers
 
         [HttpGet("section")]
         public async Task<ActionResult<List<ClassOffering>>> GetBySection(
-            [FromQuery] string advisorId, 
-            [FromQuery] string section, 
-            [FromQuery] int gradeLevel)
+            [FromQuery] string advisorId,
+            [FromQuery] string section,
+            [FromQuery] int gradeLevel,
+            [FromQuery] string? dayOfWeek = null)
         {
             if (string.IsNullOrEmpty(advisorId) || string.IsNullOrEmpty(section)) return BadRequest();
-            var list = await _service.GetBySectionAsync(advisorId, section, gradeLevel);
+            var list = await _service.GetBySectionAsync(advisorId, section, gradeLevel, dayOfWeek);
             return Ok(list);
         }
 
@@ -88,6 +89,18 @@ namespace ServerAtrrak.Controllers
             return Ok(result);
         }
 
+        [HttpPut("{classOfferingId}")]
+        public async Task<ActionResult<ClassOfferingResponse>> Update(
+            string classOfferingId,
+            [FromQuery] string advisorId,
+            [FromBody] UpdateClassOfferingRequest request)
+        {
+            if (string.IsNullOrEmpty(advisorId)) return BadRequest("advisorId required");
+            var result = await _service.UpdateAsync(classOfferingId, advisorId, request);
+            if (!result.Success) return BadRequest(result);
+            return Ok(result);
+        }
+
         [HttpPut("{classOfferingId}/assign")]
         public async Task<ActionResult<ClassOfferingResponse>> AssignTeacher(string classOfferingId, [FromBody] AssignTeacherRequest body)
         {
@@ -116,13 +129,6 @@ namespace ServerAtrrak.Controllers
         }
     }
 
-    public class AssignTeacherRequest
-    {
-        public string TeacherId { get; set; } = "";
-    }
-
-    public class UnassignRequest
-    {
-        public string AdvisorId { get; set; } = "";
-    }
+    public class AssignTeacherRequest { public string TeacherId { get; set; } = ""; }
+    public class UnassignRequest { public string AdvisorId { get; set; } = ""; }
 }
