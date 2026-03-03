@@ -1220,7 +1220,7 @@ namespace ServerAtrrak.Controllers
                         ParentsNumber = reader.IsDBNull("ParentsNumber") ? "" : reader.GetString("ParentsNumber"),
                         Gender = reader.IsDBNull("Gender") ? "" : reader.GetString("Gender"),
                         SchoolName = reader.IsDBNull("SchoolName") ? "" : reader.GetString("SchoolName"),
-                        QRImage = reader.IsDBNull("QRImage") ? "" : reader.GetString("QRImage"),
+                        QRImage = reader.IsDBNull("QRImage") ? "" : System.Text.Encoding.UTF8.GetString((byte[])reader["QRImage"]),
                         AdvisorId = reader.IsDBNull("AdvisorId") ? null : reader.GetString("AdvisorId"),
                         Status = "Good",
                         EnrollmentStatus = reader.IsDBNull("EnrollmentStatus") ? "Pending" : reader.GetString("EnrollmentStatus"),
