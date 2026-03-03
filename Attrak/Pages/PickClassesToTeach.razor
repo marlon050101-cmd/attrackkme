@@ -58,28 +58,28 @@
                 <p class="text-muted mb-4">You have not picked any class yet. Choose from available classes below.</p>
             }
 
-            <div class="row g-3 mb-4 p-3 bg-light rounded border">
-                <div class="col-md-4">
-                    <label class="form-label small fw-bold">GRADE LEVEL</label>
-                    <select class="form-select" @bind="selectedGrade" @bind:after="LoadAvailable">
-                        <option value="0">All Grades</option>
-                        <option value="7">Grade 7</option>
+            <div class="row g-3 mb-4 p-3 bg-light rounded border shadow-sm">
+                <div class="col-12">
+                    <label class="form-label small fw-bold text-primary"><i class="fas fa-graduation-cap me-1"></i> GRADE LEVEL</label>
+                    <select class="form-select form-select-lg shadow-sm" @bind="selectedGrade" @bind:after="LoadAvailable">
+                        <option value="0">Select Grade Level...</option>
                         <option value="8">Grade 8</option>
                         <option value="9">Grade 9</option>
                         <option value="10">Grade 10</option>
                         <option value="11">Grade 11</option>
                         <option value="12">Grade 12</option>
+                        <option value="7">Grade 7</option>
                     </select>
                 </div>
-                <div class="col-md-8">
-                    <label class="form-label small fw-bold">SEARCH SUBJECT</label>
-                    <div class="input-group">
-                        <span class="input-group-text bg-white"><i class="fas fa-search text-muted"></i></span>
-                        <input type="text" class="form-control" placeholder="Search by subject name..." 
-                               @bind="searchKeyword" @bind:event="oninput" @onkeyup="HandleSearchKeyUp" />
+                <div class="col-12">
+                    <label class="form-label small fw-bold text-primary"><i class="fas fa-search me-1"></i> SEARCH SUBJECT</label>
+                    <div class="input-group input-group-lg shadow-sm">
+                        <span class="input-group-text bg-white border-end-0"><i class="fas fa-search text-muted"></i></span>
+                        <input type="text" class="form-control border-start-0" placeholder="Type subject name..." 
+                               @bind="searchKeyword" @bind:event="oninput" />
                         @if (!string.IsNullOrEmpty(searchKeyword))
                         {
-                            <button class="btn btn-outline-secondary" @onclick="ClearSearch"><i class="fas fa-times"></i></button>
+                            <button class="btn btn-outline-secondary bg-white border-start-0" @onclick="ClearSearch"><i class="fas fa-times text-muted"></i></button>
                         }
                     </div>
                 </div>

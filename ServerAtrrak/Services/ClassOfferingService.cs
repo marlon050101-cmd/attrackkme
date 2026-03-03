@@ -91,10 +91,10 @@ namespace ServerAtrrak.Services
                 using var connection = new MySqlConnection(_dbConnection.GetConnection());
                 await connection.OpenAsync();
                 
-                var query = $@"SELECT {SelectColumns.Replace("t.FullName as AdvisorName", "adv.FullName as AdvisorName")}
+                var query = $@"SELECT {SelectColumns}
                     FROM class_offering co
                     INNER JOIN subject s ON co.SubjectId = s.SubjectId
-                    LEFT JOIN teacher adv ON co.AdvisorId = adv.TeacherId
+                    LEFT JOIN teacher t ON co.AdvisorId = t.TeacherId
                     LEFT JOIN teacher t2 ON co.TeacherId = t2.TeacherId
                     WHERE co.TeacherId IS NULL";
 
@@ -102,7 +102,7 @@ namespace ServerAtrrak.Services
 
                 if (!string.IsNullOrEmpty(schoolId))
                 {
-                    query += " AND adv.SchoolId = @SchoolId";
+                    query += " AND t.SchoolId = @SchoolId";
                     cmd.Parameters.AddWithValue("@SchoolId", schoolId);
                 }
                 
