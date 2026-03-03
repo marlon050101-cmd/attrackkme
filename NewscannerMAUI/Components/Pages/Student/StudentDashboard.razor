@@ -83,13 +83,6 @@
                                 <h5 class="fw-bold text-dark">Enrollment Pending</h5>
                                 <p class="text-muted">Your registration is currently waiting for your Advisor's approval.</p>
                                 <p class="small text-muted">Once approved, your class schedule and subjects will appear here automatically.</p>
-                                @if (string.IsNullOrEmpty(student.AdvisorId))
-                                {
-                                    <div class="alert alert-danger mt-3 py-2 border-0 rounded-pill">
-                                        <i class="fas fa-exclamation-circle me-1"></i>
-                                        Missing Advisor link. Please contact admin.
-                                    </div>
-                                }
                             </div>
                         }
                         else if (classOfferings == null || classOfferings.Count == 0)
@@ -236,11 +229,18 @@
                 
                 if (student != null && student.EnrollmentStatus == "Approved" && !string.IsNullOrEmpty(student.AdvisorId))
                 {
-                    // Fetch Subjects
-                    var offerings = await http.GetFromJsonAsync<List<ClassOffering>>($"api/ClassOffering/section?advisorId={student.AdvisorId}&section={Uri.EscapeDataString(student.Section)}&gradeLevel={student.GradeLevel}");
-                    if (offerings != null)
+                    // Fetch Subjects using the advisor's section roster
+                    try
                     {
-                        classOfferings = offerings;
+                        var offerings = await http.GetFromJsonAsync<List<ClassOffering>>($"api/ClassOffering/section?advisorId={student.AdvisorId}&section={Uri.EscapeDataString(student.Section)}&gradeLevel={student.GradeLevel}");
+                        if (offerings != null)
+                        {
+                            classOfferings = offerings;
+                        }
+                    }
+                    catch (Exception subEx)
+                    {
+                        Console.WriteLine($"Error loading subjects: {subEx.Message}");
                     }
                 }
             }

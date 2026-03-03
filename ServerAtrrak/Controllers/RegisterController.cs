@@ -903,7 +903,7 @@ namespace ServerAtrrak.Controllers
             using var connection = new MySqlConnection(_dbConnection.GetConnection());
             await connection.OpenAsync();
 
-            var query = "SELECT StudentId, FullName, Email, GradeLevel, Section, Strand, SchoolId, ParentsNumber, Gender, QRImage, CreatedAt, UpdatedAt, IsActive FROM student WHERE StudentId = @StudentId";
+            var query = "SELECT StudentId, FullName, Email, GradeLevel, Section, Strand, SchoolId, ParentsNumber, Gender, QRImage, CreatedAt, UpdatedAt, IsActive, AdvisorId, EnrollmentStatus FROM student WHERE StudentId = @StudentId";
             using var command = new MySqlCommand(query, connection);
             command.Parameters.AddWithValue("@StudentId", studentId);
 
@@ -924,7 +924,9 @@ namespace ServerAtrrak.Controllers
                     QRImage = reader.IsDBNull("QRImage") ? null : System.Text.Encoding.UTF8.GetString((byte[])reader["QRImage"]),
                     CreatedAt = reader.IsDBNull("CreatedAt") ? DateTime.Now : reader.GetDateTime("CreatedAt"),
                     UpdatedAt = reader.IsDBNull("UpdatedAt") ? DateTime.Now : reader.GetDateTime("UpdatedAt"),
-                    IsActive = reader.IsDBNull("IsActive") ? true : reader.GetBoolean("IsActive")
+                    IsActive = reader.IsDBNull("IsActive") ? true : reader.GetBoolean("IsActive"),
+                    AdvisorId = reader.IsDBNull("AdvisorId") ? null : reader.GetString("AdvisorId"),
+                    EnrollmentStatus = reader.IsDBNull("EnrollmentStatus") ? "Pending" : reader.GetString("EnrollmentStatus")
                 };
             }
 
