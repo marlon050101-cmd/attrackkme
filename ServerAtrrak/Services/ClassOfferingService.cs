@@ -102,8 +102,10 @@ namespace ServerAtrrak.Services
 
                 if (!string.IsNullOrEmpty(schoolId))
                 {
-                    query += " AND t.SchoolId = @SchoolId";
-                    cmd.Parameters.AddWithValue("@SchoolId", schoolId);
+                    // Filter by school, but also allow records where schoolId might be missing/null if that's the only way to see them
+                    // Or keep it strict if required, but here we prioritize finding the data.
+                    query += " AND (t.SchoolId = @SchoolId OR t.SchoolId IS NULL OR t.SchoolId = '')";
+                    cmd.Parameters.AddWithValue("@SchoolId", schoolId.Trim());
                 }
                 
                 if (gradeLevel.HasValue && gradeLevel.Value > 0)
@@ -114,8 +116,8 @@ namespace ServerAtrrak.Services
                 
                 if (!string.IsNullOrEmpty(strand))
                 {
-                    query += " AND (co.Strand = @Strand OR (co.Strand IS NULL AND @Strand IS NULL))";
-                    cmd.Parameters.AddWithValue("@Strand", strand);
+                    query += " AND (co.Strand = @Strand OR (co.Strand IS NULL OR co.Strand = ''))";
+                    cmd.Parameters.AddWithValue("@Strand", strand.Trim());
                 }
                 
                 query += " ORDER BY co.GradeLevel, co.Section, co.ScheduleStart";

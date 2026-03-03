@@ -1,7 +1,9 @@
 @page "/teacher/subject-selection"
-@layout TeacherLayout
 @using NewscannerMAUI.Services
+@using NewscannerMAUI.Components.Layout
 @using AttrackSharedClass.Models
+@using System.Net.Http.Json
+@layout TeacherLayout
 @inject AuthService AuthService
 @inject HttpClient Http
 @inject NavigationManager Navigation
@@ -18,29 +20,26 @@
     </div>
 
     <!-- Filters Section -->
-    <div class="filters-card">
-        <div class="search-box">
-            <i class="fas fa-search"></i>
-            <input type="text" placeholder="Search subject name..." @bind="searchTerm" @bind:event="oninput" @onkeyup="HandleSearch" />
-        </div>
-        
-        <div class="filter-row">
+    <div class="filters-card shadow-sm">
+        <div class="filter-row mb-3">
             <div class="filter-group">
-                <label>Grade Level</label>
-                <select @bind="selectedGrade" @bind:after="LoadAvailableOfferings">
+                <label class="fw-bold text-primary small"><i class="fas fa-graduation-cap me-1"></i> SELECT GRADE LEVEL</label>
+                <select class="form-control" @bind="selectedGrade" @bind:after="LoadAvailableOfferings">
                     <option value="0">All Grades</option>
-                    @for (int i = 7; i <= 12; i++)
+                    @for (int i = 7; i <= 10; i++)
                     {
-                        <option value="@i">Grade @i</option>
+                        <option value="@i">Grade @i (Junior High)</option>
                     }
+                    <option value="11">Grade 11 (Senior High)</option>
+                    <option value="12">Grade 12 (Senior High)</option>
                 </select>
             </div>
 
             @if (selectedGrade >= 11)
             {
                 <div class="filter-group">
-                    <label>Strand</label>
-                    <select @bind="selectedStrand" @bind:after="LoadAvailableOfferings">
+                    <label class="fw-bold text-primary small"><i class="fas fa-layer-group me-1"></i> STRAND</label>
+                    <select class="form-control" @bind="selectedStrand" @bind:after="LoadAvailableOfferings">
                         <option value="">All Strands</option>
                         <option value="STEM">STEM</option>
                         <option value="ABM">ABM</option>
@@ -49,6 +48,15 @@
                         <option value="TVL">TVL</option>
                     </select>
                 </div>
+            }
+        </div>
+
+        <div class="search-box">
+            <i class="fas fa-search"></i>
+            <input type="text" placeholder="Search subject name..." @bind="searchTerm" @bind:event="oninput" @onkeyup="HandleSearch" />
+            @if (!string.IsNullOrEmpty(searchTerm))
+            {
+                <button class="btn-clear-search" @onclick="ClearSearch"><i class="fas fa-times"></i></button>
             }
         </div>
     </div>
@@ -142,8 +150,7 @@
         if (user != null)
         {
             teacherId = user.TeacherId;
-            // In a real app, we'd get schoolId from the teacher profile or user claims
-            // For now, it will filter by school if schoolId is provided to the API
+            schoolId = user.SchoolId;
         }
         await LoadAvailableOfferings();
     }
@@ -151,11 +158,17 @@
     private async Task LoadAvailableOfferings()
     {
         isLoading = true;
+        // Search takes priority, or clear strand if not SHS
+        if (selectedGrade < 11 && selectedGrade > 0) selectedStrand = "";
+        
         try
         {
-            var url = $"api/ClassOffering/available";
+            var url = $"{ApiConfig.BaseUrl}api/ClassOffering/available";
             var queryParams = new List<string>();
             
+            // If the user wants to see everything (scrambled), we can omit schoolId filter if needed
+            // but for now we keep it and just ensure it's handled on the backend fix below.
+            if (!string.IsNullOrEmpty(schoolId)) queryParams.Add($"schoolId={Uri.EscapeDataString(schoolId)}");
             if (selectedGrade > 0) queryParams.Add($"gradeLevel={selectedGrade}");
             if (!string.IsNullOrEmpty(selectedStrand)) queryParams.Add($"strand={Uri.EscapeDataString(selectedStrand)}");
             
@@ -165,13 +178,20 @@
             }
 
             var result = await Http.GetFromJsonAsync<List<ClassOffering>>(url);
-            offerings = result ?? new();
+            var list = result ?? new();
 
             // Apply client-side search filter
             if (!string.IsNullOrEmpty(searchTerm))
             {
-                offerings = offerings.Where(o => o.SubjectName.Contains(searchTerm, StringComparison.OrdinalIgnoreCase)).ToList();
+                list = list.Where(o => o.SubjectName.Contains(searchTerm, StringComparison.OrdinalIgnoreCase)).ToList();
             }
+            else if (selectedGrade == 0)
+            {
+                // Scramble (randomize) the list if viewing All Grades to show variety
+                list = list.OrderBy(x => Guid.NewGuid()).ToList();
+            }
+
+            offerings = list;
         }
         catch (Exception ex)
         {
@@ -180,6 +200,7 @@
         finally
         {
             isLoading = false;
+            StateHasChanged();
         }
     }
 
@@ -216,6 +237,12 @@
         {
             Console.WriteLine($"Error claiming offering: {ex.Message}");
         }
+    }
+
+    private void ClearSearch()
+    {
+        searchTerm = "";
+        _ = LoadAvailableOfferings();
     }
 
     private void CloseModal() => showSuccessModal = false;
@@ -302,6 +329,20 @@
         border-color: #4e73df;
     }
 
+    .btn-clear-search {
+        position: absolute;
+        right: 12px;
+        top: 50%;
+        transform: translateY(-50%);
+        border: none;
+        background: transparent;
+        color: #adb5bd;
+        padding: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
     .filter-row {
         display: flex;
         gap: 1rem;
@@ -335,7 +376,8 @@
     .grid-container {
         display: flex;
         flex-direction: column;
-        gap: 1rem;
+        gap: 0.75rem;
+        padding-bottom: 2rem;
     }
 
     .offering-card {
@@ -343,12 +385,18 @@
         border-radius: 12px;
         overflow: hidden;
         display: flex;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.03);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
         border: 1px solid #edf2f7;
+        transition: transform 0.2s;
+    }
+
+    .offering-card:active {
+        transform: scale(0.98);
+        background: #fdfdfd;
     }
 
     .card-edge {
-        width: 6px;
+        width: 4px;
     }
 
     .grade-7 { background: #4e73df; }
@@ -360,25 +408,32 @@
 
     .card-content {
         flex: 1;
-        padding: 1rem;
+        padding: 0.75rem 1rem;
         display: flex;
-        flex-direction: column;
-        gap: 0.75rem;
+        flex-direction: row;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+    }
+
+    .card-main {
+        flex: 1;
     }
 
     .card-main h3 {
-        font-size: 1.05rem;
-        font-weight: 800;
-        margin: 0.25rem 0 0.5rem;
+        font-size: 0.95rem;
+        font-weight: 700;
+        margin: 0.2rem 0;
         color: #2c3e50;
+        line-height: 1.2;
     }
 
     .grade-badge {
-        font-size: 0.65rem;
+        font-size: 0.6rem;
         font-weight: 800;
         background: #f0f4ff;
         color: #4e73df;
-        padding: 0.2rem 0.5rem;
+        padding: 0.1rem 0.4rem;
         border-radius: 4px;
         text-transform: uppercase;
     }
@@ -386,27 +441,29 @@
     .info-row {
         display: flex;
         align-items: center;
-        gap: 0.6rem;
-        font-size: 0.85rem;
+        gap: 0.5rem;
+        font-size: 0.75rem;
         color: #6c757d;
-        margin-bottom: 0.2rem;
+        margin-bottom: 0.1rem;
     }
 
     .info-row i {
-        width: 14px;
+        width: 12px;
         color: #adb5bd;
+        font-size: 0.7rem;
     }
 
     .btn-claim {
-        width: 100%;
-        padding: 0.6rem;
+        width: auto;
+        min-width: 80px;
+        padding: 0.5rem 0.75rem;
         border: none;
         border-radius: 8px;
         background: #4e73df;
         color: white;
         font-weight: 700;
-        font-size: 0.85rem;
-        transition: all 0.2s;
+        font-size: 0.75rem;
+        white-space: nowrap;
     }
 
     .btn-claim:active {
