@@ -762,5 +762,103 @@ namespace ServerAtrrak.Services
                 return null;
             }
         }
+        public async Task<List<PendingTeacherInfo>> GetPendingTeachersAsync(string schoolId)
+        {
+            try
+            {
+                using var connection = await _dbConnection.GetConnectionAsync();
+                var query = @"
+                    SELECT u.UserId, u.Username, u.Email, u.UserType, u.CreatedAt as RegisteredAt,
+                           t.FullName, t.SchoolId, s.SchoolName
+                    FROM user u
+                    JOIN teacher t ON u.TeacherId = t.TeacherId
+                    LEFT JOIN school s ON t.SchoolId = s.SchoolId
+                    WHERE t.SchoolId = @schoolId 
+                    AND u.IsApproved = 0 
+                    AND (u.UserType = 'Teacher' OR u.UserType = 'SubjectTeacher')";
+                
+                var pendingTeachers = new List<PendingTeacherInfo>();
+                using (var command = new MySqlCommand(query, connection))
+                {
+                    command.Parameters.AddWithValue("@schoolId", schoolId);
+                    using var reader = await command.ExecuteReaderAsync();
+                    while (await reader.ReadAsync())
+                    {
+                        pendingTeachers.Add(new PendingTeacherInfo
+                        {
+                            UserId = reader.GetString("UserId"),
+                            Username = reader.GetString("Username"),
+                            Email = reader.GetString("Email"),
+                            FullName = reader.IsDBNull("FullName") ? "" : reader.GetString("FullName"),
+                            SchoolId = reader.GetString("SchoolId"),
+                            SchoolName = reader.IsDBNull("SchoolName") ? "" : reader.GetString("SchoolName"),
+                            RegisteredAt = reader.GetDateTime("RegisteredAt"),
+                            UserType = reader.GetString("UserType")
+                        });
+                    }
+                }
+                return pendingTeachers;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error in GetPendingTeachersAsync: {ex.Message}");
+                return new List<PendingTeacherInfo>();
+            }
+        }
+
+        public async Task<bool> ApproveTeacherAsync(string userId)
+        {
+            try
+            {
+                using var connection = await _dbConnection.GetConnectionAsync();
+                var query = "UPDATE user SET IsApproved = 1, IsActive = 1 WHERE UserId = @userId";
+                using var command = new MySqlCommand(query, connection);
+                command.Parameters.AddWithValue("@userId", userId);
+                var rows = await command.ExecuteNonQueryAsync();
+                return rows > 0;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error in ApproveTeacherAsync: {ex.Message}");
+                return false;
+            }
+        }
+        public async Task<object> GetHeadStatsAsync(string schoolId)
+        {
+            try
+            {
+                using var connection = await _dbConnection.GetConnectionAsync();
+                
+                // Active Teachers
+                var teachersQuery = "SELECT COUNT(*) FROM user u JOIN teacher t ON u.TeacherId = t.TeacherId WHERE t.SchoolId = @schoolId AND u.IsActive = 1 AND (u.UserType = 'Teacher' OR u.UserType = 'SubjectTeacher')";
+                using var teacherCommand = new MySqlCommand(teachersQuery, connection);
+                teacherCommand.Parameters.AddWithValue("@schoolId", schoolId);
+                var activeTeachers = Convert.ToInt32(await teacherCommand.ExecuteScalarAsync());
+
+                // Active Students
+                var studentsQuery = "SELECT COUNT(*) FROM student WHERE SchoolId = @schoolId AND IsActive = 1";
+                using var studentCommand = new MySqlCommand(studentsQuery, connection);
+                studentCommand.Parameters.AddWithValue("@schoolId", schoolId);
+                var activeStudents = Convert.ToInt32(await studentCommand.ExecuteScalarAsync());
+
+                // Pending Approvals
+                var pendingQuery = "SELECT COUNT(*) FROM user u JOIN teacher t ON u.TeacherId = t.TeacherId WHERE t.SchoolId = @schoolId AND u.IsApproved = 0 AND (u.UserType = 'Teacher' OR u.UserType = 'SubjectTeacher')";
+                using var pendingCommand = new MySqlCommand(pendingQuery, connection);
+                pendingCommand.Parameters.AddWithValue("@schoolId", schoolId);
+                var pendingApprovals = Convert.ToInt32(await pendingCommand.ExecuteScalarAsync());
+
+                return new
+                {
+                    ActiveTeachers = activeTeachers,
+                    ActiveStudents = activeStudents,
+                    PendingApprovals = pendingApprovals
+                };
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error in GetHeadStatsAsync: {ex.Message}");
+                return new { ActiveTeachers = 0, ActiveStudents = 0, PendingApprovals = 0 };
+            }
+        }
     }
 }

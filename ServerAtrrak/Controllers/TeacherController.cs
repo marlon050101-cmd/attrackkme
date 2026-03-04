@@ -203,6 +203,50 @@ namespace ServerAtrrak.Controllers
                 }
             });
         }
+
+        [HttpGet("pending/{schoolId}")]
+        public async Task<ActionResult<List<PendingTeacherInfo>>> GetPendingTeachers(string schoolId)
+        {
+            try
+            {
+                var pendingTeachers = await _teacherService.GetPendingTeachersAsync(schoolId);
+                return Ok(pendingTeachers);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Internal server error", error = ex.Message });
+            }
+        }
+
+        [HttpPut("approve/{userId}")]
+        public async Task<ActionResult> ApproveTeacher(string userId)
+        {
+            try
+            {
+                var result = await _teacherService.ApproveTeacherAsync(userId);
+                if (result)
+                    return Ok(new { message = "Teacher approved successfully" });
+                return NotFound(new { message = "Teacher not found or already approved" });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Internal server error", error = ex.Message });
+            }
+        }
+
+        [HttpGet("head-stats/{schoolId}")]
+        public async Task<ActionResult> GetHeadStats(string schoolId)
+        {
+            try
+            {
+                var stats = await _teacherService.GetHeadStatsAsync(schoolId);
+                return Ok(stats);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Internal server error", error = ex.Message });
+            }
+        }
     }
 
     public class UpdateFullNameRequest

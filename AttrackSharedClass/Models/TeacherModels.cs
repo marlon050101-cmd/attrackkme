@@ -45,4 +45,16 @@ namespace AttrackSharedClass.Models
         public double AttendanceRate { get; set; }
         public DateTime Date { get; set; } = DateTime.Today;
     }
+
+    public class PendingTeacherInfo
+    {
+        public string UserId { get; set; } = string.Empty;
+        public string Username { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public string FullName { get; set; } = string.Empty;
+        public string SchoolId { get; set; } = string.Empty;
+        public string SchoolName { get; set; } = string.Empty;
+        public DateTime RegisteredAt { get; set; }
+        public string UserType { get; set; } = string.Empty;
+    }
 }

@@ -4,6 +4,7 @@
 @using AttrackSharedClass.Models
 @inject AuthService AuthService
 @inject NavigationManager Navigation
+@inject HttpClient Http
 
 <div class="dashboard-container">
     <div class="welcome-banner">
@@ -35,36 +36,40 @@
         </div>
     </div>
 
-    <!-- System Summary -->
+    <!-- Summary Section -->
     <div class="summary-section mt-4">
-        <h5 class="section-title">System Ovenview</h5>
+        <h5 class="section-title">School Summary</h5>
         <div class="info-card">
             <div class="info-item">
-                <span class="info-label">Active Teachers</span>
-                <span class="info-value">--</span>
+                <span class="info-label">Teachers</span>
+                <span class="info-value">@activeTeachers</span>
             </div>
             <div class="info-divider"></div>
             <div class="info-item">
-                <span class="info-label">Active Students</span>
-                <span class="info-value">--</span>
+                <span class="info-label">Students</span>
+                <span class="info-value">@activeStudents</span>
             </div>
         </div>
     </div>
 
-    <!-- Action Buttons -->
+    <!-- Actions Section -->
     <div class="actions-section mt-4">
-        <h5 class="section-title">Administrative Actions</h5>
+        <h5 class="section-title">Administrative Tasks</h5>
         <div class="action-buttons-grid">
             <button class="action-card approvals" @onclick="GoToApprovals">
                 <div class="action-icon">
                     <i class="fas fa-user-check"></i>
+                    @if (pendingApprovals > 0)
+                    {
+                        <span class="notification-dot">@pendingApprovals</span>
+                    }
                 </div>
-                <span class="action-text">Approve Teachers</span>
+                <span class="action-text">Review Teachers</span>
             </button>
             
             <button class="action-card reports">
                 <div class="action-icon">
-                    <i class="fas fa-file-alt"></i>
+                    <i class="fas fa-file-invoice"></i>
                 </div>
                 <span class="action-text">School Reports</span>
             </button>
@@ -74,6 +79,9 @@
 
 @code {
     private string headName = "Head";
+    private int activeTeachers = 0;
+    private int activeStudents = 0;
+    private int pendingApprovals = 0;
 
     protected override async Task OnInitializedAsync()
     {
@@ -81,14 +89,64 @@
         if (user != null)
         {
             headName = user.Username;
+            await LoadStats(user.SchoolId);
+        }
+    }
+
+    private async Task LoadStats(string? schoolId)
+    {
+        if (string.IsNullOrEmpty(schoolId)) return;
+
+        try
+        {
+            var stats = await Http.GetFromJsonAsync<HeadStatsResponse>($"api/teacher/head-stats/{schoolId}");
+            if (stats != null)
+            {
+                activeTeachers = stats.ActiveTeachers;
+                activeStudents = stats.ActiveStudents;
+                pendingApprovals = stats.PendingApprovals;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading stats: {ex.Message}");
         }
     }
 
     private void GoToApprovals() => Navigation.NavigateTo("/head/teacher-approvals");
-    private void GoToManageRoles() => Navigation.NavigateTo("/head/manage-roles");
+    private void GoToManageRoles() => Navigation.NavigateTo("/head-manage-roles");
+
+    private class HeadStatsResponse
+    {
+        public int ActiveTeachers { get; set; }
+        public int ActiveStudents { get; set; }
+        public int PendingApprovals { get; set; }
+    }
 }
 
 <style>
+    .notification-dot {
+        position: absolute;
+        top: -5px;
+        right: -5px;
+        background: #f6c23e;
+        color: #2b166b;
+        font-size: 0.65rem;
+        font-weight: 900;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 2px solid white;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+
+    .action-icon {
+        position: relative;
+    }
+
     .dashboard-container {
         padding: 0;
     }
