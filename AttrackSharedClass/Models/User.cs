@@ -36,6 +36,7 @@ namespace AttrackSharedClass.Models
         // Foreign key references
         public string? TeacherId { get; set; }
         public string? StudentId { get; set; }
+        public string? SchoolId { get; set; }
     }
 
     public enum UserType

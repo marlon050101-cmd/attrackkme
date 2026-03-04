@@ -83,6 +83,7 @@ namespace ServerAtrrak.Services
                         UserType = user.UserType,
                         TeacherId = user.TeacherId,
                         StudentId = user.StudentId,
+                        SchoolId = user.SchoolId,
                         LastLoginAt = user.LastLoginAt
                     }
                 };
@@ -110,10 +111,13 @@ namespace ServerAtrrak.Services
                 _logger.LogInformation("Database connection opened successfully");
 
                 var query = @"
-                    SELECT UserId, Username, Email, Password, UserType, 
-                           IsActive, IsApproved, CreatedAt, UpdatedAt, LastLoginAt, TeacherId, StudentId
-                    FROM user 
-                    WHERE Username = @Username";
+                    SELECT u.UserId, u.Username, u.Email, u.Password, u.UserType, 
+                           u.IsActive, u.IsApproved, u.CreatedAt, u.UpdatedAt, u.LastLoginAt, 
+                           u.TeacherId, u.StudentId, COALESCE(t.SchoolId, s.SchoolId) as SchoolId
+                    FROM user u
+                    LEFT JOIN teacher t ON u.TeacherId = t.TeacherId
+                    LEFT JOIN student s ON u.StudentId = s.StudentId
+                    WHERE u.Username = @Username";
 
                 using var command = new MySqlCommand(query, connection);
                 command.Parameters.AddWithValue("@Username", username);
@@ -151,7 +155,8 @@ namespace ServerAtrrak.Services
                         UpdatedAt = reader.GetDateTime(8),
                         LastLoginAt = reader.IsDBNull(9) ? null : reader.GetDateTime(9),
                         TeacherId = reader.IsDBNull(10) ? null : reader.GetString(10),
-                        StudentId = reader.IsDBNull(11) ? null : reader.GetString(11)
+                        StudentId = reader.IsDBNull(11) ? null : reader.GetString(11),
+                        SchoolId = reader.IsDBNull(12) ? null : reader.GetString(12)
                     };
                     _logger.LogInformation("User object created successfully");
                     return user;
