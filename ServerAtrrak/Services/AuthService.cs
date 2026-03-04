@@ -46,11 +46,22 @@ namespace ServerAtrrak.Services
 
                 if (!user.IsApproved)
                 {
-                    return new LoginResponse
+                    if (user.UserType == UserType.Teacher)
                     {
-                        Success = false,
-                        Message = "Please consult to your head"
-                    };
+                        return new LoginResponse
+                        {
+                            Success = false,
+                            Message = "Please consult to your head for approval"
+                        };
+                    }
+                    if (user.UserType == UserType.Student)
+                    {
+                        return new LoginResponse
+                        {
+                            Success = false,
+                            Message = "Please consult to your advisor for approval"
+                        };
+                    }
                 }
 
                 _logger.LogInformation("Validating password for user: {Username}", request.Username);

@@ -209,7 +209,7 @@ namespace ServerAtrrak.Controllers
         {
             try
             {
-                var pendingTeachers = await _teacherService.GetPendingTeachersAsync(schoolId);
+                var pendingTeachers = await _teacherService.GetPendingTeachersAsync(schoolId?.Trim() ?? "");
                 return Ok(pendingTeachers);
             }
             catch (Exception ex)

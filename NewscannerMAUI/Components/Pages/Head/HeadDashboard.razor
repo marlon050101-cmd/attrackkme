@@ -4,7 +4,7 @@
 @using AttrackSharedClass.Models
 @inject AuthService AuthService
 @inject NavigationManager Navigation
-@inject HttpClient Http
+@inject IHttpClientFactory HttpClientFactory
 
 <div class="dashboard-container">
     <div class="welcome-banner">
@@ -99,7 +99,8 @@
 
         try
         {
-            var stats = await Http.GetFromJsonAsync<HeadStatsResponse>($"api/teacher/head-stats/{schoolId}");
+            var http = HttpClientFactory.CreateClient("AttrakAPI");
+            var stats = await http.GetFromJsonAsync<HeadStatsResponse>($"/api/teacher/head-stats/{schoolId}");
             if (stats != null)
             {
                 activeTeachers = stats.ActiveTeachers;

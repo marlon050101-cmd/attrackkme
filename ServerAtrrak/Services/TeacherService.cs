@@ -767,17 +767,19 @@ namespace ServerAtrrak.Services
             try
             {
                 using var connection = await _dbConnection.GetConnectionAsync();
+                
                 var query = @"
                     SELECT u.UserId, u.Username, u.Email, u.UserType, u.CreatedAt as RegisteredAt,
-                           t.FullName, t.SchoolId, s.SchoolName
+                           COALESCE(t.FullName, u.Username) as FullName, 
+                           COALESCE(u.SchoolId, t.SchoolId) as SchoolId, 
+                           s.SchoolName
                     FROM user u
-                    JOIN teacher t ON u.TeacherId = t.TeacherId
-                    LEFT JOIN school s ON t.SchoolId = s.SchoolId
-                    WHERE t.SchoolId = @schoolId 
+                    LEFT JOIN teacher t ON u.TeacherId = t.TeacherId
+                    LEFT JOIN school s ON COALESCE(u.SchoolId, t.SchoolId) = s.SchoolId
+                    WHERE (COALESCE(u.SchoolId, t.SchoolId) = @schoolId)
                     AND u.IsApproved = 0 
                     AND (u.UserType = 'Teacher' OR u.UserType = 'SubjectTeacher')";
                 
-                Console.WriteLine($"DEBUG: GetPendingTeachersAsync - Querying for SchoolId: {schoolId}");
                 var pendingTeachers = new List<PendingTeacherInfo>();
                 using (var command = new MySqlCommand(query, connection))
                 {
@@ -791,7 +793,7 @@ namespace ServerAtrrak.Services
                             Username = reader.GetString("Username"),
                             Email = reader.GetString("Email"),
                             FullName = reader.IsDBNull("FullName") ? "" : reader.GetString("FullName"),
-                            SchoolId = reader.GetString("SchoolId"),
+                            SchoolId = reader.IsDBNull("SchoolId") ? "" : reader.GetString("SchoolId"),
                             SchoolName = reader.IsDBNull("SchoolName") ? "" : reader.GetString("SchoolName"),
                             RegisteredAt = reader.GetDateTime("RegisteredAt"),
                             UserType = reader.GetString("UserType")
@@ -799,7 +801,6 @@ namespace ServerAtrrak.Services
                         pendingTeachers.Add(info);
                     }
                 }
-                Console.WriteLine($"DEBUG: GetPendingTeachersAsync - Found {pendingTeachers.Count} pending teachers");
                 return pendingTeachers;
             }
             catch (Exception ex)
@@ -833,19 +834,34 @@ namespace ServerAtrrak.Services
                 using var connection = await _dbConnection.GetConnectionAsync();
                 
                 // Active Teachers
-                var teachersQuery = "SELECT COUNT(*) FROM user u JOIN teacher t ON u.TeacherId = t.TeacherId WHERE t.SchoolId = @schoolId AND u.IsActive = 1 AND (u.UserType = 'Teacher' OR u.UserType = 'SubjectTeacher')";
+                var teachersQuery = @"
+                    SELECT COUNT(*) 
+                    FROM user u 
+                    LEFT JOIN teacher t ON u.TeacherId = t.TeacherId 
+                    WHERE (COALESCE(u.SchoolId, t.SchoolId) = @schoolId) 
+                    AND u.IsActive = 1 
+                    AND (u.UserType = 'Teacher' OR u.UserType = 'SubjectTeacher')";
                 using var teacherCommand = new MySqlCommand(teachersQuery, connection);
                 teacherCommand.Parameters.AddWithValue("@schoolId", schoolId);
                 var activeTeachers = Convert.ToInt32(await teacherCommand.ExecuteScalarAsync());
 
                 // Active Students
-                var studentsQuery = "SELECT COUNT(*) FROM student WHERE SchoolId = @schoolId AND IsActive = 1";
+                var studentsQuery = @"
+                    SELECT COUNT(*) 
+                    FROM student 
+                    WHERE SchoolId = @schoolId AND IsActive = 1";
                 using var studentCommand = new MySqlCommand(studentsQuery, connection);
                 studentCommand.Parameters.AddWithValue("@schoolId", schoolId);
                 var activeStudents = Convert.ToInt32(await studentCommand.ExecuteScalarAsync());
 
                 // Pending Approvals
-                var pendingQuery = "SELECT COUNT(*) FROM user u JOIN teacher t ON u.TeacherId = t.TeacherId WHERE t.SchoolId = @schoolId AND u.IsApproved = 0 AND (u.UserType = 'Teacher' OR u.UserType = 'SubjectTeacher')";
+                var pendingQuery = @"
+                    SELECT COUNT(*) 
+                    FROM user u 
+                    LEFT JOIN teacher t ON u.TeacherId = t.TeacherId 
+                    WHERE (COALESCE(u.SchoolId, t.SchoolId) = @schoolId) 
+                    AND u.IsApproved = 0 
+                    AND (u.UserType = 'Teacher' OR u.UserType = 'SubjectTeacher')";
                 using var pendingCommand = new MySqlCommand(pendingQuery, connection);
                 pendingCommand.Parameters.AddWithValue("@schoolId", schoolId);
                 var pendingApprovals = Convert.ToInt32(await pendingCommand.ExecuteScalarAsync());
