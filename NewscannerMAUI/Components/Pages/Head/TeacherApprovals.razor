@@ -9,139 +9,89 @@
 <div class="approvals-container">
     <div class="page-header">
         <div class="header-icon">
-            <i class="fas fa-user-shield"></i>
+            <i class="fas fa-user-plus"></i>
         </div>
         <div class="header-text">
-            <h1>Verification Center</h1>
-            <p>Review and approve pending teacher registrations</p>
+            <h1>Assign Teacher</h1>
+            <p>Select role and authorize access</p>
         </div>
     </div>
 
     @if (isLoading)
     {
         <div class="loading-state">
-            <div class="spinner"></div>
-            <p>Fetching pending requests...</p>
+            <div class="shimmer-card"></div>
+            <div class="shimmer-card"></div>
+            <p>Authenticating pending requests...</p>
         </div>
     }
     else if (!string.IsNullOrEmpty(errorMessage))
     {
-        <div class="error-notification" style="background: #fff5f5; border: 1px solid #feb2b2; padding: 1rem; border-radius: 12px; color: #c53030; margin-bottom: 1.5rem;">
-            <i class="fas fa-exclamation-circle"></i> <strong>Error:</strong> @errorMessage
-            <button class="btn-refresh" @onclick="LoadPendingTeachers" style="margin-top: 0.5rem; display: block; padding: 0.4rem 0.8rem;">Try Again</button>
+        <div class="error-panel">
+            <div class="error-icon"><i class="fas fa-circle-exclamation"></i></div>
+            <div class="error-content">
+                <strong>Connection Error</strong>
+                <p>@errorMessage</p>
+            </div>
+            <button class="btn-retry" @onclick="LoadPendingTeachers">Try Again</button>
         </div>
     }
     else if (userSchoolId == null)
     {
-        <div class="empty-state">
-            <div class="empty-icon">
-                <i class="fas fa-exclamation-triangle"></i>
-            </div>
-            <h3>Profile Incomplete</h3>
-            <p>Your account is not linked to a school. Please update your profile or contact support.</p>
+        <div class="empty-state glass">
+            <div class="empty-icon"><i class="fas fa-school-circle-exclamation"></i></div>
+            <h3>Principal Profile Required</h3>
+            <p>Your account must be linked to a school to manage staff. Please contact the district administrator.</p>
         </div>
     }
     else if (pendingTeachers == null || !pendingTeachers.Any())
     {
-        <div class="empty-state">
-            <div class="empty-icon">
-                <i class="fas fa-check-circle"></i>
-            </div>
-            <h3>All Caught Up!</h3>
-            <p>There are no pending teacher approvals for your school at this moment.</p>
-            <div class="debug-info" style="font-size: 0.7rem; color: #a0aec0; margin-top: 1rem;">
-                School ID: @userSchoolId
-            </div>
-            <button class="btn-refresh" @onclick="LoadPendingTeachers">
-                <i class="fas fa-sync-alt"></i> Refresh
+        <div class="empty-state glass">
+            <div class="empty-icon-success"><i class="fas fa-certificate"></i></div>
+            <h3>Everything is in Order</h3>
+            <p>All registration requests for <strong>SARDO-TRACKCARE</strong> are cleared. You are currently up to date.</p>
+            <button class="btn-ghost" @onclick="LoadPendingTeachers">
+                <i class="fas fa-rotate"></i> Refresh Dashboard
             </button>
-
-            <div style="margin-top: 2rem; border-top: 1px dashed #cbd5e0; padding-top: 1rem;">
-                <button class="btn-debug" @onclick="ToggleDebug" style="background: none; border: 1px solid #718096; color: #718096; padding: 0.5rem 1rem; border-radius: 8px; font-size: 0.8rem;">
-                    @(showDebug ? "Hide Debug Data" : "Show Debug Data (Help find missing teachers)")
-                </button>
-            </div>
-
-            @if (showDebug)
-            {
-                <div class="debug-panel" style="margin-top: 1rem; background: #f7fafc; padding: 1rem; border-radius: 12px; border: 1px solid #e2e8f0; text-align: left;">
-                    <h4 style="font-size: 0.9rem; color: #4a5568; margin-bottom: 0.5rem;">Diagnostic Info</h4>
-                    <p style="font-size: 0.8rem; color: #718096;">Your School ID: <code style="background: #edf2f7; padding: 2px 4px;">@userSchoolId</code></p>
-                    
-                    @if (isLoggingDebug)
-                    {
-                        <p style="font-size: 0.8rem;">Loading database records...</p>
-                    }
-                    else if (debugResults != null)
-                    {
-                        <div style="overflow-x: auto; margin-top: 0.5rem;">
-                            <table style="width: 100%; font-size: 0.75rem; border-collapse: collapse;">
-                                <thead>
-                                    <tr style="border-bottom: 2px solid #e2e8f0;">
-                                        <th style="padding: 4px; text-align: left;">Username</th>
-                                        <th style="padding: 4px; text-align: left;">UserSchool</th>
-                                        <th style="padding: 4px; text-align: left;">TeacherSchool</th>
-                                        <th style="padding: 4px; text-align: center;">Match?</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @if (!debugResults.PendingUsers.Any())
-                                    {
-                                        <tr><td colspan="4" style="padding: 8px; text-align: center; color: #a0aec0;">No pending users found in entire DB.</td></tr>
-                                    }
-                                    @foreach (var user in debugResults.PendingUsers)
-                                    {
-                                        <tr style="border-bottom: 1px solid #edf2f7; background: @(user.IsMatch ? "#f0fff4" : "transparent")">
-                                            <td style="padding: 4px;">@user.Username (@user.Type)</td>
-                                            <td style="padding: 4px;">@user.UserSchool</td>
-                                            <td style="padding: 4px;">@user.TeacherSchool</td>
-                                            <td style="padding: 4px; text-align: center;">
-                                                @if (user.IsMatch) { <span style="color: green;">✅</span> }
-                                                else { <span style="color: red;">❌</span> }
-                                            </td>
-                                        </tr>
-                                    }
-                                </tbody>
-                            </table>
-                        </div>
-                    }
-                </div>
-            }
         </div>
     }
     else
     {
         <div class="approvals-list">
+            <div class="list-meta">
+                <span><i class="fas fa-user-clock"></i> @pendingTeachers.Count Requesting Access</span>
+            </div>
             @foreach (var teacher in pendingTeachers)
             {
-                <div class="approval-card">
-                    <div class="card-accent"></div>
-                    <div class="teacher-info">
-                        <div class="teacher-avatar">
+                <div class="assign-card glass-hover fade-in">
+                    <div class="teacher-meta">
+                        <div class="teacher-avatar-compact">
                             @teacher.FullName.Substring(0, 1).ToUpper()
                         </div>
-                        <div class="details">
-                            <span class="name">@teacher.FullName</span>
-                            <span class="email">@teacher.Email</span>
-                            <div class="meta">
-                                <span class="badge-role">@teacher.UserType</span>
-                                <span class="date"><i class="far fa-clock"></i> Registered @teacher.RegisteredAt.ToString("MMM dd, yyyy")</span>
-                            </div>
-                        </div>
+                        <h3 class="name-only">@teacher.FullName</h3>
                     </div>
-                    <div class="actions">
-                        <button class="btn-approve" @onclick="() => ApproveTeacher(teacher)" disabled="@isProcessing">
-                            @if (processingId == teacher.UserId)
-                            {
-                                <span class="spinner-sm"></span>
-                            }
-                            else
-                            {
-                                <i class="fas fa-check"></i>
-                                <span>Approve Access</span>
-                            }
+                    
+                    <div class="role-assign-group">
+                        <button class="role-pill-btn @(GetSelectedRole(teacher.UserId) == UserType.Teacher ? "active" : "")" 
+                                @onclick="() => SetSelectedRole(teacher.UserId, UserType.Teacher)">
+                            <i class="fas fa-book"></i> Subject
+                        </button>
+                        <button class="role-pill-btn @(GetSelectedRole(teacher.UserId) == UserType.Advisor ? "active" : "")" 
+                                @onclick="() => SetSelectedRole(teacher.UserId, UserType.Advisor)">
+                            <i class="fas fa-user-tie"></i> Advisor
                         </button>
                     </div>
+
+                    <button class="btn-assign-main" @onclick="() => ApproveTeacher(teacher)" disabled="@isProcessing">
+                        @if (processingId == teacher.UserId)
+                        {
+                            <div class="spinner-sm"></div>
+                        }
+                        else
+                        {
+                            <span>Assign</span>
+                        }
+                    </button>
                 </div>
             }
         </div>
@@ -164,227 +114,161 @@
 
 <style>
     .approvals-container {
-        padding: 1.5rem;
-        max-width: 800px;
+        padding: 2rem 1rem;
+        max-width: 500px;
         margin: 0 auto;
+        font-family: 'Outfit', sans-serif;
     }
 
     .page-header {
-        display: flex;
-        align-items: center;
-        gap: 1.25rem;
         margin-bottom: 2.5rem;
-        animation: fadeInDown 0.5s ease-out;
+        text-align: left;
+        padding-left: 0.5rem;
     }
 
     .header-icon {
-        width: 60px;
-        height: 60px;
-        background: linear-gradient(135deg, #6f42c1 0%, #4b2ea2 100%);
-        color: white;
-        border-radius: 18px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 1.8rem;
-        box-shadow: 0 10px 20px rgba(111, 66, 193, 0.2);
+        display: none; /* Removed for more compact look */
     }
 
     .header-text h1 {
-        font-size: 1.75rem;
+        font-size: 2.2rem;
         font-weight: 900;
-        color: #2b166b;
+        color: #0f172a;
         margin: 0;
-        letter-spacing: -0.5px;
+        letter-spacing: -1.5px;
     }
 
     .header-text p {
-        color: #6f42c1;
-        margin: 0;
+        color: #64748b;
+        margin-top: 0.2rem;
         font-weight: 600;
-        font-size: 0.95rem;
+        font-size: 0.9rem;
+        text-transform: none;
+        letter-spacing: 0;
     }
 
-    /* List & Cards */
-    .approvals-list {
-        display: flex;
-        flex-direction: column;
-        gap: 1.25rem;
+    .list-meta {
+        margin-bottom: 1.25rem;
+        font-size: 0.75rem;
+        font-weight: 800;
+        color: #94a3b8;
+        text-transform: uppercase;
+        letter-spacing: 1px;
     }
 
-    .approval-card {
+    /* One-line Card */
+    .assign-card {
         background: white;
+        border: 1px solid #f1f5f9;
         border-radius: 20px;
-        padding: 1.5rem;
+        padding: 0.75rem 1rem;
         display: flex;
         align-items: center;
-        justify-content: space-between;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.05);
-        border: 1px solid #edf2f7;
-        position: relative;
-        overflow: hidden;
-        animation: slideInUp 0.4s ease-out;
+        gap: 1rem;
+        margin-bottom: 0.75rem;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+        transition: all 0.2s ease;
     }
 
-    .card-accent {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 4px;
-        background: linear-gradient(to right, #6f42c1, #f6c23e);
+    .assign-card:hover {
+        border-color: #cbd5e1;
+        transform: translateX(4px);
     }
 
-    .teacher-info {
-        display: flex;
-        align-items: center;
-        gap: 1.25rem;
-    }
-
-    .teacher-avatar {
-        width: 50px;
-        height: 50px;
-        background: #f1f0f7;
-        color: #6f42c1;
-        border-radius: 15px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-weight: 800;
-        font-size: 1.25rem;
-        border: 2px solid white;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.05);
-    }
-
-    .details {
-        display: flex;
-        flex-direction: column;
-    }
-
-    .details .name {
-        font-weight: 800;
-        font-size: 1.1rem;
-        color: #2b166b;
-    }
-
-    .details .email {
-        font-size: 0.85rem;
-        color: #718096;
-        margin-bottom: 0.4rem;
-    }
-
-    .meta {
+    .teacher-meta {
         display: flex;
         align-items: center;
         gap: 0.75rem;
+        flex: 1;
+        min-width: 0;
     }
 
-    .badge-role {
-        background: rgba(111, 66, 193, 0.1);
-        color: #6f42c1;
-        padding: 0.2rem 0.6rem;
-        border-radius: 6px;
-        font-size: 0.7rem;
-        font-weight: 800;
-        text-transform: uppercase;
-    }
-
-    .date {
-        font-size: 0.75rem;
-        color: #a0aec0;
-    }
-
-    /* Actions */
-    .btn-approve {
-        background: linear-gradient(135deg, #6f42c1 0%, #4b2ea2 100%);
-        color: white;
-        border: none;
-        padding: 0.8rem 1.5rem;
-        border-radius: 14px;
-        font-weight: 700;
-        font-size: 0.9rem;
+    .teacher-avatar-compact {
+        width: 32px;
+        height: 32px;
+        background: #f1f5f9;
+        color: #475569;
+        border-radius: 10px;
         display: flex;
         align-items: center;
-        gap: 0.6rem;
-        cursor: pointer;
-        transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-        box-shadow: 0 8px 20px rgba(111, 66, 193, 0.25);
+        justify-content: center;
+        font-weight: 900;
+        font-size: 0.8rem;
     }
 
-    .btn-approve:hover {
-        transform: translateY(-3px);
-        box-shadow: 0 12px 25px rgba(111, 66, 193, 0.35);
-    }
-
-    .btn-approve:active {
-        transform: scale(0.95);
-    }
-
-    /* States */
-    .empty-state {
-        text-align: center;
-        padding: 4rem 2rem;
-        background: white;
-        border-radius: 30px;
-        box-shadow: 0 15px 35px rgba(0,0,0,0.03);
-    }
-
-    .empty-icon {
-        font-size: 4rem;
-        color: #6f42c1;
-        opacity: 0.2;
-        margin-bottom: 1rem;
-    }
-
-    .empty-state h3 {
-        font-weight: 800;
-        color: #2d3748;
-    }
-
-    .btn-refresh {
-        margin-top: 1.5rem;
-        background: none;
-        border: 1px solid #e2e8f0;
-        padding: 0.6rem 1.2rem;
-        border-radius: 12px;
-        color: #718096;
+    .name-only {
+        font-size: 1rem;
         font-weight: 700;
+        color: #1e293b;
+        margin: 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    /* Role Pills */
+    .role-assign-group {
+        display: flex;
+        background: #f8fafc;
+        padding: 3px;
+        border-radius: 12px;
+        gap: 2px;
+    }
+
+    .role-pill-btn {
+        border: none;
+        background: transparent;
+        padding: 0.4rem 0.8rem;
+        border-radius: 9px;
+        font-size: 0.7rem;
+        font-weight: 800;
+        color: #64748b;
         cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        transition: all 0.2s ease;
     }
 
-    .loading-state {
-        text-align: center;
-        padding: 3rem;
+    .role-pill-btn:hover {
+        background: #f1f5f9;
+        color: #1e293b;
     }
 
-    .spinner {
-        width: 40px;
-        height: 40px;
-        border: 4px solid #f3f3f3;
-        border-top: 4px solid #6f42c1;
-        border-radius: 50%;
-        animation: spin 1s linear infinite;
-        margin: 0 auto 1rem;
+    .role-pill-btn.active {
+        background: white;
+        color: #4c1d95;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
     }
 
-    .spinner-sm {
-        width: 18px;
-        height: 18px;
-        border: 2px solid rgba(255,255,255,0.3);
-        border-top: 2px solid white;
-        border-radius: 50%;
-        animation: spin 1s linear infinite;
+    /* Assign Button */
+    .btn-assign-main {
+        background: #0f172a;
+        color: white;
+        border: none;
+        padding: 0.5rem 1.25rem;
+        border-radius: 12px;
+        font-weight: 800;
+        font-size: 0.8rem;
+        cursor: pointer;
+        transition: all 0.2s ease;
     }
 
-    /* Modal */
+    .btn-assign-main:hover {
+        background: #334155;
+    }
+
+    .btn-assign-main:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    /* Modal Styling */
     .modal-overlay {
         position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: rgba(43, 22, 107, 0.4);
-        backdrop-filter: blur(8px);
+        inset: 0;
+        background: rgba(15, 23, 42, 0.4);
+        backdrop-filter: blur(4px);
         display: flex;
         align-items: center;
         justify-content: center;
@@ -393,41 +277,44 @@
 
     .success-modal {
         background: white;
-        padding: 2.5rem;
-        border-radius: 30px;
+        padding: 2rem;
+        border-radius: 24px;
         text-align: center;
-        max-width: 400px;
-        box-shadow: 0 25px 60px rgba(0,0,0,0.2);
-        animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        width: 90%;
+        max-width: 320px;
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
     }
 
     .success-icon {
-        width: 80px;
-        height: 80px;
-        background: #f1f0f7;
-        color: #6f42c1;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
         font-size: 2.5rem;
-        margin: 0 auto 1.5rem;
+        color: #10b981;
+        margin-bottom: 1rem;
     }
 
     .btn-done {
         width: 100%;
         margin-top: 1.5rem;
-        padding: 1rem;
-        background: #6f42c1;
+        padding: 0.75rem;
+        background: #0f172a;
         color: white;
         border: none;
-        border-radius: 15px;
+        border-radius: 12px;
         font-weight: 800;
-        cursor: pointer;
     }
 
-    @@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-    @@keyframes popIn { 0% { opacity: 0; transform: scale(0.8); } 100% { opacity: 1; transform: scale(1); } }
+    .fade-in {
+        animation: fadeIn 0.4s ease-out;
+    }
+
+    @@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    .btn-done:hover { transform: scale(1.02); }
+
+    /* Animations */
+    @@keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+    @@keyframes spin { to { transform: rotate(360deg); } }
+    @@keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+    @@keyframes modalEntrance { from { opacity: 0; transform: translateY(30px) scale(0.9); } to { opacity: 1; transform: translateY(0) scale(1); } }
+    @@keyframes scaleIn { from { transform: scale(0); } to { transform: scale(1); } }
 </style>
 
 @code {
@@ -473,6 +360,20 @@
         }
     }
 
+    private Dictionary<string, UserType> selectedRoles = new();
+
+    private UserType GetSelectedRole(string userId)
+    {
+        if (!selectedRoles.ContainsKey(userId))
+            selectedRoles[userId] = UserType.Teacher; // Default to Subject Teacher
+        return selectedRoles[userId];
+    }
+
+    private void SetSelectedRole(string userId, UserType role)
+    {
+        selectedRoles[userId] = role;
+    }
+
     private async Task ApproveTeacher(PendingTeacherInfo teacher)
     {
         if (isProcessing) return;
@@ -482,8 +383,9 @@
             isProcessing = true;
             processingId = teacher.UserId;
             
+            var role = GetSelectedRole(teacher.UserId);
             var http = HttpClientFactory.CreateClient("AttrakAPI");
-            var response = await http.PutAsync($"/api/teacher/approve/{teacher.UserId}", null);
+            var response = await http.PutAsync($"/api/teacher/approve/{teacher.UserId}?role={role}", null);
             if (response.IsSuccessStatusCode)
             {
                 lastApprovedName = teacher.FullName;
@@ -500,53 +402,5 @@
             isProcessing = false;
             processingId = null;
         }
-    }
-    private bool showDebug = false;
-    private bool isLoggingDebug = false;
-    private DiagnosticData? debugResults;
-
-    private async Task ToggleDebug()
-    {
-        showDebug = !showDebug;
-        if (showDebug && debugResults == null)
-        {
-            await LoadDiagnostics();
-        }
-    }
-
-    private async Task LoadDiagnostics()
-    {
-        try
-        {
-            isLoggingDebug = true;
-            if (!string.IsNullOrEmpty(userSchoolId))
-            {
-                var http = HttpClientFactory.CreateClient("AttrakAPI");
-                debugResults = await http.GetFromJsonAsync<DiagnosticData>($"/api/teacher/debug-pending/{userSchoolId}");
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error loading diagnostics: {ex.Message}");
-        }
-        finally
-        {
-            isLoggingDebug = false;
-        }
-    }
-
-    private class DiagnosticData
-    {
-        public string CurrentSchoolId { get; set; } = "";
-        public List<PendingUserDebugInfo> PendingUsers { get; set; } = new();
-    }
-
-    private class PendingUserDebugInfo
-    {
-        public string Username { get; set; } = "";
-        public string Type { get; set; } = "";
-        public string UserSchool { get; set; } = "";
-        public string TeacherSchool { get; set; } = "";
-        public bool IsMatch { get; set; }
     }
 }

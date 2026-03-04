@@ -220,13 +220,13 @@ namespace ServerAtrrak.Controllers
         }
 
         [HttpPut("approve/{userId}")]
-        public async Task<ActionResult> ApproveTeacher(string userId)
+        public async Task<ActionResult> ApproveTeacher(string userId, [FromQuery] UserType role)
         {
             try
             {
-                var result = await _teacherService.ApproveTeacherAsync(userId);
+                var result = await _teacherService.ApproveTeacherAsync(userId, role);
                 if (result)
-                    return Ok(new { message = "Teacher approved successfully" });
+                    return Ok(new { message = "Teacher approved and role assigned successfully" });
                 return NotFound(new { message = "Teacher not found or already approved" });
             }
             catch (Exception ex)

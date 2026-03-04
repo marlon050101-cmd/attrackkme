@@ -829,13 +829,18 @@ namespace ServerAtrrak.Services
             }
         }
 
-        public async Task<bool> ApproveTeacherAsync(string userId)
+        public async Task<bool> ApproveTeacherAsync(string userId, UserType targetRole)
         {
             try
             {
                 using var connection = await _dbConnection.GetConnectionAsync();
-                var query = "UPDATE user SET IsApproved = 1, IsActive = 1 WHERE UserId = @userId";
+                
+                // Map enum to string for DB (Teacher -> 'Teacher' or 'SubjectTeacher')
+                string roleString = targetRole == UserType.Teacher ? "SubjectTeacher" : targetRole.ToString();
+
+                var query = "UPDATE user SET IsApproved = 1, IsActive = 1, UserType = @role WHERE UserId = @userId";
                 using var command = new MySqlCommand(query, connection);
+                command.Parameters.AddWithValue("@role", roleString);
                 command.Parameters.AddWithValue("@userId", userId);
                 var rows = await command.ExecuteNonQueryAsync();
                 return rows > 0;
