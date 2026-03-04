@@ -8,14 +8,15 @@
 <style>
     .auth-layout {
         min-height: 100vh;
-        min-height: 100dvh; /* Dynamic viewport height for mobile */
+        min-height: 100dvh;
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         display: flex;
+        flex-direction: column;
         align-items: center;
-        justify-content: center;
-        padding: 20px;
-        overflow-x: hidden;
+        padding: 40px 20px; /* Increased top/bottom padding for better scroll feel */
         position: relative;
+        width: 100%;
+        box-sizing: border-box;
     }
 
     /* Animated background */

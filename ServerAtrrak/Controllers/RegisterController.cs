@@ -727,8 +727,17 @@ namespace ServerAtrrak.Controllers
                 INSERT INTO user (UserId, Username, Email, Password, UserType, IsActive, CreatedAt, UpdatedAt, TeacherId)
                 VALUES (@UserId, @Username, @Email, @Password, @UserType, @IsActive, @CreatedAt, @UpdatedAt, @TeacherId)";
 
-            // Try new ENUM value (after migration); fall back to legacy if ENUM not yet updated
-            foreach (var userTypeValue in new[] { "SubjectTeacher", "Teacher" })
+            // Primary type from request (e.g., Head, Advisor, SubjectTeacher)
+            string primaryType = request.UserType.ToString();
+            
+            // Try actual type first, then fall back to Teacher/GuidanceCounselor if ENUM is restricted
+            var typesToTry = new List<string> { primaryType };
+            if (primaryType == "Head" || primaryType == "Advisor") 
+                typesToTry.Add("GuidanceCounselor");
+            else if (primaryType == "SubjectTeacher")
+                typesToTry.Add("Teacher");
+
+            foreach (var userTypeValue in typesToTry)
             {
                 try
                 {
@@ -746,7 +755,7 @@ namespace ServerAtrrak.Controllers
                     command.Parameters.AddWithValue("@UpdatedAt", DateTime.Now);
                     command.Parameters.AddWithValue("@TeacherId", teacherId);
                     await command.ExecuteNonQueryAsync();
-                    _logger.LogInformation("Teacher user created with UserType={UserType}", userTypeValue);
+                    _logger.LogInformation("User created with UserType={UserType} for role={Role}", userTypeValue, primaryType);
                     return userId;
                 }
                 catch (MySqlException ex) when (ex.Message.Contains("Data truncated") || ex.Message.Contains("incorrect") || ex.Number == 1265)
@@ -754,7 +763,7 @@ namespace ServerAtrrak.Controllers
                     _logger.LogWarning("UserType '{UserType}' not in ENUM yet, trying fallback.", userTypeValue);
                 }
             }
-            throw new InvalidOperationException("Failed to insert teacher user: ENUM does not accept 'SubjectTeacher' or 'Teacher'.");
+            throw new InvalidOperationException($"Failed to insert user: ENUM does not accept '{primaryType}' or its fallbacks.");
         }
 
         private async Task<string?> FindSchoolByNameAsync(string schoolName)

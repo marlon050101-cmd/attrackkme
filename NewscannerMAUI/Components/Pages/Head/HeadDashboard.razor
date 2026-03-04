@@ -1,0 +1,239 @@
+@page "/head-dashboard"
+@layout HeadLayout
+@using NewscannerMAUI.Services
+@using AttrackSharedClass.Models
+@inject AuthService AuthService
+@inject NavigationManager Navigation
+
+<div class="dashboard-container">
+    <div class="welcome-banner">
+        <h2 class="mb-1">Greetings, @headName!</h2>
+        <p class="text-head-portal small">School Head Management & Oversight Portal</p>
+    </div>
+
+    <!-- Stats Overview -->
+    <div class="stats-grid">
+        <div class="stat-card premium-card" @onclick="GoToApprovals">
+            <div class="stat-icon approvals">
+                <i class="fas fa-user-shield"></i>
+            </div>
+            <div class="stat-info">
+                <span class="stat-value">Verification Center</span>
+                <span class="stat-label">Pending teacher approvals</span>
+            </div>
+            <div class="badge-premium ms-auto">Action Required</div>
+        </div>
+        <div class="stat-card premium-card" @onclick="GoToManageRoles">
+            <div class="stat-icon roles">
+                <i class="fas fa-crown"></i>
+            </div>
+            <div class="stat-info">
+                <span class="stat-value">Personnel Roles</span>
+                <span class="stat-label">Assign administrative privileges</span>
+            </div>
+            <i class="fas fa-chevron-right ms-auto text-muted"></i>
+        </div>
+    </div>
+
+    <!-- System Summary -->
+    <div class="summary-section mt-4">
+        <h5 class="section-title">System Ovenview</h5>
+        <div class="info-card">
+            <div class="info-item">
+                <span class="info-label">Active Teachers</span>
+                <span class="info-value">--</span>
+            </div>
+            <div class="info-divider"></div>
+            <div class="info-item">
+                <span class="info-label">Active Students</span>
+                <span class="info-value">--</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="actions-section mt-4">
+        <h5 class="section-title">Administrative Actions</h5>
+        <div class="action-buttons-grid">
+            <button class="action-card approvals" @onclick="GoToApprovals">
+                <div class="action-icon">
+                    <i class="fas fa-user-check"></i>
+                </div>
+                <span class="action-text">Approve Teachers</span>
+            </button>
+            
+            <button class="action-card reports">
+                <div class="action-icon">
+                    <i class="fas fa-file-alt"></i>
+                </div>
+                <span class="action-text">School Reports</span>
+            </button>
+        </div>
+    </div>
+</div>
+
+@code {
+    private string headName = "Head";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var user = await AuthService.GetCurrentUserAsync();
+        if (user != null)
+        {
+            headName = user.Username;
+        }
+    }
+
+    private void GoToApprovals() => Navigation.NavigateTo("/head/teacher-approvals");
+    private void GoToManageRoles() => Navigation.NavigateTo("/head/manage-roles");
+}
+
+<style>
+    .dashboard-container {
+        padding: 0;
+    }
+
+    .welcome-banner {
+        margin-top: 0;
+        margin-bottom: 0.75rem;
+        padding: 0.5rem 1rem 0.25rem;
+    }
+
+    .welcome-banner h2 {
+        font-weight: 900;
+        color: #2b166b;
+        font-size: 1.5rem;
+        margin-top: 0;
+    }
+
+    .text-head-portal {
+        color: #6f42c1;
+        font-weight: 600;
+        letter-spacing: 0.5px;
+    }
+
+    /* Stats Grid */
+    .stats-grid {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        padding: 0 1rem;
+    }
+
+    .premium-card {
+        background: white;
+        border-left: 5px solid #6f42c1 !important;
+        transition: all 0.3s cubic-bezier(0.165, 0.84, 0.44, 1) !important;
+    }
+
+    .premium-card:active {
+        background: #f8f7ff;
+        transform: scale(0.98);
+    }
+
+    .stat-card {
+        padding: 1.25rem;
+        border-radius: 16px;
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        box-shadow: 0 10px 25px rgba(111, 66, 193, 0.08);
+        border: 1px solid #edf2f7;
+        cursor: pointer;
+    }
+
+    .stat-icon {
+        width: 55px;
+        height: 55px;
+        border-radius: 14px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.6rem;
+    }
+
+    .stat-icon.approvals {
+        background: linear-gradient(135deg, rgba(111, 66, 193, 0.1) 0%, rgba(111, 66, 193, 0.2) 100%);
+        color: #6f42c1;
+    }
+
+    .stat-icon.roles {
+        background: linear-gradient(135deg, rgba(246, 194, 62, 0.1) 0%, rgba(246, 194, 62, 0.2) 100%);
+        color: #d39e00;
+    }
+
+    .badge-premium {
+        background: #6f42c1;
+        color: white;
+        padding: 0.4rem 0.8rem;
+        border-radius: 20px;
+        font-size: 0.7rem;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        box-shadow: 0 4px 10px rgba(111, 66, 193, 0.3);
+    }
+
+    /* Info Card */
+    .info-card {
+        background: white;
+        margin: 0 1rem;
+        padding: 1.5rem;
+        border-radius: 16px;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.04);
+        border: 1px solid #edf2f7;
+        display: flex;
+        justify-content: space-around;
+        align-items: center;
+        border-bottom: 3px solid #f6c23e;
+    }
+
+    .info-value {
+        font-weight: 900;
+        font-size: 1.75rem;
+        color: #6f42c1;
+    }
+
+    .section-title {
+        font-weight: 800;
+        color: #2b166b;
+        margin-bottom: 1.25rem;
+        font-size: 1.1rem;
+        padding-left: 0.25rem;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+
+    .action-card {
+        background: white;
+        border: 1px solid #edf2f7;
+        border-radius: 20px;
+        padding: 1.75rem 1rem;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.8rem;
+        transition: all 0.3s;
+        box-shadow: 0 10px 20px rgba(0,0,0,0.05);
+        width: 100%;
+        border: none;
+    }
+
+    .action-card.approvals .action-icon {
+        background: linear-gradient(135deg, #6f42c1 0%, #4b2ea2 100%);
+        color: white;
+        box-shadow: 0 8px 15px rgba(111, 66, 193, 0.3);
+    }
+
+    .action-card.reports .action-icon {
+        background: linear-gradient(135deg, #f6c23e 0%, #d39e00 100%);
+        color: white;
+        box-shadow: 0 8px 15px rgba(246, 194, 62, 0.3);
+    }
+
+    .action-text {
+        font-weight: 700;
+        color: #2d3748;
+        font-size: 0.9rem;
+    }
+</style>

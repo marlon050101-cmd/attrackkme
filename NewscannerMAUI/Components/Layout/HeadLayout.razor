@@ -1,0 +1,362 @@
+@inherits LayoutComponentBase
+@using NewscannerMAUI.Services
+@using AttrackSharedClass.Models
+@inject AuthService AuthService
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+
+<div class="head-layout @(isSidebarOpen ? "sidebar-open" : "")">
+    <!-- Header -->
+    <header class="app-header">
+        <div class="header-left">
+            <button class="menu-toggle" @onclick="ToggleSidebar">
+                <i class="fas fa-bars"></i>
+            </button>
+        </div>
+        <div class="header-center">
+            <span class="app-brand">SARDO-TRACKCARE</span>
+        </div>
+        <div class="header-right">
+            <button class="header-logout-btn" @onclick="HandleLogout">
+                <i class="fas fa-sign-out-alt"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Sidebar Overlay -->
+    <div class="sidebar-overlay" @onclick="CloseSidebar"></div>
+
+    <!-- Sidebar -->
+    <aside class="app-sidebar">
+        <div class="sidebar-header">
+            <div class="user-profile">
+                <div class="user-avatar">
+                    <i class="fas fa-user-shield"></i>
+                </div>
+                <div class="user-info">
+                    <span class="user-name">@headName</span>
+                    <span class="user-role">School Head</span>
+                </div>
+            </div>
+        </div>
+        
+        <nav class="sidebar-nav">
+            <div class="nav-section">
+                <div class="nav-section-title">Main</div>
+                <NavLink class="nav-item" href="/head-dashboard" Match="NavLinkMatch.All" @onclick="CloseSidebar">
+                    <i class="fas fa-th-large"></i>
+                    <span>Dashboard</span>
+                </NavLink>
+                <NavLink class="nav-item" href="/head/teacher-approvals" @onclick="CloseSidebar">
+                    <i class="fas fa-user-check"></i>
+                    <span>Teacher Approvals</span>
+                </NavLink>
+                <NavLink class="nav-item" href="/head/manage-roles" @onclick="CloseSidebar">
+                    <i class="fas fa-users-cog"></i>
+                    <span>Manage Roles</span>
+                </NavLink>
+            </div>
+
+            <div class="nav-section mt-4">
+                <div class="nav-section-title">Account</div>
+                <button class="nav-item logout-nav" @onclick="HandleLogout">
+                    <i class="fas fa-sign-out-alt"></i>
+                    <span>Logout</span>
+                </button>
+            </div>
+        </nav>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        @Body
+    </main>
+</div>
+
+@code {
+    private bool isSidebarOpen = false;
+    private string headName = "Head";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var user = await AuthService.GetCurrentUserAsync();
+        if (user != null)
+        {
+            headName = user.Username;
+        }
+    }
+
+    private void ToggleSidebar() => isSidebarOpen = !isSidebarOpen;
+    private void CloseSidebar() => isSidebarOpen = false;
+
+    private void HandleLogout()
+    {
+        AuthService.Logout();
+        Navigation.NavigateTo("/");
+    }
+}
+
+<style>
+    :root {
+        --head-primary: #6f42c1; /* Deep Purple for Head */
+        --head-secondary: #4b2ea2;
+        --head-accent: #f6c23e; /* Gold accent */
+        --sidebar-width: 260px;
+        --header-height: 60px;
+        --header-top-offset: 32px;
+    }
+
+    .head-layout {
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        background-color: #f4f6f9;
+    }
+
+    /* Header */
+    .app-header {
+        height: var(--header-height);
+        background: linear-gradient(135deg, var(--head-primary) 0%, var(--head-secondary) 100%);
+        color: white !important;
+        display: flex;
+        align-items: center; 
+        justify-content: space-between;
+        padding: 0 1rem;
+        position: fixed;
+        top: var(--header-top-offset); 
+        left: 0;
+        right: 0;
+        z-index: 1000;
+        box-shadow: 0 4px 20px rgba(111, 66, 193, 0.25);
+        border-bottom: 2px solid var(--head-accent);
+    }
+
+    .header-left, .header-right {
+        flex: 0 0 50px;
+        display: flex;
+        align-items: center;
+    }
+
+    .header-center {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        perspective: 1000px;
+    }
+
+    .menu-toggle, .header-logout-btn {
+        background: rgba(255, 255, 255, 0.15);
+        border: 1px solid rgba(255, 255, 255, 0.25);
+        color: white !important;
+        width: 42px;
+        height: 42px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.2rem;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .header-logout-btn {
+        border-radius: 50%;
+        color: var(--head-accent) !important;
+    }
+
+    .menu-toggle:active, .header-logout-btn:active {
+        background: rgba(255, 255, 255, 0.25);
+        transform: scale(0.95);
+    }
+
+    .app-brand {
+        font-weight: 900;
+        letter-spacing: 2.5px;
+        font-size: 1.3rem;
+        color: white !important;
+        text-align: center;
+        white-space: nowrap;
+        text-transform: uppercase;
+        background: linear-gradient(to right, #fff 20%, var(--head-accent) 40%, var(--head-accent) 60%, #fff 80%);
+        background-size: 200% auto;
+        color: #000;
+        background-clip: text;
+        text-fill-color: transparent;
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        animation: shine 3.5s linear infinite;
+        text-shadow: 0 2px 15px rgba(0,0,0,0.2);
+    }
+
+    @keyframes shine {
+        to {
+            background-position: 200% center;
+        }
+    }
+
+    /* Sidebar */
+    .app-sidebar {
+        position: fixed;
+        top: var(--header-top-offset);
+        bottom: 0;
+        left: calc(-1 * var(--sidebar-width));
+        width: var(--sidebar-width);
+        background: white;
+        z-index: 1002;
+        transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        display: flex;
+        flex-direction: column;
+        box-shadow: 10px 0 30px rgba(0,0,0,0.08);
+    }
+
+    .sidebar-open .app-sidebar {
+        transform: translateX(var(--sidebar-width));
+    }
+
+    .sidebar-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(43, 22, 107, 0.3);
+        backdrop-filter: blur(4px);
+        z-index: 1001;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.4s;
+    }
+
+    .sidebar-open .sidebar-overlay {
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    .sidebar-header {
+        padding: 1.5rem 1rem;
+        background: linear-gradient(180deg, #f8f9fc 0%, #edf2f7 100%);
+        border-bottom: 1px solid #e3e6f0;
+    }
+
+    .user-profile {
+        display: flex;
+        align-items: center;
+        gap: 0.8rem;
+    }
+
+    .user-avatar {
+        width: 40px;
+        height: 40px;
+        background: var(--head-primary);
+        color: var(--head-accent);
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.2rem;
+        box-shadow: 0 4px 10px rgba(111, 66, 193, 0.3);
+    }
+
+    .user-info {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .user-name {
+        font-weight: 800;
+        color: var(--head-primary);
+        font-size: 1rem;
+    }
+
+    .user-role {
+        font-size: 0.7rem;
+        color: #858796;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    /* Nav Items */
+    .sidebar-nav {
+        padding: 1rem 0.75rem;
+        flex: 1;
+    }
+
+    .nav-section-title {
+        padding: 0 0.75rem;
+        font-size: 0.65rem;
+        font-weight: 800;
+        color: #b7b9cc;
+        text-transform: uppercase;
+        margin-bottom: 0.5rem;
+        letter-spacing: 1.2px;
+    }
+
+    .nav-item {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.8rem 0.75rem;
+        color: #4a5568;
+        text-decoration: none !important;
+        border-radius: 10px;
+        font-weight: 700;
+        transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        border: none;
+        background: none;
+        width: 100%;
+        text-align: left;
+        font-size: 0.9rem;
+        margin-bottom: 0.25rem;
+    }
+
+    .nav-item i {
+        font-size: 1rem;
+        width: 20px;
+        text-align: center;
+        color: #a0aec0;
+        transition: color 0.2s;
+    }
+
+    .nav-item:hover {
+        background: #f1f0f7;
+        color: var(--head-primary);
+    }
+
+    .nav-item:hover i {
+        color: var(--head-primary);
+    }
+
+    .nav-item.active {
+        background: rgba(111, 66, 193, 0.1);
+        color: var(--head-primary);
+        border-left: 4px solid var(--head-primary);
+        border-radius: 4px 10px 10px 4px;
+    }
+
+    .nav-item.active i {
+        color: var(--head-primary);
+    }
+
+    .logout-nav {
+        color: #e53e3e;
+        margin-top: 1rem;
+    }
+
+    .logout-nav i {
+        color: #e53e3e;
+    }
+
+    .logout-nav:hover {
+        background: rgba(229, 62, 62, 0.05);
+        color: #c53030;
+    }
+
+    /* Main */
+    .main-content {
+        margin-top: calc(var(--header-height) + var(--header-top-offset));
+        padding: 1rem;
+        flex: 1;
+    }
+</style>
