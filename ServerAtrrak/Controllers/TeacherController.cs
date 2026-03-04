@@ -190,19 +190,6 @@ namespace ServerAtrrak.Controllers
             }
         }
 
-        [HttpGet("test")]
-        public ActionResult TestEndpoint()
-        {
-            Console.WriteLine("DEBUG: Test endpoint called");
-            return Ok(new { 
-                message = "Test endpoint working",
-                timestamp = DateTime.Now,
-                students = new[] {
-                    new { StudentId = "test-1", FullName = "TEST STUDENT 1", GradeLevel = 7, Section = "PLATO" },
-                    new { StudentId = "test-2", FullName = "TEST STUDENT 2", GradeLevel = 7, Section = "PLATO" }
-                }
-            });
-        }
 
         [HttpGet("pending/{schoolId}")]
         public async Task<ActionResult<List<PendingTeacherInfo>>> GetPendingTeachers(string schoolId)

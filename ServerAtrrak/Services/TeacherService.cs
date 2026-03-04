@@ -770,7 +770,7 @@ namespace ServerAtrrak.Services
                 
                 // DEBUG: Check ALL pending users regardless of school
                 var debugQuery = @"
-                    SELECT u.Username, u.UserType, u.IsApproved, u.SchoolId as UserSchoolId, t.SchoolId as TeacherSchoolId
+                    SELECT u.Username, u.UserType, u.IsApproved, t.SchoolId as TeacherSchoolId
                     FROM user u
                     LEFT JOIN teacher t ON u.TeacherId = t.TeacherId
                     WHERE u.IsApproved = 0 AND (u.UserType = 'Teacher' OR u.UserType = 'SubjectTeacher')";
@@ -782,7 +782,7 @@ namespace ServerAtrrak.Services
                     Console.WriteLine($"DEBUG: Searching for SchoolId: [{schoolId}]");
                     while (await reader.ReadAsync())
                     {
-                        Console.WriteLine($"DEBUG: Pending User: {reader.GetString("Username")} | Type: {reader.GetString("UserType")} | UserSchool: {reader.GetValue(3)} | TeacherSchool: {reader.GetValue(4)}");
+                        Console.WriteLine($"DEBUG: Pending User: {reader.GetString("Username")} | Type: {reader.GetString("UserType")} | TeacherSchool: {reader.GetValue(3)}");
                     }
                     Console.WriteLine("DEBUG: --- END DB TRACE ---");
                 }
@@ -790,12 +790,12 @@ namespace ServerAtrrak.Services
                 var query = @"
                     SELECT u.UserId, u.Username, u.Email, u.UserType, u.CreatedAt as RegisteredAt,
                            COALESCE(t.FullName, u.Username) as FullName, 
-                           COALESCE(u.SchoolId, t.SchoolId) as SchoolId, 
+                           t.SchoolId, 
                            s.SchoolName
                     FROM user u
                     LEFT JOIN teacher t ON u.TeacherId = t.TeacherId
-                    LEFT JOIN school s ON COALESCE(u.SchoolId, t.SchoolId) = s.SchoolId
-                    WHERE (COALESCE(u.SchoolId, t.SchoolId) = @schoolId)
+                    LEFT JOIN school s ON t.SchoolId = s.SchoolId
+                    WHERE t.SchoolId = @schoolId
                     AND u.IsApproved = 0 
                     AND (u.UserType = 'Teacher' OR u.UserType = 'SubjectTeacher')";
                 
@@ -857,7 +857,7 @@ namespace ServerAtrrak.Services
                     SELECT COUNT(*) 
                     FROM user u 
                     LEFT JOIN teacher t ON u.TeacherId = t.TeacherId 
-                    WHERE (COALESCE(u.SchoolId, t.SchoolId) = @schoolId) 
+                    WHERE t.SchoolId = @schoolId 
                     AND u.IsActive = 1 
                     AND (u.UserType = 'Teacher' OR u.UserType = 'SubjectTeacher')";
                 using var teacherCommand = new MySqlCommand(teachersQuery, connection);
@@ -878,7 +878,7 @@ namespace ServerAtrrak.Services
                     SELECT COUNT(*) 
                     FROM user u 
                     LEFT JOIN teacher t ON u.TeacherId = t.TeacherId 
-                    WHERE (COALESCE(u.SchoolId, t.SchoolId) = @schoolId) 
+                    WHERE t.SchoolId = @schoolId 
                     AND u.IsApproved = 0 
                     AND (u.UserType = 'Teacher' OR u.UserType = 'SubjectTeacher')";
                 using var pendingCommand = new MySqlCommand(pendingQuery, connection);
@@ -913,7 +913,6 @@ namespace ServerAtrrak.Services
 
                 var query = @"
                     SELECT u.Username, u.UserType, u.IsApproved, 
-                           u.SchoolId as UserTableSchoolId, 
                            t.SchoolId as TeacherTableSchoolId,
                            u.TeacherId,
                            u.CreatedAt
@@ -927,16 +926,16 @@ namespace ServerAtrrak.Services
                 {
                     while (await reader.ReadAsync())
                     {
+                        var teacherSchool = reader.IsDBNull("TeacherTableSchoolId") ? "" : reader.GetString("TeacherTableSchoolId");
                         diagnostics.PendingUsers.Add(new
                         {
                             Username = reader.GetString("Username"),
                             Type = reader.GetString("UserType"),
-                            UserSchool = reader.IsDBNull("UserTableSchoolId") ? "NULL" : reader.GetString("UserTableSchoolId"),
-                            TeacherSchool = reader.IsDBNull("TeacherTableSchoolId") ? "NULL" : reader.GetString("TeacherTableSchoolId"),
+                            UserSchool = "N/A",
+                            TeacherSchool = string.IsNullOrEmpty(teacherSchool) ? "NULL" : teacherSchool,
                             TeacherId = reader.IsDBNull("TeacherId") ? "NULL" : reader.GetString("TeacherId"),
                             RegisteredAt = reader.GetDateTime("CreatedAt"),
-                            IsMatch = (reader.IsDBNull("UserTableSchoolId") ? "" : reader.GetString("UserTableSchoolId")) == schoolId || 
-                                     (reader.IsDBNull("TeacherTableSchoolId") ? "" : reader.GetString("TeacherTableSchoolId")) == schoolId
+                            IsMatch = teacherSchool == schoolId
                         });
                     }
                 }
