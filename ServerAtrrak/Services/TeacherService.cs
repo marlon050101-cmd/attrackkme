@@ -14,8 +14,6 @@ namespace ServerAtrrak.Services
             _dbConnection = dbConnection;
         }
 
-        public Task<MySqlConnection> GetDebugConnectionAsync() => _dbConnection.GetConnectionAsync();
-
         public async Task<TeacherDashboardData?> GetTeacherDashboardDataAsync(string teacherId)
         {
             try
@@ -769,37 +767,20 @@ namespace ServerAtrrak.Services
             try
             {
                 using var connection = await _dbConnection.GetConnectionAsync();
-
-                // First, get the SchoolName for the given schoolId so we can also match by name
-                // (handles duplicate school records created by GetOrCreateSchoolAsync)
-                string? schoolName = null;
-                var schoolNameQuery = "SELECT SchoolName FROM school WHERE SchoolId = @schoolId LIMIT 1";
-                using (var schoolNameCmd = new MySqlCommand(schoolNameQuery, connection))
-                {
-                    schoolNameCmd.Parameters.AddWithValue("@schoolId", schoolId);
-                    var result = await schoolNameCmd.ExecuteScalarAsync();
-                    schoolName = result?.ToString();
-                }
-                Console.WriteLine($"DEBUG GetPendingTeachersAsync: schoolId={schoolId}, schoolName={schoolName}");
-
                 var query = @"
                     SELECT u.UserId, u.Username, u.Email, u.UserType, u.CreatedAt as RegisteredAt,
                            t.FullName, t.SchoolId, s.SchoolName
                     FROM user u
                     JOIN teacher t ON u.TeacherId = t.TeacherId
                     LEFT JOIN school s ON t.SchoolId = s.SchoolId
-                    WHERE u.IsApproved = 0 
-                    AND (u.UserType = 'Teacher' OR u.UserType = 'SubjectTeacher')
-                    AND (
-                        t.SchoolId = @schoolId
-                        OR (s.SchoolName = @schoolName AND @schoolName IS NOT NULL AND @schoolName != '')
-                    )";
-
+                    WHERE t.SchoolId = @schoolId 
+                    AND u.IsApproved = 0 
+                    AND (u.UserType = 'Teacher' OR u.UserType = 'SubjectTeacher')";
+                
                 var pendingTeachers = new List<PendingTeacherInfo>();
                 using (var command = new MySqlCommand(query, connection))
                 {
                     command.Parameters.AddWithValue("@schoolId", schoolId);
-                    command.Parameters.AddWithValue("@schoolName", (object?)schoolName ?? DBNull.Value);
                     using var reader = await command.ExecuteReaderAsync();
                     while (await reader.ReadAsync())
                     {
@@ -809,14 +790,13 @@ namespace ServerAtrrak.Services
                             Username = reader.GetString("Username"),
                             Email = reader.GetString("Email"),
                             FullName = reader.IsDBNull("FullName") ? "" : reader.GetString("FullName"),
-                            SchoolId = reader.IsDBNull("SchoolId") ? schoolId : reader.GetString("SchoolId"),
+                            SchoolId = reader.GetString("SchoolId"),
                             SchoolName = reader.IsDBNull("SchoolName") ? "" : reader.GetString("SchoolName"),
                             RegisteredAt = reader.GetDateTime("RegisteredAt"),
                             UserType = reader.GetString("UserType")
                         });
                     }
                 }
-                Console.WriteLine($"DEBUG GetPendingTeachersAsync: Found {pendingTeachers.Count} pending teachers");
                 return pendingTeachers;
             }
             catch (Exception ex)

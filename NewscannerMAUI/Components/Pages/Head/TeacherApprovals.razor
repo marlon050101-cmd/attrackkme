@@ -377,40 +377,9 @@
         {
             isLoading = true;
             var user = await AuthService.GetCurrentUserAsync();
-
-            if (user == null)
+            if (user != null && !string.IsNullOrEmpty(user.SchoolId))
             {
-                Console.WriteLine("DEBUG TeacherApprovals: user is null, cannot load pending teachers");
-                return;
-            }
-
-            Console.WriteLine($"DEBUG TeacherApprovals: user.SchoolId={user.SchoolId}, user.TeacherId={user.TeacherId}");
-
-            if (!string.IsNullOrEmpty(user.SchoolId))
-            {
-                // Primary path: use SchoolId directly
                 pendingTeachers = await Http.GetFromJsonAsync<List<PendingTeacherInfo>>($"api/teacher/pending/{user.SchoolId}");
-                Console.WriteLine($"DEBUG TeacherApprovals: Loaded {pendingTeachers?.Count ?? 0} via SchoolId");
-            }
-            else if (!string.IsNullOrEmpty(user.TeacherId))
-            {
-                // Fallback: let the server resolve SchoolId from TeacherId
-                Console.WriteLine($"DEBUG TeacherApprovals: SchoolId is null, trying TeacherId fallback");
-                var response = await Http.GetAsync($"api/teacher/pending-by-teacher/{user.TeacherId}");
-                if (response.IsSuccessStatusCode)
-                {
-                    pendingTeachers = await response.Content.ReadFromJsonAsync<List<PendingTeacherInfo>>();
-                    Console.WriteLine($"DEBUG TeacherApprovals: Loaded {pendingTeachers?.Count ?? 0} via TeacherId fallback");
-                }
-                else
-                {
-                    Console.WriteLine($"DEBUG TeacherApprovals: pending-by-teacher returned {response.StatusCode}");
-                }
-            }
-            else
-            {
-                Console.WriteLine("DEBUG TeacherApprovals: Both SchoolId and TeacherId are null — cannot load pending teachers");
-                pendingTeachers = new List<PendingTeacherInfo>();
             }
         }
         catch (Exception ex)
