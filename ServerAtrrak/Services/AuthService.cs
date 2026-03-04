@@ -44,6 +44,15 @@ namespace ServerAtrrak.Services
                     };
                 }
 
+                if (!user.IsApproved)
+                {
+                    return new LoginResponse
+                    {
+                        Success = false,
+                        Message = "Please consult to your head"
+                    };
+                }
+
                 _logger.LogInformation("Validating password for user: {Username}", request.Username);
                 var passwordValid = await ValidatePasswordAsync(request.Password, user.Password);
                 _logger.LogInformation("Password valid: {PasswordValid}", passwordValid);
@@ -102,7 +111,7 @@ namespace ServerAtrrak.Services
 
                 var query = @"
                     SELECT UserId, Username, Email, Password, UserType, 
-                           IsActive, CreatedAt, UpdatedAt, LastLoginAt, TeacherId, StudentId
+                           IsActive, IsApproved, CreatedAt, UpdatedAt, LastLoginAt, TeacherId, StudentId
                     FROM user 
                     WHERE Username = @Username";
 
@@ -125,6 +134,7 @@ namespace ServerAtrrak.Services
                         "Student" => UserType.Student,
                         "GuidanceCounselor" => UserType.GuidanceCounselor,
                         "Advisor" => UserType.Advisor,
+                        "Head" => UserType.Head,
                         _ => UserType.Admin
                     };
 
@@ -136,11 +146,12 @@ namespace ServerAtrrak.Services
                         Password = reader.GetString(3),
                         UserType = userType,
                         IsActive = reader.GetBoolean(5),
-                        CreatedAt = reader.GetDateTime(6),
-                        UpdatedAt = reader.GetDateTime(7),
-                        LastLoginAt = reader.IsDBNull(8) ? null : reader.GetDateTime(8),
-                        TeacherId = reader.IsDBNull(9) ? null : reader.GetString(9),
-                        StudentId = reader.IsDBNull(10) ? null : reader.GetString(10)
+                        IsApproved = reader.GetBoolean(6), // Assuming IsApproved is the 6th column (index 5 was IsActive)
+                        CreatedAt = reader.GetDateTime(7),
+                        UpdatedAt = reader.GetDateTime(8),
+                        LastLoginAt = reader.IsDBNull(9) ? null : reader.GetDateTime(9),
+                        TeacherId = reader.IsDBNull(10) ? null : reader.GetString(10),
+                        StudentId = reader.IsDBNull(11) ? null : reader.GetString(11)
                     };
                     _logger.LogInformation("User object created successfully");
                     return user;

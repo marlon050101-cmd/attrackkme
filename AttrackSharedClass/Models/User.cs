@@ -24,6 +24,8 @@ namespace AttrackSharedClass.Models
         public UserType UserType { get; set; }
         
         public bool IsActive { get; set; } = true;
+
+        public bool IsApproved { get; set; } = true;
         
         public DateTime CreatedAt { get; set; } = DateTime.Now;
         
@@ -45,6 +47,8 @@ namespace AttrackSharedClass.Models
         /// <summary>Guidance Counselor — monitors students, counseling records.</summary>
         GuidanceCounselor = 4,
         /// <summary>Advisor — creates section classes (subject + schedule), links students to section.</summary>
-        Advisor = 5
+        Advisor = 5,
+        /// <summary>Head — manages teachers and assigns roles.</summary>
+        Head = 6
     }
 }

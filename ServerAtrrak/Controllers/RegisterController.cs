@@ -741,6 +741,7 @@ namespace ServerAtrrak.Controllers
                     command.Parameters.AddWithValue("@Password", request.Password);
                     command.Parameters.AddWithValue("@UserType", userTypeValue);
                     command.Parameters.AddWithValue("@IsActive", true);
+                    command.Parameters.AddWithValue("@IsApproved", (userTypeValue == "SubjectTeacher" || userTypeValue == "Teacher") ? false : true);
                     command.Parameters.AddWithValue("@CreatedAt", DateTime.Now);
                     command.Parameters.AddWithValue("@UpdatedAt", DateTime.Now);
                     command.Parameters.AddWithValue("@TeacherId", teacherId);
@@ -804,8 +805,8 @@ namespace ServerAtrrak.Controllers
 
             var userId = Guid.NewGuid().ToString();
             var query = @"
-                INSERT INTO user (UserId, Username, Email, Password, UserType, IsActive, CreatedAt, UpdatedAt, StudentId)
-                VALUES (@UserId, @Username, @Email, @Password, @UserType, @IsActive, @CreatedAt, @UpdatedAt, @StudentId)";
+                INSERT INTO user (UserId, Username, Email, Password, UserType, IsActive, IsApproved, CreatedAt, UpdatedAt, StudentId)
+                VALUES (@UserId, @Username, @Email, @Password, @UserType, @IsActive, @IsApproved, @CreatedAt, @UpdatedAt, @StudentId)";
 
             using var command = new MySqlCommand(query, connection);
             command.Parameters.AddWithValue("@UserId", userId);
@@ -814,6 +815,7 @@ namespace ServerAtrrak.Controllers
             command.Parameters.AddWithValue("@Password", request.Password);
             command.Parameters.AddWithValue("@UserType", UserType.Student.ToString());
             command.Parameters.AddWithValue("@IsActive", true);
+            command.Parameters.AddWithValue("@IsApproved", true);
             command.Parameters.AddWithValue("@CreatedAt", DateTime.Now);
             command.Parameters.AddWithValue("@UpdatedAt", DateTime.Now);
             command.Parameters.AddWithValue("@StudentId", studentId);
@@ -1359,6 +1361,7 @@ namespace ServerAtrrak.Controllers
                     command.Parameters.AddWithValue("@Password", request.Password);
                     command.Parameters.AddWithValue("@UserType", userTypeValue);
                     command.Parameters.AddWithValue("@IsActive", true);
+                    command.Parameters.AddWithValue("@IsApproved", (userTypeValue == "SubjectTeacher" || userTypeValue == "Teacher") ? false : true);
                     command.Parameters.AddWithValue("@CreatedAt", DateTime.Now);
                     command.Parameters.AddWithValue("@UpdatedAt", DateTime.Now);
                     command.Parameters.AddWithValue("@TeacherId", teacherId);
@@ -1415,8 +1418,8 @@ namespace ServerAtrrak.Controllers
 
                 var userId = Guid.NewGuid().ToString();
                 var query = @"
-                    INSERT INTO user (UserId, Username, Email, Password, UserType, IsActive, CreatedAt, UpdatedAt, TeacherId)
-                    VALUES (@UserId, @Username, @Email, @Password, @UserType, @IsActive, @CreatedAt, @UpdatedAt, @TeacherId)";
+                    INSERT INTO user (UserId, Username, Email, Password, UserType, IsActive, IsApproved, CreatedAt, UpdatedAt, TeacherId)
+                    VALUES (@UserId, @Username, @Email, @Password, @UserType, @IsActive, @IsApproved, @CreatedAt, @UpdatedAt, @TeacherId)";
 
                 using var command = new MySqlCommand(query, connection);
                 command.Parameters.AddWithValue("@UserId", userId);
@@ -1425,6 +1428,7 @@ namespace ServerAtrrak.Controllers
                 command.Parameters.AddWithValue("@Password", request.Password);
                 command.Parameters.AddWithValue("@UserType", request.UserType.ToString());
                 command.Parameters.AddWithValue("@IsActive", true);
+                command.Parameters.AddWithValue("@IsApproved", true);
                 command.Parameters.AddWithValue("@CreatedAt", DateTime.Now);
                 command.Parameters.AddWithValue("@UpdatedAt", DateTime.Now);
                 command.Parameters.AddWithValue("@TeacherId", guidanceId);

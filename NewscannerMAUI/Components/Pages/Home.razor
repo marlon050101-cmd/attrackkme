@@ -117,6 +117,44 @@
         border-radius: 8px;
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     }</style>
+120: 
+121: <style>
+122:     .modal-backdrop-custom {
+123:         position: fixed;
+124:         top: 0;
+125:         left: 0;
+126:         width: 100%;
+127:         height: 100%;
+128:         background: rgba(0, 0, 0, 0.5);
+129:         backdrop-filter: blur(4px);
+130:         display: flex;
+131:         align-items: center;
+132:         justify-content: center;
+133:         z-index: 1050;
+134:     }
+135: 
+136:     .modal-content-custom {
+137:         background: white;
+138:         padding: 2rem;
+139:         border-radius: 20px;
+140:         box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+141:         max-width: 400px;
+142:         width: 90%;
+143:         text-align: center;
+144:         animation: modalPopIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+145:     }
+146: 
+147:     @@keyframes modalPopIn {
+148:         from { transform: scale(0.8); opacity: 0; }
+149:         to { transform: scale(1); opacity: 1; }
+150:     }
+151: 
+152:     .modal-icon {
+153:         font-size: 3.5rem;
+154:         color: #ffc107;
+155:         margin-bottom: 1rem;
+156:     }
+157: </style>
 
 <!-- Main Content Container -->
 <div class="main-container">
@@ -214,12 +252,29 @@
     </div>
 </div>
 
+@if (showApprovalModal)
+{
+    <div class="modal-backdrop-custom" @onclick="CloseModal">
+        <div class="modal-content-custom" @onclick:stopPropagation>
+            <div class="modal-icon">
+                <i class="fas fa-user-clock"></i>
+            </div>
+            <h4 class="fw-bold mb-3">Pending Approval</h4>
+            <p class="text-muted mb-4">Your account is currently waiting for head approval. Please consult to your head to activate your access.</p>
+            <button class="btn btn-primary w-100 py-2 fw-semibold" @onclick="CloseModal">Got it, thanks!</button>
+        </div>
+    </div>
+}
+
 @code {
     private LoginRequest loginRequest = new();
     private string errorMessage = string.Empty;
     private bool isLoading = false;
+    private bool showApprovalModal = false;
     private string connectionStatus = "Checking...";
     private Timer? connectionCheckTimer;
+
+    private void CloseModal() => showApprovalModal = false;
 
     protected override async Task OnInitializedAsync()
     {
@@ -290,67 +345,72 @@
                 if (responseContent.TrimStart().StartsWith("{"))
                 {
                     var result = await response.Content.ReadFromJsonAsync<LoginResponse>();
-                    if (result?.Success == true && result.User != null)
+                if (result?.Success == true && result.User != null)
+                {
+                    System.Diagnostics.Debug.WriteLine("Login successful, setting user...");
+                    AuthService.SetCurrentUser(result.User);
+                    
+                    try
                     {
-                        System.Diagnostics.Debug.WriteLine("Login successful, setting user...");
-                        AuthService.SetCurrentUser(result.User);
-                        
-                        // Use a different navigation approach to avoid Android fragment conflicts
-                        try
+                        await Task.Delay(1000);
+                        await InvokeAsync(() => 
                         {
-                            // Force a longer delay to ensure UI is ready
-                            await Task.Delay(1000);
-                            
-                            // Try to navigate based on role
-                            await InvokeAsync(() => 
+                            if (result.User.UserType == UserType.Teacher)
                             {
-                                if (result.User.UserType == UserType.Teacher)
-                                {
-                                    Navigation.NavigateTo("/teacher-dashboard");
-                                }
-                                else if (result.User.UserType == UserType.Advisor || result.User.UserType == UserType.GuidanceCounselor)
-                                {
-                                    Navigation.NavigateTo("/advisor-dashboard");
-                                }
-                                else if (result.User.UserType == UserType.Student)
-                                {
-                                    Navigation.NavigateTo("/student-dashboard");
-                                }
-                                else
-                                {
-                                    Navigation.NavigateTo("/qr-scanner");
-                                }
-                            });
-                        }
-                        catch (Exception navEx)
-                        {
-                            System.Diagnostics.Debug.WriteLine($"Navigation error: {navEx.Message}");
-                            // Fallback: try direct navigation
-                            Navigation.NavigateTo("/qr-scanner");
-                        }
+                                Navigation.NavigateTo("/teacher-dashboard");
+                            }
+                            else if (result.User.UserType == UserType.Advisor || result.User.UserType == UserType.GuidanceCounselor)
+                            {
+                                Navigation.NavigateTo("/advisor-dashboard");
+                            }
+                            else if (result.User.UserType == UserType.Student)
+                            {
+                                Navigation.NavigateTo("/student-dashboard");
+                            }
+                            else if (result.User.UserType == UserType.Head)
+                            {
+                                Navigation.NavigateTo("/advisor-dashboard"); // Temporary: Heads can use advisor dashboard for now
+                            }
+                            else
+                            {
+                                Navigation.NavigateTo("/qr-scanner");
+                            }
+                        });
                     }
-                    else
+                    catch (Exception navEx)
                     {
-                        errorMessage = "Invalid login credentials";
+                        System.Diagnostics.Debug.WriteLine($"Navigation error: {navEx.Message}");
+                        Navigation.NavigateTo("/qr-scanner");
                     }
                 }
                 else
                 {
-                    errorMessage = "Server returned invalid response format";
+                    errorMessage = "Invalid login credentials";
                 }
             }
             else
             {
-                if (responseContent.TrimStart().StartsWith("{"))
+                errorMessage = "Server returned invalid response format";
+            }
+        }
+        else
+        {
+            if (responseContent.TrimStart().StartsWith("{"))
+            {
+                var errorResult = await response.Content.ReadFromJsonAsync<LoginResponse>();
+                errorMessage = errorResult?.Message ?? "Login failed";
+                
+                if (errorMessage == "Please consult to your head")
                 {
-                    var errorResult = await response.Content.ReadFromJsonAsync<LoginResponse>();
-                    errorMessage = errorResult?.Message ?? "Login failed";
-                }
-                else
-                {
-                    errorMessage = $"Server error: {response.StatusCode} - {responseContent}";
+                    showApprovalModal = true;
+                    errorMessage = string.Empty;
                 }
             }
+            else
+            {
+                errorMessage = $"Server error: {response.StatusCode} - {responseContent}";
+            }
+        }
         }
         catch (TaskCanceledException tce)
         {
