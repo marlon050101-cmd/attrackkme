@@ -777,6 +777,7 @@ namespace ServerAtrrak.Services
                     AND u.IsApproved = 0 
                     AND (u.UserType = 'Teacher' OR u.UserType = 'SubjectTeacher')";
                 
+                Console.WriteLine($"DEBUG: GetPendingTeachersAsync - Querying for SchoolId: {schoolId}");
                 var pendingTeachers = new List<PendingTeacherInfo>();
                 using (var command = new MySqlCommand(query, connection))
                 {
@@ -784,7 +785,7 @@ namespace ServerAtrrak.Services
                     using var reader = await command.ExecuteReaderAsync();
                     while (await reader.ReadAsync())
                     {
-                        pendingTeachers.Add(new PendingTeacherInfo
+                        var info = new PendingTeacherInfo
                         {
                             UserId = reader.GetString("UserId"),
                             Username = reader.GetString("Username"),
@@ -794,9 +795,11 @@ namespace ServerAtrrak.Services
                             SchoolName = reader.IsDBNull("SchoolName") ? "" : reader.GetString("SchoolName"),
                             RegisteredAt = reader.GetDateTime("RegisteredAt"),
                             UserType = reader.GetString("UserType")
-                        });
+                        };
+                        pendingTeachers.Add(info);
                     }
                 }
+                Console.WriteLine($"DEBUG: GetPendingTeachersAsync - Found {pendingTeachers.Count} pending teachers");
                 return pendingTeachers;
             }
             catch (Exception ex)

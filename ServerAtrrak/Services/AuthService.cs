@@ -113,7 +113,7 @@ namespace ServerAtrrak.Services
                 var query = @"
                     SELECT u.UserId, u.Username, u.Email, u.Password, u.UserType, 
                            u.IsActive, u.IsApproved, u.CreatedAt, u.UpdatedAt, u.LastLoginAt, 
-                           u.TeacherId, u.StudentId, COALESCE(t.SchoolId, s.SchoolId) as SchoolId
+                           u.TeacherId, u.StudentId, COALESCE(u.SchoolId, t.SchoolId, s.SchoolId) as SchoolId
                     FROM user u
                     LEFT JOIN teacher t ON u.TeacherId = t.TeacherId
                     LEFT JOIN student s ON u.StudentId = s.StudentId
@@ -142,21 +142,25 @@ namespace ServerAtrrak.Services
                         _ => UserType.Admin
                     };
 
+                    var userId = reader.GetString(0);
+                    var schoolId = reader.IsDBNull(12) ? null : reader.GetString(12);
+                    _logger.LogInformation("User {UserId} has SchoolId: {SchoolId}", userId, schoolId ?? "NULL");
+
                     var user = new User
                     {
-                        UserId = reader.GetString(0),
+                        UserId = userId,
                         Username = reader.GetString(1),
                         Email = reader.GetString(2),
                         Password = reader.GetString(3),
                         UserType = userType,
                         IsActive = reader.GetBoolean(5),
-                        IsApproved = reader.GetBoolean(6), // Assuming IsApproved is the 6th column (index 5 was IsActive)
+                        IsApproved = reader.GetBoolean(6),
                         CreatedAt = reader.GetDateTime(7),
                         UpdatedAt = reader.GetDateTime(8),
                         LastLoginAt = reader.IsDBNull(9) ? null : reader.GetDateTime(9),
                         TeacherId = reader.IsDBNull(10) ? null : reader.GetString(10),
                         StudentId = reader.IsDBNull(11) ? null : reader.GetString(11),
-                        SchoolId = reader.IsDBNull(12) ? null : reader.GetString(12)
+                        SchoolId = schoolId
                     };
                     _logger.LogInformation("User object created successfully");
                     return user;

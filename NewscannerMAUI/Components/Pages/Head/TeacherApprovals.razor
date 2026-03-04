@@ -24,6 +24,16 @@
             <p>Fetching pending requests...</p>
         </div>
     }
+    else if (userSchoolId == null)
+    {
+        <div class="empty-state">
+            <div class="empty-icon">
+                <i class="fas fa-exclamation-triangle"></i>
+            </div>
+            <h3>Profile Incomplete</h3>
+            <p>Your account is not linked to a school. Please update your profile or contact support.</p>
+        </div>
+    }
     else if (pendingTeachers == null || !pendingTeachers.Any())
     {
         <div class="empty-state">
@@ -32,6 +42,9 @@
             </div>
             <h3>All Caught Up!</h3>
             <p>There are no pending teacher approvals for your school at this moment.</p>
+            <div class="debug-info" style="font-size: 0.7rem; color: #a0aec0; margin-top: 1rem;">
+                School ID: @userSchoolId
+            </div>
             <button class="btn-refresh" @onclick="LoadPendingTeachers">
                 <i class="fas fa-sync-alt"></i> Refresh
             </button>
@@ -364,7 +377,7 @@
     private bool isProcessing = false;
     private string? processingId;
     private bool showSuccessModal = false;
-    private string lastApprovedName = "";
+    private string? userSchoolId;
 
     protected override async Task OnInitializedAsync()
     {
@@ -377,9 +390,13 @@
         {
             isLoading = true;
             var user = await AuthService.GetCurrentUserAsync();
-            if (user != null && !string.IsNullOrEmpty(user.SchoolId))
+            if (user != null)
             {
-                pendingTeachers = await Http.GetFromJsonAsync<List<PendingTeacherInfo>>($"api/teacher/pending/{user.SchoolId}");
+                userSchoolId = user.SchoolId;
+                if (!string.IsNullOrEmpty(userSchoolId))
+                {
+                    pendingTeachers = await Http.GetFromJsonAsync<List<PendingTeacherInfo>>($"api/teacher/pending/{userSchoolId}");
+                }
             }
         }
         catch (Exception ex)
