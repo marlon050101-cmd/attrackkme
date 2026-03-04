@@ -55,6 +55,58 @@
             <button class="btn-refresh" @onclick="LoadPendingTeachers">
                 <i class="fas fa-sync-alt"></i> Refresh
             </button>
+
+            <div style="margin-top: 2rem; border-top: 1px dashed #cbd5e0; padding-top: 1rem;">
+                <button class="btn-debug" @onclick="ToggleDebug" style="background: none; border: 1px solid #718096; color: #718096; padding: 0.5rem 1rem; border-radius: 8px; font-size: 0.8rem;">
+                    @(showDebug ? "Hide Debug Data" : "Show Debug Data (Help find missing teachers)")
+                </button>
+            </div>
+
+            @if (showDebug)
+            {
+                <div class="debug-panel" style="margin-top: 1rem; background: #f7fafc; padding: 1rem; border-radius: 12px; border: 1px solid #e2e8f0; text-align: left;">
+                    <h4 style="font-size: 0.9rem; color: #4a5568; margin-bottom: 0.5rem;">Diagnostic Info</h4>
+                    <p style="font-size: 0.8rem; color: #718096;">Your School ID: <code style="background: #edf2f7; padding: 2px 4px;">@userSchoolId</code></p>
+                    
+                    @if (isLoggingDebug)
+                    {
+                        <p style="font-size: 0.8rem;">Loading database records...</p>
+                    }
+                    else if (debugResults != null)
+                    {
+                        <div style="overflow-x: auto; margin-top: 0.5rem;">
+                            <table style="width: 100%; font-size: 0.75rem; border-collapse: collapse;">
+                                <thead>
+                                    <tr style="border-bottom: 2px solid #e2e8f0;">
+                                        <th style="padding: 4px; text-align: left;">Username</th>
+                                        <th style="padding: 4px; text-align: left;">UserSchool</th>
+                                        <th style="padding: 4px; text-align: left;">TeacherSchool</th>
+                                        <th style="padding: 4px; text-align: center;">Match?</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @if (!debugResults.PendingUsers.Any())
+                                    {
+                                        <tr><td colspan="4" style="padding: 8px; text-align: center; color: #a0aec0;">No pending users found in entire DB.</td></tr>
+                                    }
+                                    @foreach (var user in debugResults.PendingUsers)
+                                    {
+                                        <tr style="border-bottom: 1px solid #edf2f7; background: @(user.IsMatch ? "#f0fff4" : "transparent")">
+                                            <td style="padding: 4px;">@user.Username (@user.Type)</td>
+                                            <td style="padding: 4px;">@user.UserSchool</td>
+                                            <td style="padding: 4px;">@user.TeacherSchool</td>
+                                            <td style="padding: 4px; text-align: center;">
+                                                @if (user.IsMatch) { <span style="color: green;">✅</span> }
+                                                else { <span style="color: red;">❌</span> }
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            }
         </div>
     }
     else
@@ -448,5 +500,53 @@
             isProcessing = false;
             processingId = null;
         }
+    }
+    private bool showDebug = false;
+    private bool isLoggingDebug = false;
+    private DiagnosticData? debugResults;
+
+    private async Task ToggleDebug()
+    {
+        showDebug = !showDebug;
+        if (showDebug && debugResults == null)
+        {
+            await LoadDiagnostics();
+        }
+    }
+
+    private async Task LoadDiagnostics()
+    {
+        try
+        {
+            isLoggingDebug = true;
+            if (!string.IsNullOrEmpty(userSchoolId))
+            {
+                var http = HttpClientFactory.CreateClient("AttrakAPI");
+                debugResults = await http.GetFromJsonAsync<DiagnosticData>($"/api/teacher/debug-pending/{userSchoolId}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading diagnostics: {ex.Message}");
+        }
+        finally
+        {
+            isLoggingDebug = false;
+        }
+    }
+
+    private class DiagnosticData
+    {
+        public string CurrentSchoolId { get; set; } = "";
+        public List<PendingUserDebugInfo> PendingUsers { get; set; } = new();
+    }
+
+    private class PendingUserDebugInfo
+    {
+        public string Username { get; set; } = "";
+        public string Type { get; set; } = "";
+        public string UserSchool { get; set; } = "";
+        public string TeacherSchool { get; set; } = "";
+        public bool IsMatch { get; set; }
     }
 }

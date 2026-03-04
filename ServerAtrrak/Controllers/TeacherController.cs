@@ -218,6 +218,20 @@ namespace ServerAtrrak.Controllers
             }
         }
 
+        [HttpGet("debug-pending/{schoolId}")]
+        public async Task<ActionResult> GetPendingDiagnostics(string schoolId)
+        {
+            try
+            {
+                var diagnostics = await _teacherService.GetTeacherApprovalDiagnosticsAsync(schoolId?.Trim() ?? "");
+                return Ok(diagnostics);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Diagnostic error", error = ex.Message });
+            }
+        }
+
         [HttpPut("approve/{userId}")]
         public async Task<ActionResult> ApproveTeacher(string userId)
         {

@@ -768,6 +768,25 @@ namespace ServerAtrrak.Services
             {
                 using var connection = await _dbConnection.GetConnectionAsync();
                 
+                // DEBUG: Check ALL pending users regardless of school
+                var debugQuery = @"
+                    SELECT u.Username, u.UserType, u.IsApproved, u.SchoolId as UserSchoolId, t.SchoolId as TeacherSchoolId
+                    FROM user u
+                    LEFT JOIN teacher t ON u.TeacherId = t.TeacherId
+                    WHERE u.IsApproved = 0 AND (u.UserType = 'Teacher' OR u.UserType = 'SubjectTeacher')";
+                
+                using (var cmd = new MySqlCommand(debugQuery, connection))
+                using (var reader = await cmd.ExecuteReaderAsync())
+                {
+                    Console.WriteLine("DEBUG: --- START DB TRACE ---");
+                    Console.WriteLine($"DEBUG: Searching for SchoolId: [{schoolId}]");
+                    while (await reader.ReadAsync())
+                    {
+                        Console.WriteLine($"DEBUG: Pending User: {reader.GetString("Username")} | Type: {reader.GetString("UserType")} | UserSchool: {reader.GetValue(3)} | TeacherSchool: {reader.GetValue(4)}");
+                    }
+                    Console.WriteLine("DEBUG: --- END DB TRACE ---");
+                }
+
                 var query = @"
                     SELECT u.UserId, u.Username, u.Email, u.UserType, u.CreatedAt as RegisteredAt,
                            COALESCE(t.FullName, u.Username) as FullName, 
@@ -877,6 +896,55 @@ namespace ServerAtrrak.Services
             {
                 Console.WriteLine($"Error in GetHeadStatsAsync: {ex.Message}");
                 return new { ActiveTeachers = 0, ActiveStudents = 0, PendingApprovals = 0 };
+            }
+        }
+        public async Task<object> GetTeacherApprovalDiagnosticsAsync(string schoolId)
+        {
+            try
+            {
+                using var connection = await _dbConnection.GetConnectionAsync();
+                
+                var diagnostics = new
+                {
+                    CurrentSchoolId = schoolId,
+                    ServerTime = DateTime.Now,
+                    PendingUsers = new List<object>()
+                };
+
+                var query = @"
+                    SELECT u.Username, u.UserType, u.IsApproved, 
+                           u.SchoolId as UserTableSchoolId, 
+                           t.SchoolId as TeacherTableSchoolId,
+                           u.TeacherId,
+                           u.CreatedAt
+                    FROM user u
+                    LEFT JOIN teacher t ON u.TeacherId = t.TeacherId
+                    WHERE u.IsApproved = 0 
+                    AND (u.UserType = 'Teacher' OR u.UserType = 'SubjectTeacher')";
+
+                using (var cmd = new MySqlCommand(query, connection))
+                using (var reader = await cmd.ExecuteReaderAsync())
+                {
+                    while (await reader.ReadAsync())
+                    {
+                        diagnostics.PendingUsers.Add(new
+                        {
+                            Username = reader.GetString("Username"),
+                            Type = reader.GetString("UserType"),
+                            UserSchool = reader.IsDBNull("UserTableSchoolId") ? "NULL" : reader.GetString("UserTableSchoolId"),
+                            TeacherSchool = reader.IsDBNull("TeacherTableSchoolId") ? "NULL" : reader.GetString("TeacherTableSchoolId"),
+                            TeacherId = reader.IsDBNull("TeacherId") ? "NULL" : reader.GetString("TeacherId"),
+                            RegisteredAt = reader.GetDateTime("CreatedAt"),
+                            IsMatch = (reader.IsDBNull("UserTableSchoolId") ? "" : reader.GetString("UserTableSchoolId")) == schoolId || 
+                                     (reader.IsDBNull("TeacherTableSchoolId") ? "" : reader.GetString("TeacherTableSchoolId")) == schoolId
+                        });
+                    }
+                }
+                return diagnostics;
+            }
+            catch (Exception ex)
+            {
+                return new { Error = ex.Message };
             }
         }
     }
