@@ -152,7 +152,7 @@ namespace ServerAtrrak.Controllers
                 return Ok(new { 
                     teacherInfo = teacherInfo,
                     studentsCount = students?.Count ?? 0,
-                    students = students?.Take(3) // Show first 3 students
+                    students = students?.Take(3)
                 });
             }
             catch (Exception ex)
