@@ -218,6 +218,36 @@ namespace ServerAtrrak.Controllers
             }
         }
 
+        // Resolves SchoolId from TeacherId, then returns pending teachers.
+        // Use this when the Head's session SchoolId is null.
+        [HttpGet("pending-by-teacher/{teacherId}")]
+        public async Task<ActionResult<List<PendingTeacherInfo>>> GetPendingTeachersByTeacher(string teacherId)
+        {
+            try
+            {
+                using var connection = await _teacherService.GetDebugConnectionAsync();
+                var schoolIdQuery = "SELECT SchoolId FROM teacher WHERE TeacherId = @teacherId LIMIT 1";
+                string? schoolId = null;
+                using (var cmd = new MySql.Data.MySqlClient.MySqlCommand(schoolIdQuery, connection))
+                {
+                    cmd.Parameters.AddWithValue("@teacherId", teacherId);
+                    var result = await cmd.ExecuteScalarAsync();
+                    schoolId = result?.ToString();
+                }
+                Console.WriteLine($"DEBUG pending-by-teacher: teacherId={teacherId} -> schoolId={schoolId}");
+
+                if (string.IsNullOrEmpty(schoolId))
+                    return NotFound(new { message = "School not found for this teacher" });
+
+                var pendingTeachers = await _teacherService.GetPendingTeachersAsync(schoolId);
+                return Ok(pendingTeachers);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Internal server error", error = ex.Message });
+            }
+        }
+
         [HttpGet("debug-pending/{schoolId}")]
         public async Task<ActionResult> DebugPendingTeachers(string schoolId)
         {
