@@ -758,7 +758,7 @@
             var currentUser = await AuthService.GetCurrentUserAsync();
             Console.WriteLine($"Current user: {currentUser?.Username}, Type: {currentUser?.UserType}, TeacherId: {currentUser?.TeacherId}");
             
-            if (currentUser != null && currentUser.UserType == UserType.Teacher && !string.IsNullOrEmpty(currentUser.TeacherId))
+            if (currentUser != null && currentUser.UserType == UserType.SubjectTeacher && !string.IsNullOrEmpty(currentUser.TeacherId))
             {
                 selectedTeacherId = currentUser.TeacherId;
                 Console.WriteLine($"Selected teacher ID: {selectedTeacherId}");

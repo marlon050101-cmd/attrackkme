@@ -70,7 +70,7 @@
                 <div class="form-group">
                     <label for="userType">User Type:</label>
                     <select id="userType" @bind="newUserType" class="form-control">
-                        <option value="Teacher">Teacher</option>
+                        <option value="SubjectTeacher">Subject Teacher</option>
                         <option value="Student">Student</option>
                         <option value="Admin">Admin</option>
                     </select>
@@ -340,7 +340,7 @@
     private string newUsername = string.Empty;
     private string newPassword = string.Empty;
     private string newFullName = string.Empty;
-    private string newUserType = "Teacher";
+    private string newUserType = "SubjectTeacher";
     private bool isSettingUp = false;
     private string message = string.Empty;
     private bool isSuccess = false;
@@ -376,7 +376,7 @@
                 newUsername = string.Empty;
                 newPassword = string.Empty;
                 newFullName = string.Empty;
-                newUserType = "Teacher";
+                newUserType = "SubjectTeacher";
             }
             else
             {

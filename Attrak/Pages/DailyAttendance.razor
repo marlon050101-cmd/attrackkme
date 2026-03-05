@@ -516,7 +516,7 @@
         try
         {
             var currentUser = await AuthService.GetCurrentUserAsync();
-            if (currentUser != null && currentUser.UserType == UserType.Teacher)
+            if (currentUser != null && currentUser.UserType == UserType.SubjectTeacher)
             {
                 currentTeacherName = currentUser.Username;
                 

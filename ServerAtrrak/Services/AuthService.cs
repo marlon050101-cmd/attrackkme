@@ -46,7 +46,7 @@ namespace ServerAtrrak.Services
 
                 if (!user.IsApproved)
                 {
-                    if (user.UserType == UserType.Teacher)
+                    if (user.UserType == UserType.SubjectTeacher)
                     {
                         return new LoginResponse
                         {
@@ -144,8 +144,8 @@ namespace ServerAtrrak.Services
                     var userType = userTypeString switch
                     {
                         "Admin" => UserType.Admin,
-                        "SubjectTeacher" => UserType.Teacher,
-                        "Teacher" => UserType.Teacher, // legacy fallback
+                        "SubjectTeacher" => UserType.SubjectTeacher,
+                        "Teacher" => UserType.SubjectTeacher, // legacy fallback
                         "Student" => UserType.Student,
                         "GuidanceCounselor" => UserType.GuidanceCounselor,
                         "Advisor" => UserType.Advisor,

@@ -42,8 +42,8 @@ namespace ServerAtrrak.Services
                         var userType = userTypeString switch
                         {
                             "Admin" => UserType.Admin,
-                            "SubjectTeacher" => UserType.Teacher,
-                            "Teacher" => UserType.Teacher, // legacy fallback
+                            "SubjectTeacher" => UserType.SubjectTeacher,
+                            "Teacher" => UserType.SubjectTeacher, // legacy fallback
                             "Student" => UserType.Student,
                             "GuidanceCounselor" => UserType.GuidanceCounselor,
                             "Advisor" => UserType.Advisor,
@@ -835,8 +835,8 @@ namespace ServerAtrrak.Services
             {
                 using var connection = await _dbConnection.GetConnectionAsync();
                 
-                // Map enum to string for DB (Teacher -> 'Teacher' or 'SubjectTeacher')
-                string roleString = targetRole == UserType.Teacher ? "SubjectTeacher" : targetRole.ToString();
+                // Map enum to string for DB (SubjectTeacher -> 'SubjectTeacher')
+                string roleString = targetRole == UserType.SubjectTeacher ? "SubjectTeacher" : targetRole.ToString();
 
                 var query = "UPDATE user SET IsApproved = 1, IsActive = 1, UserType = @role WHERE UserId = @userId";
                 using var command = new MySqlCommand(query, connection);

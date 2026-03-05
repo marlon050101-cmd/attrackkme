@@ -728,7 +728,7 @@ namespace ServerAtrrak.Controllers
                 VALUES (@UserId, @Username, @Email, @Password, @UserType, @IsActive, @IsApproved, @CreatedAt, @UpdatedAt, @TeacherId)";
 
             // Primary type from request (e.g., Head, Advisor, SubjectTeacher)
-            string primaryType = request.UserType == UserType.Teacher ? "SubjectTeacher" : request.UserType.ToString();
+            string primaryType = request.UserType.ToString();
             
             // Try actual type first, then fall back to GuidanceCounselor if ENUM is restricted
             var typesToTry = new List<string> { primaryType };
@@ -1369,7 +1369,7 @@ namespace ServerAtrrak.Controllers
                     command.Parameters.AddWithValue("@Password", request.Password);
                     command.Parameters.AddWithValue("@UserType", userTypeValue);
                     command.Parameters.AddWithValue("@IsActive", true);
-                    bool isTeacherRole = ((int)request.UserType == 2) || userTypeValue == "Teacher" || userTypeValue == "SubjectTeacher"; command.Parameters.AddWithValue("@IsApproved", !isTeacherRole);
+                    bool isTeacherRole = ((int)request.UserType == 2) || userTypeValue == "SubjectTeacher"; command.Parameters.AddWithValue("@IsApproved", !isTeacherRole);
                     command.Parameters.AddWithValue("@CreatedAt", DateTime.Now);
                     command.Parameters.AddWithValue("@UpdatedAt", DateTime.Now);
                     command.Parameters.AddWithValue("@TeacherId", teacherId);

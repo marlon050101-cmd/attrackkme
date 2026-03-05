@@ -500,7 +500,7 @@
             isSettingUp = true;
             StateHasChanged();
 
-            var success = await AuthService.SetupOfflineUserAsync(newUsername, newPassword, "Teacher", newFullName);
+            var success = await AuthService.SetupOfflineUserAsync(newUsername, newPassword, "SubjectTeacher", newFullName);
             
             if (success)
             {

@@ -213,7 +213,7 @@
                                         </div>
                                     </div>
 
-                                    @if (registerRequest.UserType == UserType.Teacher)
+                                    @if (registerRequest.UserType == UserType.SubjectTeacher)
                                     {
                                         <div class="row">
                                             <div class="col-md-4 mb-3">
@@ -340,7 +340,7 @@
             {
                 Navigation.NavigateTo("/advisor-section-classes");
             }
-            else if (currentUser.UserType == UserType.Teacher)
+            else if (currentUser.UserType == UserType.SubjectTeacher)
             {
                 Navigation.NavigateTo("/teacher-dashboard");
             }
@@ -448,7 +448,7 @@
                 {
                     Navigation.NavigateTo("/advisor-section-classes");
                 }
-                else if (response.User?.UserType == UserType.Teacher)
+                else if (response.User?.UserType == UserType.SubjectTeacher)
                 {
                     Navigation.NavigateTo("/teacher-dashboard");
                 }

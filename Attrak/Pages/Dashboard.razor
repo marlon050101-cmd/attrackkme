@@ -73,7 +73,7 @@
                                         <button class="btn btn-outline-primary">System Settings</button>
                                         <button class="btn btn-outline-primary">Reports</button>
                                     }
-                                    else if (currentUser.UserType == UserType.Teacher)
+                                    else if (currentUser.UserType == UserType.SubjectTeacher)
                                     {
                                         <button class="btn btn-outline-primary">View Classes</button>
                                         <button class="btn btn-outline-primary">Take Attendance</button>
@@ -140,7 +140,7 @@
         return userType switch
         {
             UserType.Admin => "Administrator",
-            UserType.Teacher => "Subject Teacher",
+            UserType.SubjectTeacher => "Subject Teacher",
             UserType.Student => "Student",
             UserType.GuidanceCounselor => "Guidance Counselor",
             UserType.Advisor => "Advisor",

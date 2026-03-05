@@ -48,6 +48,6 @@ namespace AttrackSharedClass.Models
         public string? Strand { get; set; }
         
         [Required]
-        public UserType UserType { get; set; } = UserType.Teacher;
+        public UserType UserType { get; set; } = UserType.SubjectTeacher;
     }
 }

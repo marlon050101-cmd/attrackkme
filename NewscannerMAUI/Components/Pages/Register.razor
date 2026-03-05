@@ -219,7 +219,7 @@
             </label>
             <select class="form-select @(IsInvalid("UserType") ? "is-invalid" : "")" @onchange="OnUserTypeChanged" value="@selectedUserType">
                 <option value="">— Select user type —</option>
-                <option value="Teacher">Teacher</option>
+                <option value="SubjectTeacher">Subject Teacher</option>
                 <option value="Head">Head</option>
                 <option value="Student">Student</option>
                 <option value="GuidanceCounselor">Guidance</option>
@@ -976,7 +976,7 @@
         GradeLevel = gradeLevel > 0 ? (int?)gradeLevel : null,
         Section = string.IsNullOrWhiteSpace(userSection) ? null : userSection.Trim().ToUpper(),
         Strand = finalStrand,
-        UserType = t switch { "Admin"=>1, "Teacher"=>2, "SubjectTeacher"=>2, "Student"=>3, "GuidanceCounselor"=>4, "Advisor"=>5, "Head"=>6, _ =>2 }
+        UserType = t switch { "Admin"=>1, "SubjectTeacher"=>2, "Student"=>3, "GuidanceCounselor"=>4, "Advisor"=>5, "Head"=>6, _ =>2 }
     };
 
     protected override void OnInitialized()

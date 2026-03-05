@@ -53,7 +53,7 @@
             return;
         }
 
-        if (teacherInfo.UserType != UserType.Teacher)
+        if (teacherInfo.UserType != UserType.SubjectTeacher)
         {
             errorMessage = "Access denied. This dashboard is only for teachers.";
             isLoading = false;
@@ -186,7 +186,7 @@
                     // Priority for FullName: ClassInfo.FullName -> teacherInfo.FullName -> teacherInfo.Username
                     if (string.IsNullOrEmpty(classInfo.FullName) || classInfo.FullName == "tech2")
                     {
-                        classInfo.FullName = teacherInfo?.Username ?? "Teacher";
+                        classInfo.FullName = teacherInfo?.Username ?? "Subject Teacher";
                     }
                 }
                 

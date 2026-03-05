@@ -220,7 +220,7 @@
     protected override async Task OnInitializedAsync()
     {
         var user = await AuthService.GetCurrentUserAsync();
-        if (user?.UserType != UserType.Teacher)
+        if (user?.UserType != UserType.SubjectTeacher)
         {
             errorMessage = "Teacher only.";
             isLoading = false;

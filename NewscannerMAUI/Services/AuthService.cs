@@ -26,7 +26,7 @@ namespace NewscannerMAUI.Services
         public async Task<TeacherInfo?> GetCurrentTeacherAsync()
         {
             var user = await GetCurrentUserAsync();
-            if (user?.UserType == UserType.Teacher && !string.IsNullOrEmpty(user.TeacherId))
+            if (user?.UserType == UserType.SubjectTeacher && !string.IsNullOrEmpty(user.TeacherId))
             {
                 // For now, return basic info from user
                 // In a real app, you would make an API call to get full teacher details
@@ -96,7 +96,7 @@ namespace NewscannerMAUI.Services
                     _currentUser = new UserInfo
                     {
                         Username = username,
-                        UserType = UserType.Teacher, // Default to teacher for offline mode
+                        UserType = UserType.SubjectTeacher, // Default to teacher for offline mode
                         Email = $"{username}@offline.local",
                         IsActive = true
                     };
@@ -151,7 +151,7 @@ namespace NewscannerMAUI.Services
                         AuthenticationStateChanged.Invoke(true);
                         
                         // Download all students for this teacher if they are a teacher
-                        if (userInfo.UserType == UserType.Teacher && !string.IsNullOrEmpty(userInfo.TeacherId))
+                        if (userInfo.UserType == UserType.SubjectTeacher && !string.IsNullOrEmpty(userInfo.TeacherId))
                         {
                             System.Diagnostics.Debug.WriteLine($"Downloading students for teacher: {userInfo.TeacherId}");
                             _ = Task.Run(async () => 
@@ -164,7 +164,7 @@ namespace NewscannerMAUI.Services
                                     // Also store teacher credentials for offline login
                                     if (success)
                                     {
-                                        await _offlineDataService.AddOfflineUserAsync(username, password, "Teacher", userInfo.Username);
+                                        await _offlineDataService.AddOfflineUserAsync(username, password, "SubjectTeacher", userInfo.Username);
                                         System.Diagnostics.Debug.WriteLine($"Teacher credentials stored for offline login: {username}");
                                     }
                                 }
