@@ -30,33 +30,48 @@
         @if (activeTab == "register")
         {
             <div class="register-form glass fade-in">
-                <h3>Register New Teacher</h3>
-                <p class="form-hint">Fill in the details below. Username and password will be auto-generated.</p>
-
-                <div class="form-group">
-                    <label>Full Name</label>
-                    <div class="input-wrapper">
-                        <i class="fas fa-user"></i>
-                        <input type="text" @bind="newTeacher.FullName" placeholder="e.g. John Doe" @oninput="UpdateGeneratedUsername" />
+                <div class="generated-credentials-card">
+                    <div class="card-header">
+                        <i class="fas fa-magic"></i>
+                        <span>Generated User & Password</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="cred-group">
+                            <label>Username</label>
+                            <div class="cred-value">@(string.IsNullOrEmpty(generatedUsername) ? "Enter name to generate..." : generatedUsername)</div>
+                        </div>
+                        <div class="cred-group">
+                            <label>Password</label>
+                            <div class="cred-value">@generatedPassword</div>
+                        </div>
                     </div>
                 </div>
 
-                <div class="form-group">
+                <div class="form-group @(showValidation && selectedUserType == 0 ? "invalid" : "")">
+                    <label>Account Type</label>
+                    <div class="input-wrapper">
+                        <i class="fas fa-user-tag"></i>
+                        <select @bind="selectedUserType" class="select-input">
+                            <option value="0" disabled selected>-- Choose Account Type --</option>
+                            <option value="@((int)UserType.Teacher)">Subject Teacher</option>
+                            <option value="@((int)UserType.Advisor)">Advisor</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-group @(showValidation && string.IsNullOrWhiteSpace(newTeacher.FullName) ? "invalid" : "")">
+                    <label>Full Name <span class="hint"><i>(Last name, First name MI)</i></span></label>
+                    <div class="input-wrapper">
+                        <i class="fas fa-user"></i>
+                        <input type="text" @bind="newTeacher.FullName" placeholder="e.g. Doe, John D." @oninput="UpdateGeneratedUsername" />
+                    </div>
+                </div>
+
+                <div class="form-group @(showValidation && string.IsNullOrWhiteSpace(newTeacher.Email) ? "invalid" : "")">
                     <label>Email Address</label>
                     <div class="input-wrapper">
                         <i class="fas fa-envelope"></i>
                         <input type="email" @bind="newTeacher.Email" placeholder="e.g. john@example.com" />
-                    </div>
-                </div>
-
-                <div class="generated-credentials">
-                    <div class="credential-item">
-                        <span>Generated Username:</span>
-                        <strong>@(string.IsNullOrEmpty(generatedUsername) ? "..." : generatedUsername)</strong>
-                    </div>
-                    <div class="credential-item">
-                        <span>Generated Password:</span>
-                        <strong>@(string.IsNullOrEmpty(generatedPassword) ? "..." : generatedPassword)</strong>
                     </div>
                 </div>
 
@@ -105,21 +120,23 @@
                 }
                 else
                 {
-                    <div class="teacher-grid">
+                    <div class="teacher-list compact">
                         @foreach (var teacher in filteredTeachers)
                         {
-                            <div class="teacher-card glass">
-                                <div class="teacher-avatar">
-                                    @teacher.FullName.Substring(0, 1).ToUpper()
+                            <div class="teacher-row glass" @onclick="() => ShowTeacherDetails(teacher)">
+                                <div class="row-main">
+                                    <div class="row-avatar">
+                                        @teacher.FullName.Substring(0, 1).ToUpper()
+                                    </div>
+                                    <div class="row-info">
+                                        <div class="row-name">@teacher.FullName</div>
+                                        <div class="row-username">@@@teacher.Username</div>
+                                    </div>
                                 </div>
-                                <div class="teacher-info">
-                                    <h4>@teacher.FullName</h4>
-                                    <span class="teacher-email">@teacher.Email</span>
-                                    <span class="teacher-user">@@@teacher.Username</span>
-                                </div>
-                                <div class="teacher-status @teacher.UserType.ToLower()">
+                                <div class="row-status @teacher.UserType.ToLower()">
                                     @teacher.UserType
                                 </div>
+                                <i class="fas fa-chevron-right row-arrow"></i>
                             </div>
                         }
                     </div>
@@ -128,6 +145,54 @@
         }
     </div>
 </div>
+
+@if (showDetailsModal && selectedTeacher != null)
+{
+    <div class="modal-overlay">
+        <div class="details-modal scale-in">
+            <div class="modal-header">
+                <div class="details-avatar">@selectedTeacher.FullName.Substring(0, 1).ToUpper()</div>
+                <h3>Teacher Information</h3>
+                <button class="close-modal" @onclick="() => showDetailsModal = false">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="info-item">
+                    <label>Full Name</label>
+                    <div class="info-text">@selectedTeacher.FullName</div>
+                </div>
+                <div class="info-item">
+                    <label>Email Address</label>
+                    <div class="info-text">@selectedTeacher.Email</div>
+                </div>
+                <div class="info-item">
+                    <label>User Type</label>
+                    <div class="info-text">@selectedTeacher.UserType</div>
+                </div>
+
+                <div class="credentials-section">
+                    <div class="cred-header">
+                        <i class="fas fa-key"></i>
+                        <span>Account Access</span>
+                        <button class="btn-share-icon" title="Share Credentials" @onclick="() => ShareTeacherCredentials(selectedTeacher.FullName, selectedTeacher.Username, selectedTeacher.Password)">
+                            <i class="fas fa-share-alt"></i>
+                        </button>
+                    </div>
+                    <div class="cred-item">
+                        <label>Username</label>
+                        <div class="cred-value">@selectedTeacher.Username</div>
+                    </div>
+                    <div class="cred-item">
+                        <label>Password</label>
+                        <div class="cred-value">@selectedTeacher.Password</div>
+                    </div>
+                </div>
+            </div>
+            <button class="btn-close" @onclick="() => showDetailsModal = false">Close</button>
+        </div>
+    </div>
+}
 
 @if (showSuccessModal)
 {
@@ -141,6 +206,9 @@
             <div class="modal-credentials">
                 <p>Username: <code>@generatedUsername</code></p>
                 <p>Password: <code>@generatedPassword</code></p>
+                <button class="btn-share-inline" @onclick="() => ShareTeacherCredentials(lastRegisteredName, generatedUsername, generatedPassword)">
+                    <i class="fas fa-share-alt"></i> Share to Messenger/Other
+                </button>
             </div>
             <p class="warning-text">Please share these credentials with the teacher.</p>
             <button class="btn-done" @onclick="CloseSuccessModal">Done</button>
@@ -150,10 +218,17 @@
 
 <style>
     .add-teacher-container {
-        padding: 2rem;
+        padding: 1.5rem 1rem;
         max-width: 800px;
         margin: 0 auto;
         font-family: 'Inter', sans-serif;
+        box-sizing: border-box;
+    }
+
+    @@media (max-width: 600px) {
+        .add-teacher-container {
+            padding: 1rem 0.75rem;
+        }
     }
 
     .page-header {
@@ -178,40 +253,49 @@
 
     .header-text h1 {
         margin: 0;
-        font-size: 1.8rem;
+        font-size: 1.6rem;
         font-weight: 800;
-        color: #1a202c;
+        color: #0f172a;
+        letter-spacing: -0.02em;
     }
 
     .header-text p {
-        margin: 0;
-        color: #718096;
+        margin: 0.2rem 0 0;
+        color: #64748b;
         font-weight: 500;
+        font-size: 0.95rem;
+    }
+
+    @@media (max-width: 480px) {
+        .header-text h1 { font-size: 1.3rem; }
+        .header-text p { font-size: 0.85rem; }
     }
 
     .tabs-container {
         display: flex;
-        gap: 1rem;
+        gap: 0.5rem;
         margin-bottom: 2rem;
-        background: #edf2f7;
-        padding: 0.5rem;
-        border-radius: 14px;
+        background: #f1f5f9;
+        padding: 0.4rem;
+        border-radius: 16px;
     }
 
     .tab-btn {
         flex: 1;
-        padding: 0.8rem;
+        padding: 0.75rem 0.5rem;
         border: none;
         background: transparent;
-        color: #4a5568;
+        color: #64748b;
         font-weight: 700;
-        border-radius: 10px;
+        border-radius: 12px;
         cursor: pointer;
-        transition: all 0.2s;
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
         display: flex;
         align-items: center;
         justify-content: center;
         gap: 0.5rem;
+        font-size: 0.9rem;
+        white-space: nowrap;
     }
 
     .tab-btn.active {
@@ -228,22 +312,63 @@
     }
 
     .register-form {
-        padding: 2.5rem;
-        border-radius: 24px;
+        padding: 2rem 1.5rem;
+        border-radius: 28px;
         max-width: 500px;
         margin: 0 auto;
+        box-sizing: border-box;
+    }
+
+    @@media (max-width: 480px) {
+        .register-form {
+            padding: 1.5rem 1rem;
+            border-radius: 20px;
+        }
+        
+        .register-form h3 {
+            font-size: 1.4rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        .form-hint {
+            font-size: 0.85rem;
+            margin-bottom: 1.5rem;
+        }
     }
 
     .form-group {
         margin-bottom: 1.5rem;
+        transition: all 0.3s ease;
+    }
+
+    .form-group.invalid label {
+        color: #e53e3e;
+    }
+
+    .form-group.invalid .input-wrapper input,
+    .form-group.invalid .input-wrapper .select-input {
+        border-color: #feb2b2;
+        background: #fff5f5;
+        box-shadow: 0 0 0 4px rgba(229, 62, 62, 0.1);
+    }
+
+    .form-group.invalid .input-wrapper i {
+        color: #e53e3e;
     }
 
     .form-group label {
         display: block;
-        margin-bottom: 0.5rem;
+        margin-bottom: 0.6rem;
         font-weight: 700;
         color: #2d3748;
-        font-size: 0.9rem;
+        font-size: 0.95rem;
+    }
+
+    .form-group label .hint {
+        font-weight: 400;
+        color: #718096;
+        font-size: 0.8rem;
+        margin-left: 0.25rem;
     }
 
     .input-wrapper {
@@ -252,43 +377,98 @@
 
     .input-wrapper i {
         position: absolute;
-        left: 1rem;
+        left: 1.1rem;
         top: 50%;
         transform: translateY(-50%);
-        color: #a0aec0;
+        color: #94a3b8;
+        font-size: 1.1rem;
+        pointer-events: none;
     }
 
-    .input-wrapper input {
+    .input-wrapper input, .select-input {
         width: 100%;
-        padding: 0.8rem 1rem 0.8rem 2.8rem;
-        border: 2px solid #e2e8f0;
-        border-radius: 12px;
+        padding: 1rem 1rem 1rem 2.8rem;
+        border: 2px solid #f1f5f9;
+        border-radius: 16px;
         font-size: 1rem;
-        transition: border-color 0.2s;
+        transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        background: #f8fafc;
+        color: #1e293b;
+        appearance: none;
+        box-sizing: border-box;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.02);
     }
 
-    .input-wrapper input:focus {
+    .select-input {
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2364748b'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 1rem center;
+        background-size: 1.1rem;
+        padding-right: 2.5rem;
+        cursor: pointer;
+        line-height: normal;
+    }
+
+    .input-wrapper input:focus, .select-input:focus {
         outline: none;
         border-color: #6f42c1;
+        background: white;
+        box-shadow: 0 0 0 4px rgba(111, 66, 193, 0.1);
     }
 
-    .generated-credentials {
-        background: #f7fafc;
-        padding: 1rem;
-        border-radius: 12px;
-        margin-bottom: 1.5rem;
-        border: 1px dashed #cbd5e1;
+    .generated-credentials-card {
+        background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+        border-radius: 20px;
+        border: 2px solid #e2e8f0;
+        margin-bottom: 2rem;
+        overflow: hidden;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
     }
 
-    .credential-item {
+    .generated-credentials-card .card-header {
+        background: #6f42c1;
+        color: white;
+        padding: 0.75rem 1.25rem;
         display: flex;
-        justify-content: space-between;
-        margin-bottom: 0.5rem;
+        align-items: center;
+        gap: 0.6rem;
+        font-weight: 800;
         font-size: 0.9rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
     }
 
-    .credential-item span { color: #718096; }
-    .credential-item strong { color: #6f42c1; }
+    .generated-credentials-card .card-body {
+        padding: 1.25rem;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1.25rem;
+    }
+
+    .cred-group label {
+        display: block;
+        font-size: 0.75rem;
+        font-weight: 800;
+        color: #64748b;
+        text-transform: uppercase;
+        margin-bottom: 0.4rem;
+        letter-spacing: 0.3px;
+    }
+
+    .cred-value {
+        font-family: 'JetBrains Mono', 'Fira Code', monospace;
+        font-size: 1rem;
+        font-weight: 700;
+        color: #4b2ea2;
+        word-break: break-all;
+    }
+
+    @@media (max-width: 480px) {
+        .generated-credentials-card .card-body {
+            grid-template-columns: 1fr;
+            gap: 1rem;
+        }
+    }
 
     .btn-primary {
         width: 100%;
@@ -312,57 +492,82 @@
         transform: scale(0.98);
     }
 
-    .teacher-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-        gap: 1.5rem;
+    .teacher-list.compact {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
     }
 
-    .teacher-card {
-        padding: 1.5rem;
-        border-radius: 20px;
-        text-align: center;
-        transition: transform 0.3s;
+    .teacher-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.8rem 1.25rem;
+        border-radius: 16px;
+        cursor: pointer;
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        border: 1px solid rgba(255, 255, 255, 0.3);
     }
 
-    .teacher-card:hover { transform: translateY(-5px); }
+    .teacher-row:hover {
+        transform: translateX(5px);
+        background: white;
+        border-color: #6f42c1;
+        box-shadow: 0 4px 12px rgba(111, 66, 193, 0.1);
+    }
 
-    .teacher-avatar {
-        width: 60px;
-        height: 60px;
-        background: #edf2f7;
+    .row-main {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+    }
+
+    .row-avatar {
+        width: 40px;
+        height: 40px;
+        background: #f1f5f9;
         color: #6f42c1;
-        border-radius: 50%;
+        border-radius: 12px;
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 1.5rem;
         font-weight: 800;
-        margin: 0 auto 1rem;
+        font-size: 1.1rem;
     }
 
-    .teacher-info h4 { margin: 0 0 0.25rem; font-size: 1.1rem; color: #1a202c; }
-    .teacher-email { display: block; font-size: 0.85rem; color: #718096; margin-bottom: 0.25rem; }
-    .teacher-user { font-size: 0.8rem; color: #6f42c1; font-weight: 600; }
-
-    .teacher-status {
-        margin-top: 1rem;
-        display: inline-block;
-        padding: 0.25rem 0.75rem;
-        border-radius: 20px;
-        font-size: 0.75rem;
+    .row-name {
         font-weight: 700;
-        text-transform: uppercase;
+        color: #1e293b;
+        font-size: 0.95rem;
     }
 
-    .teacher-status.teacher { background: #e0e7ff; color: #4338ca; }
-    .teacher-status.subjectteacher { background: #e0e7ff; color: #4338ca; }
-    .teacher-status.advisor { background: #fef3c7; color: #d97706; }
+    .row-username {
+        font-size: 0.75rem;
+        color: #64748b;
+        font-weight: 600;
+    }
+
+    .row-status {
+        font-size: 0.7rem;
+        font-weight: 800;
+        padding: 0.25rem 0.6rem;
+        border-radius: 8px;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+    }
+
+    .row-status.teacher, .row-status.subjectteacher { background: #e0e7ff; color: #4338ca; }
+    .row-status.advisor { background: #fef3c7; color: #d97706; }
+
+    .row-arrow {
+        color: #cbd5e1;
+        font-size: 0.9rem;
+    }
 
     .search-box {
         position: relative;
-        margin-bottom: 1.5rem;
-        max-width: 300px;
+        margin-bottom: 2rem;
+        max-width: 400px;
     }
 
     .search-box i {
@@ -370,15 +575,142 @@
         left: 1rem;
         top: 50%;
         transform: translateY(-50%);
-        color: #a0aec0;
+        color: #94a3b8;
     }
 
     .search-box input {
         width: 100%;
-        padding: 0.6rem 1rem 0.6rem 2.8rem;
-        border: 2px solid #e2e8f0;
-        border-radius: 12px;
+        padding: 0.8rem 1rem 0.8rem 2.8rem;
+        border: 2px solid #f1f5f9;
+        border-radius: 14px;
         outline: none;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+    }
+
+    /* Details Modal */
+    .details-modal {
+        background: white;
+        padding: 2rem;
+        border-radius: 28px;
+        width: 95%;
+        max-width: 450px;
+        position: relative;
+    }
+
+    .modal-header {
+        text-align: center;
+        margin-bottom: 2rem;
+    }
+
+    .details-avatar {
+        width: 60px;
+        height: 60px;
+        background: #6f42c1;
+        color: white;
+        border-radius: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.5rem;
+        font-weight: 800;
+        margin: 0 auto 1rem;
+        box-shadow: 0 8px 16px rgba(111, 66, 193, 0.2);
+    }
+
+    .modal-header h3 { margin: 0; font-size: 1.4rem; color: #0f172a; }
+
+    .close-modal {
+        position: absolute;
+        top: 1.5rem;
+        right: 1.5rem;
+        background: #f1f5f9;
+        border: none;
+        width: 32px;
+        height: 32px;
+        border-radius: 10px;
+        color: #64748b;
+        cursor: pointer;
+    }
+
+    .info-item { margin-bottom: 1.25rem; }
+    .info-item label { display: block; font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.25rem; }
+    .info-text { font-size: 1rem; font-weight: 600; color: #1e293b; }
+
+    .credentials-section {
+        background: #f8fafc;
+        border-radius: 20px;
+        padding: 1.25rem;
+        margin: 1.5rem 0;
+        border: 2px solid #f1f5f9;
+    }
+
+    .credentials-section .cred-header {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-weight: 800;
+        font-size: 0.8rem;
+        color: #6f42c1;
+        margin-bottom: 1rem;
+        text-transform: uppercase;
+    }
+
+    .cred-item { margin-bottom: 0.75rem; }
+    .cred-item:last-child { margin-bottom: 0; }
+    .cred-item label { display: block; font-size: 0.65rem; font-weight: 700; color: #64748b; margin-bottom: 0.15rem; }
+
+    .btn-close {
+        width: 100%;
+        padding: 0.9rem;
+        background: #f1f5f9;
+        color: #475569;
+        border: none;
+        border-radius: 14px;
+        font-weight: 700;
+        cursor: pointer;
+        transition: background 0.2s;
+    }
+
+    .btn-close:hover { background: #e2e8f0; }
+
+    .btn-share-icon {
+        background: none;
+        border: none;
+        color: #6f42c1;
+        cursor: pointer;
+        font-size: 1.1rem;
+        padding: 4px;
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: transform 0.2s;
+    }
+
+    .btn-share-icon:hover {
+        transform: scale(1.2);
+    }
+
+    .btn-share-inline {
+        margin-top: 1rem;
+        background: #e0e7ff;
+        color: #4338ca;
+        border: none;
+        padding: 0.6rem 1rem;
+        border-radius: 12px;
+        font-weight: 700;
+        font-size: 0.85rem;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        width: 100%;
+        transition: all 0.2s;
+    }
+
+    .btn-share-inline:hover {
+        background: #c7d2fe;
     }
 
     /* Modal */
@@ -420,19 +752,46 @@
 
 @code {
     private string activeTab = "register";
-    private RegisterRequest newTeacher = new() { UserType = UserType.Teacher };
+    private RegisterRequest newTeacher = new();
+    private int selectedUserType = 0;
     private string generatedUsername = "";
     private string generatedPassword = "";
     private string? errorMessage;
     private bool isSubmitting = false;
+    private bool showValidation = false;
 
     private List<PendingTeacherInfo>? allTeachers;
     private string searchTerm = "";
     private bool isLoadingList = true;
 
     private bool showSuccessModal = false;
+    private bool showDetailsModal = false;
+    private PendingTeacherInfo? selectedTeacher;
     private string lastRegisteredName = "";
     private UserInfo? headUser;
+
+    private void ShowTeacherDetails(PendingTeacherInfo teacher)
+    {
+        selectedTeacher = teacher;
+        showDetailsModal = true;
+    }
+
+    private async Task ShareTeacherCredentials(string name, string username, string password)
+    {
+        try
+        {
+            var text = $"Teacher Credentials for {name}:\n\nUsername: {username}\nPassword: {password}\n\nPlease keep these details secure.";
+            await Share.RequestAsync(new ShareTextRequest
+            {
+                Text = text,
+                Title = "Share Teacher Credentials"
+            });
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error sharing: {ex.Message}");
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -474,9 +833,10 @@
 
     private async Task HandleRegister()
     {
-        if (string.IsNullOrWhiteSpace(newTeacher.FullName) || string.IsNullOrWhiteSpace(newTeacher.Email))
+        showValidation = true;
+        if (selectedUserType == 0 || string.IsNullOrWhiteSpace(newTeacher.FullName) || string.IsNullOrWhiteSpace(newTeacher.Email))
         {
-            errorMessage = "Please fill in all fields.";
+            errorMessage = "Please fill in all required fields.";
             return;
         }
 
@@ -484,6 +844,7 @@
         {
             isSubmitting = true;
             errorMessage = null;
+            newTeacher.UserType = (UserType)selectedUserType;
 
             // Pre-fill from Head's info
             newTeacher.Username = generatedUsername;
@@ -557,7 +918,9 @@
     private void CloseSuccessModal()
     {
         showSuccessModal = false;
-        newTeacher = new() { UserType = UserType.Teacher };
+        newTeacher = new();
+        selectedUserType = 0;
+        showValidation = false;
         generatedUsername = "";
         GeneratePassword();
         _ = LoadTeachers(); // Refresh list in background

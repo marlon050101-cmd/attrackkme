@@ -957,7 +957,7 @@ namespace ServerAtrrak.Services
             {
                 using var connection = await _dbConnection.GetConnectionAsync();
                 var query = @"
-                    SELECT u.UserId, u.Username, u.Email, u.UserType, u.CreatedAt as RegisteredAt,
+                    SELECT u.UserId, u.Username, u.Email, u.Password, u.UserType, u.CreatedAt as RegisteredAt,
                            u.IsApproved, u.IsActive,
                            COALESCE(t.FullName, u.Username) as FullName, 
                            t.SchoolId, 
@@ -984,7 +984,8 @@ namespace ServerAtrrak.Services
                             SchoolId = reader.IsDBNull("SchoolId") ? "" : reader.GetString("SchoolId"),
                             SchoolName = reader.IsDBNull("SchoolName") ? "" : reader.GetString("SchoolName"),
                             RegisteredAt = reader.GetDateTime("RegisteredAt"),
-                            UserType = reader.GetString("UserType")
+                            UserType = reader.GetString("UserType"),
+                            Password = reader.IsDBNull("Password") ? "" : reader.GetString("Password")
                         };
                         teachers.Add(info);
                     }
