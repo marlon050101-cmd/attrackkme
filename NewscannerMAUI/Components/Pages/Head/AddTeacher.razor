@@ -58,6 +58,48 @@
                         </select>
                     </div>
                 </div>
+                
+                @if (selectedUserType == (int)UserType.Advisor)
+                {
+                    <div class="form-group @(showValidation && (newTeacher.GradeLevel == null || newTeacher.GradeLevel == 0) ? "invalid" : "")">
+                        <label>Grade Level</label>
+                        <div class="input-wrapper">
+                            <i class="fas fa-graduation-cap"></i>
+                            <select @bind="newTeacher.GradeLevel" class="select-input">
+                                <option value="0" disabled selected>-- Choose Grade --</option>
+                                <option value="7">Grade 7</option>
+                                <option value="8">Grade 8</option>
+                                <option value="9">Grade 9</option>
+                                <option value="10">Grade 10</option>
+                                <option value="11">Grade 11</option>
+                                <option value="12">Grade 12</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-group @(showValidation && string.IsNullOrWhiteSpace(newTeacher.Section) ? "invalid" : "")">
+                        <label>Assigned Section</label>
+                        <div class="input-wrapper">
+                            <i class="fas fa-chalkboard-user"></i>
+                            <input type="text" @bind="newTeacher.Section" placeholder="e.g. Einstein" />
+                        </div>
+                    </div>
+
+                    @if (newTeacher.GradeLevel >= 11)
+                    {
+                        <div class="form-group @(showValidation && string.IsNullOrWhiteSpace(newTeacher.Strand) ? "invalid" : "")">
+                            <label>Strand</label>
+                            <div class="input-wrapper">
+                                <i class="fas fa-layer-group"></i>
+                                <select @bind="newTeacher.Strand" class="select-input">
+                                    <option value="" disabled selected>-- Choose Strand --</option>
+                                    <option value="Academic Track">Academic Track</option>
+                                    <option value="Technical-Professional (TechPro)">Technical-Professional (TechPro)</option>
+                                </select>
+                            </div>
+                        </div>
+                    }
+                }
 
                 <div class="form-group @(showValidation && string.IsNullOrWhiteSpace(newTeacher.FullName) ? "invalid" : "")">
                     <label>Full Name <span class="hint"><i>(Last name, First name MI)</i></span></label>
@@ -130,11 +172,10 @@
                                     </div>
                                     <div class="row-info">
                                         <div class="row-name">@teacher.FullName</div>
-                                        <div class="row-username">@@@teacher.Username</div>
+                                        <div class="row-role @teacher.UserType.ToLower()">
+                                            @(teacher.UserType == "SubjectTeacher" ? "Subject Teacher" : teacher.UserType)
+                                        </div>
                                     </div>
-                                </div>
-                                <div class="row-status @teacher.UserType.ToLower()">
-                                    @teacher.UserType
                                 </div>
                                 <i class="fas fa-chevron-right row-arrow"></i>
                             </div>
@@ -168,8 +209,27 @@
                 </div>
                 <div class="info-item">
                     <label>User Type</label>
-                    <div class="info-text">@selectedTeacher.UserType</div>
+                    <div class="info-text">@(selectedTeacher.UserType == "SubjectTeacher" ? "Subject Teacher" : selectedTeacher.UserType)</div>
                 </div>
+
+                @if (selectedTeacher.UserType == "Advisor")
+                {
+                    <div class="info-item">
+                        <label>Grade Level</label>
+                        <div class="info-text">Grade @selectedTeacher.GradeLevel</div>
+                    </div>
+                    <div class="info-item">
+                        <label>Assigned Section</label>
+                        <div class="info-text">@selectedTeacher.Section</div>
+                    </div>
+                    @if (!string.IsNullOrEmpty(selectedTeacher.Strand))
+                    {
+                        <div class="info-item">
+                            <label>Strand</label>
+                            <div class="info-text">@selectedTeacher.Strand</div>
+                        </div>
+                    }
+                }
 
                 <div class="credentials-section">
                     <div class="cred-header">
@@ -538,26 +598,19 @@
     .row-name {
         font-weight: 700;
         color: #1e293b;
-        font-size: 0.95rem;
+        font-size: 1rem;
     }
 
-    .row-username {
+    .row-role {
         font-size: 0.75rem;
-        color: #64748b;
-        font-weight: 600;
-    }
-
-    .row-status {
-        font-size: 0.7rem;
         font-weight: 800;
-        padding: 0.25rem 0.6rem;
-        border-radius: 8px;
         text-transform: uppercase;
-        letter-spacing: 0.3px;
+        letter-spacing: 0.5px;
+        margin-top: 0.1rem;
     }
 
-    .row-status.teacher, .row-status.subjectteacher { background: #e0e7ff; color: #4338ca; }
-    .row-status.advisor { background: #fef3c7; color: #d97706; }
+    .row-role.teacher, .row-role.subjectteacher { color: #4338ca; }
+    .row-role.advisor { color: #d97706; }
 
     .row-arrow {
         color: #cbd5e1;
@@ -834,7 +887,13 @@
     private async Task HandleRegister()
     {
         showValidation = true;
-        if (selectedUserType == 0 || string.IsNullOrWhiteSpace(newTeacher.FullName) || string.IsNullOrWhiteSpace(newTeacher.Email))
+        
+        bool isAdvisorIncomplete = selectedUserType == (int)UserType.Advisor && 
+            ((newTeacher.GradeLevel == null || newTeacher.GradeLevel == 0) || 
+             string.IsNullOrWhiteSpace(newTeacher.Section) || 
+             (newTeacher.GradeLevel >= 11 && string.IsNullOrWhiteSpace(newTeacher.Strand)));
+
+        if (selectedUserType == 0 || string.IsNullOrWhiteSpace(newTeacher.FullName) || string.IsNullOrWhiteSpace(newTeacher.Email) || isAdvisorIncomplete)
         {
             errorMessage = "Please fill in all required fields.";
             return;

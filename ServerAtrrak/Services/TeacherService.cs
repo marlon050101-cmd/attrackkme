@@ -790,7 +790,7 @@ namespace ServerAtrrak.Services
                 var query = @"
                     SELECT u.UserId, u.Username, u.Email, u.UserType, u.CreatedAt as RegisteredAt,
                            COALESCE(t.FullName, u.Username) as FullName, 
-                           t.SchoolId, 
+                           t.SchoolId, t.Gradelvl as GradeLevel, t.Section, t.Strand,
                            s.SchoolName
                     FROM user u
                     LEFT JOIN teacher t ON u.TeacherId = t.TeacherId
@@ -815,7 +815,10 @@ namespace ServerAtrrak.Services
                             SchoolId = reader.IsDBNull("SchoolId") ? "" : reader.GetString("SchoolId"),
                             SchoolName = reader.IsDBNull("SchoolName") ? "" : reader.GetString("SchoolName"),
                             RegisteredAt = reader.GetDateTime("RegisteredAt"),
-                            UserType = reader.GetString("UserType")
+                            UserType = reader.GetString("UserType"),
+                            GradeLevel = reader.IsDBNull("GradeLevel") ? (int?)null : reader.GetInt32("GradeLevel"),
+                            Section = reader.IsDBNull("Section") ? null : reader.GetString("Section"),
+                            Strand = reader.IsDBNull("Strand") ? null : reader.GetString("Strand")
                         };
                         pendingTeachers.Add(info);
                     }
@@ -960,7 +963,7 @@ namespace ServerAtrrak.Services
                     SELECT u.UserId, u.Username, u.Email, u.Password, u.UserType, u.CreatedAt as RegisteredAt,
                            u.IsApproved, u.IsActive,
                            COALESCE(t.FullName, u.Username) as FullName, 
-                           t.SchoolId, 
+                           t.SchoolId, t.Gradelvl as GradeLevel, t.Section, t.Strand,
                            s.SchoolName
                     FROM user u
                     LEFT JOIN teacher t ON u.TeacherId = t.TeacherId
@@ -985,7 +988,10 @@ namespace ServerAtrrak.Services
                             SchoolName = reader.IsDBNull("SchoolName") ? "" : reader.GetString("SchoolName"),
                             RegisteredAt = reader.GetDateTime("RegisteredAt"),
                             UserType = reader.GetString("UserType"),
-                            Password = reader.IsDBNull("Password") ? "" : reader.GetString("Password")
+                            Password = reader.IsDBNull("Password") ? "" : reader.GetString("Password"),
+                            GradeLevel = reader.IsDBNull("GradeLevel") ? (int?)null : reader.GetInt32("GradeLevel"),
+                            Section = reader.IsDBNull("Section") ? null : reader.GetString("Section"),
+                            Strand = reader.IsDBNull("Strand") ? null : reader.GetString("Strand")
                         };
                         teachers.Add(info);
                     }

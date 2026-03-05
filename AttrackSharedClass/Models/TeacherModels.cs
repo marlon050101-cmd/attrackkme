@@ -57,5 +57,8 @@ namespace AttrackSharedClass.Models
         public string Password { get; set; } = string.Empty;
         public DateTime RegisteredAt { get; set; }
         public string UserType { get; set; } = string.Empty;
+        public int? GradeLevel { get; set; }
+        public string? Section { get; set; }
+        public string? Strand { get; set; }
     }
 }
