@@ -29,6 +29,28 @@ namespace ServerAtrrak.Services
             LEFT JOIN teacher t ON co.AdvisorId = t.TeacherId
             LEFT JOIN teacher t2 ON co.TeacherId = t2.TeacherId";
 
+        public async Task<List<ClassOffering>> GetAllAsync(string? schoolId)
+        {
+            var list = new List<ClassOffering>();
+            try
+            {
+                using var connection = new MySqlConnection(_dbConnection.GetConnection());
+                await connection.OpenAsync();
+                var query = $@"SELECT {SelectColumns} {FromJoins}
+                    WHERE (@SchoolId IS NULL OR t.SchoolId = @SchoolId)
+                    ORDER BY co.GradeLevel, co.Section, co.ScheduleStart";
+                using var cmd = new MySqlCommand(query, connection);
+                cmd.Parameters.AddWithValue("@SchoolId", string.IsNullOrEmpty(schoolId) ? (object)DBNull.Value : schoolId);
+                using var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync()) list.Add(ReadClassOffering(reader));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting all class offerings for school {SchoolId}", schoolId);
+            }
+            return list;
+        }
+
         public async Task<List<ClassOffering>> GetByAdvisorAsync(string advisorId)
         {
             var list = new List<ClassOffering>();
@@ -211,6 +233,35 @@ namespace ServerAtrrak.Services
                 await cmd.ExecuteNonQueryAsync();
 
                 _logger.LogInformation("Created class offering {Id} (Subject: {SubId}) by advisor {AdvisorId}", id, finalSubjectId, request.AdvisorId);
+
+                // Auto-approve Advisor account if not already approved
+                try
+                {
+                    // We'll try to find any user associated with this TeacherId that is not approved
+                    // AND we also try to update if AdvisorId itself was accidentally a UserId
+                    var approveSql = @"
+                        UPDATE user 
+                        SET IsApproved = 1, IsActive = 1 
+                        WHERE (TeacherId = @Id OR UserId = @Id)";
+                    
+                    using var approveCmd = new MySqlCommand(approveSql, connection);
+                    approveCmd.Parameters.AddWithValue("@Id", request.AdvisorId);
+                    int rows = await approveCmd.ExecuteNonQueryAsync();
+                    
+                    if (rows > 0)
+                    {
+                        _logger.LogInformation("Auto-approved Advisor user(s) for ID: {Id}. Rows affected: {Rows}", request.AdvisorId, rows);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("Auto-approval ran but no user rows were updated for ID: {Id}. This teacher might already be approved or record not found in user table.", request.AdvisorId);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "FAILED to auto-approve Advisor {Id} during class creation", request.AdvisorId);
+                }
+
                 var created = await GetByIdAsync(id);
                 return new ClassOfferingResponse { Success = true, Message = "Class added.", ClassOffering = created };
             }

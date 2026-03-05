@@ -1,0 +1,441 @@
+@page "/head/subject-planner"
+@using AttrackSharedClass.Models
+@using NewscannerMAUI.Services
+@layout HeadLayout
+@inject IHttpClientFactory HttpClientFactory
+@inject AuthService AuthService
+@inject NavigationManager Navigation
+
+<div class="planner-container">
+    <div class="page-header">
+        <div class="header-text">
+            <h1>Subject Planner</h1>
+            <p>Master teacher assignment & scheduling</p>
+        </div>
+    </div>
+
+    @* Filters & Stats *@
+    <div class="planner-meta-row">
+        <div class="stat-pill glass">
+            <i class="fas fa-layer-group"></i>
+            <span>@allOfferings.Count Total Slots</span>
+        </div>
+        <div class="stat-pill glass warning">
+            <i class="fas fa-user-slash"></i>
+            <span>@allOfferings.Count(o => string.IsNullOrEmpty(o.TeacherId)) Unassigned</span>
+        </div>
+    </div>
+
+    <div class="grade-tabs">
+        @foreach (var g in new[] { 7, 8, 9, 10, 11, 12 })
+        {
+            <button class="tab-btn @(selectedGrade == g ? "active" : "")" @onclick="() => selectedGrade = g">
+                Grade @g
+            </button>
+        }
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="planner-loading">
+            <div class="shimmer-row"></div>
+            <div class="shimmer-row"></div>
+            <div class="shimmer-row"></div>
+        </div>
+    }
+    else
+    {
+        <div class="schedule-grid">
+            @foreach (var sec in GetGroupedOfferings())
+            {
+                <div class="section-group glass">
+                    <div class="section-badge">@sec.Key</div>
+                    <div class="slots-list">
+                        @foreach (var offering in sec.Value)
+                        {
+                            <div class="slot-card @(string.IsNullOrEmpty(offering.TeacherId) ? "unassigned" : "")">
+                                <div class="slot-info">
+                                    <h4 class="subject-name">@offering.SubjectName</h4>
+                                    <div class="slot-time">
+                                        <i class="far fa-clock"></i>
+                                        <span>@offering.ScheduleStart.ToString(@"hh\:mm") – @offering.ScheduleEnd.ToString(@"hh\:mm")</span>
+                                    </div>
+                                    <div class="slot-days">@FormatDays(offering.DayOfWeek)</div>
+                                </div>
+
+                                <div class="teacher-assignment">
+                                    @if (!string.IsNullOrEmpty(offering.TeacherId))
+                                    {
+                                        <div class="assigned-teacher">
+                                            <div class="teacher-info">
+                                                <span class="t-label">Assigned Teacher</span>
+                                                <span class="t-name">@offering.TeacherName</span>
+                                            </div>
+                                            <button class="btn-change-t" @onclick="() => OpenAssignModal(offering)">
+                                                <i class="fas fa-exchange-alt"></i>
+                                            </button>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <button class="btn-assign-empty" @onclick="() => OpenAssignModal(offering)">
+                                            <i class="fas fa-user-plus"></i>
+                                            <span>Assign Teacher</span>
+                                        </button>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@* ─── Assign Teacher Modal ─── *@
+@if (showAssignModal && selectedOffering != null)
+{
+    <div class="modal-overlay" @onclick="CloseAssignModal">
+        <div class="premium-modal fade-in" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <div class="subject-tag">@selectedOffering.SubjectCode</div>
+                <h3>Assign Teacher</h3>
+                <p>@selectedOffering.SubjectName • Section @selectedOffering.Section</p>
+                <button class="btn-close-x" @onclick="CloseAssignModal"><i class="fas fa-times"></i></button>
+            </div>
+
+            <div class="modal-body">
+                <div class="search-box">
+                    <i class="fas fa-search"></i>
+                    <input type="text" placeholder="Search teacher name..." @oninput="OnTeacherSearch" />
+                </div>
+
+                <div class="teacher-list-scroll">
+                    @foreach (var teacher in filteredTeachers)
+                    {
+                        var conflict = CheckConflict(teacher);
+                        <button class="teacher-row @(conflict != null ? "has-conflict" : "") @(selectedOffering.TeacherId == teacher.TeacherId ? "already-assigned" : "")" 
+                                @onclick="() => AssignTeacher(teacher)"
+                                disabled="@(conflict != null || selectedOffering.TeacherId == teacher.TeacherId)">
+                            <div class="t-avatar">@teacher.FullName.Substring(0, 1).ToUpper()</div>
+                            <div class="t-details">
+                                <span class="t-fullname">@teacher.FullName</span>
+                                @if (selectedOffering.TeacherId == teacher.TeacherId)
+                                {
+                                    <span class="t-meta assigned">Currently Assigned</span>
+                                }
+                                else if (conflict != null)
+                                {
+                                    <span class="conflict-msg">
+                                        <i class="fas fa-exclamation-triangle"></i> Conflict: @conflict
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span class="t-meta">Ready to assign</span>
+                                }
+                            </div>
+                            @if (conflict == null && selectedOffering.TeacherId != teacher.TeacherId)
+                            {
+                                <i class="fas fa-chevron-right arrow-go"></i>
+                            }
+                        </button>
+                    }
+                </div>
+
+                @if (!string.IsNullOrEmpty(selectedOffering.TeacherId))
+                {
+                    <button class="btn-unassign-global" @onclick="UnassignTeacher">
+                        <i class="fas fa-user-minus"></i>
+                        <span>Unassign Current Teacher</span>
+                    </button>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@* ─── Snackbar ─── *@
+<div class="snackbar-host @(showSnackbar ? "active" : "") @snackbarType">
+    <div class="snackbar-box">
+        <div class="snackbar-icon"><i class="@snackbarIcon"></i></div>
+        <div class="snackbar-message">@snackbarMessage</div>
+        <div class="snackbar-progress"></div>
+    </div>
+</div>
+
+<style>
+    .planner-container { padding: 0; max-width: 800px; margin: 0 auto; font-family: 'Outfit', sans-serif; min-height: 100vh; background: #f8fafc; }
+    .page-header { background: linear-gradient(135deg, #1e1b4b 0%, #4c1d95 100%); padding: 1.5rem; margin-bottom: 1.5rem; border-radius: 0 0 24px 24px; color: white; }
+    .page-header h1 { font-size: 1.8rem; font-weight: 900; margin: 0; letter-spacing: -0.5px; }
+    .page-header p { opacity: 0.8; font-size: 0.95rem; margin-top: 5px; }
+
+    .planner-meta-row { display: flex; gap: 10px; padding: 0 1.5rem; margin-bottom: 1.5rem; }
+    .stat-pill { background: white; padding: 10px 16px; border-radius: 16px; display: flex; align-items: center; gap: 10px; font-size: 0.85rem; font-weight: 800; color: #475569; border: 1px solid #f1f5f9; }
+    .stat-pill i { color: #7c3aed; }
+    .stat-pill.warning { border-color: #fee2e2; }
+    .stat-pill.warning i { color: #ef4444; }
+
+    .grade-tabs { display: flex; gap: 8px; padding: 0 1.5rem; margin-bottom: 1.5rem; overflow-x: auto; scrollbar-width: none; }
+    .grade-tabs::-webkit-scrollbar { display: none; }
+    .tab-btn { padding: 10px 20px; border-radius: 14px; border: 2px solid transparent; background: white; color: #64748b; font-weight: 800; cursor: pointer; transition: 0.2s; white-space: nowrap; }
+    .tab-btn.active { background: #7c3aed; color: white; box-shadow: 0 8px 15px rgba(124, 58, 237, 0.2); }
+
+    .schedule-grid { padding: 0 1.5rem 2rem; display: flex; flex-direction: column; gap: 2rem; }
+    .section-group { border-radius: 20px; padding: 1.5rem; }
+    .section-badge { display: inline-block; background: #1e293b; color: white; padding: 4px 12px; border-radius: 8px; font-size: 0.75rem; font-weight: 900; text-transform: uppercase; margin-bottom: 1rem; }
+    .slots-list { display: grid; gap: 12px; }
+
+    .slot-card { background: #f8fafc; border-radius: 16px; padding: 1rem; border: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+    .slot-card.unassigned { border-left: 4px solid #ef4444; background: #fffbff; }
+    .subject-name { font-size: 0.95rem; font-weight: 800; margin: 0 0 5px; color: #1e293b; }
+    .slot-time, .slot-days { font-size: 0.75rem; color: #64748b; font-weight: 600; display: flex; align-items: center; gap: 5px; }
+
+    .btn-assign-empty { background: white; border: 2px dashed #e2e8f0; color: #7c3aed; padding: 10px 16px; border-radius: 12px; font-weight: 800; cursor: pointer; display: flex; align-items: center; gap: 8px; font-size: 0.8rem; }
+    .assigned-teacher { display: flex; align-items: center; gap: 12px; }
+    .t-label { font-size: 0.65rem; color: #94a3b8; font-weight: 700; text-transform: uppercase; display: block; }
+    .t-name { font-size: 0.85rem; font-weight: 800; color: #1e293b; }
+    .btn-change-t { width: 34px; height: 34px; border-radius: 10px; border: none; background: #ede9fe; color: #7c3aed; cursor: pointer; }
+
+    /* Modal Styling */
+    .modal-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.4); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; z-index: 2000; padding: 1rem; }
+    .premium-modal { background: white; border-radius: 28px; width: 100%; max-width: 440px; max-height: 90vh; overflow: hidden; display: flex; flex-direction: column; animation: scaleIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); }
+    .modal-header { padding: 2rem; border-bottom: 1px solid #f1f5f9; text-align: center; position: relative; }
+    .subject-tag { display: inline-block; background: #ede9fe; color: #7c3aed; padding: 2px 10px; border-radius: 6px; font-size: 0.7rem; font-weight: 900; margin-bottom: 10px; }
+    .modal-header h3 { font-size: 1.4rem; font-weight: 900; margin: 0; color: #1e293b; }
+    .btn-close-x { position: absolute; top: 20px; right: 20px; background: #f8fafc; border: none; width: 32px; height: 32px; border-radius: 50%; color: #94a3b8; cursor: pointer; }
+
+    .modal-body { padding: 1.5rem; flex: 1; overflow-y: auto; }
+    .search-box { position: relative; margin-bottom: 1.5rem; }
+    .search-box i { position: absolute; left: 14px; top: 14px; color: #94a3b8; }
+    .search-box input { width: 100%; padding: 12px 12px 12px 40px; background: #f8fafc; border: 2px solid transparent; border-radius: 14px; font-size: 0.9rem; outline: none; transition: 0.2s; }
+    .search-box input:focus { border-color: #7c3aed; background: white; box-shadow: 0 8px 16px rgba(124, 58, 237, 0.08); }
+
+    .teacher-list-scroll { display: flex; flex-direction: column; gap: 8px; }
+    .teacher-row { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 16px; border: 1px solid #f1f5f9; background: white; cursor: pointer; transition: 0.2s; text-align: left; }
+    .teacher-row.has-conflict { opacity: 0.6; grayscale: 1; pointer-events: none; }
+    .teacher-row.already-assigned { border-color: #7c3aed; background: #f5f3ff; cursor: default; }
+    .t-avatar { width: 40px; height: 40px; border-radius: 12px; background: #f1f5f9; color: #4c1d95; display: flex; align-items: center; justify-content: center; font-weight: 900; }
+    .t-details { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+    .t-fullname { font-size: 0.95rem; font-weight: 800; color: #1e293b; }
+    .t-meta { font-size: 0.72rem; color: #64748b; font-weight: 600; }
+    .t-meta.assigned { color: #7c3aed; font-weight: 800; }
+    .conflict-msg { font-size: 0.7rem; color: #ef4444; font-weight: 700; }
+    .arrow-go { color: #cbd5e1; font-size: 0.8rem; }
+    .teacher-row:hover:not(.has-conflict):not(.already-assigned) { border-color: #7c3aed; background: #f5f3ff; transform: translateX(4px); }
+
+    .btn-unassign-global { width: 100%; margin-top: 1.5rem; padding: 14px; border-radius: 16px; border: 2px solid #fee2e2; background: #fff1f2; color: #ef4444; font-weight: 800; display: flex; align-items: center; justify-content: center; gap: 10px; cursor: pointer; transition: 0.2s; }
+    .btn-unassign-global:hover { background: #fee2e2; transform: translateY(-2px); }
+
+    .glass { background: white; border: 1px solid #f1f5f9; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.05); }
+    @@keyframes scaleIn { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+    /* Snackbar - Top position */
+    .snackbar-host { position: fixed; top: 20px; left: 50%; transform: translateX(-50%) translateY(-50px); z-index: 5000; opacity: 0; visibility: hidden; transition: 0.4s; width: 90%; max-width: 360px; }
+    .snackbar-host.active { opacity: 1; visibility: visible; transform: translateX(-50%) translateY(0); }
+    .snackbar-box { background: white; border-radius: 16px; padding: 1rem; display: flex; align-items: center; gap: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.15); position: relative; overflow: hidden; }
+    .snackbar-icon { font-size: 1.1rem; }
+    .snackbar-message { font-size: 0.9rem; font-weight: 700; color: #1e293b; }
+    .snackbar-progress { position: absolute; bottom: 0; left: 0; height: 3px; background: rgba(0,0,0,0.1); width: 0%; }
+    .snackbar-host.active .snackbar-progress { animation: progress 3s linear forwards; }
+    @@keyframes progress { from { width: 0; } to { width: 100%; } }
+
+    .success .snackbar-icon { color: #10b981; }
+    .error .snackbar-icon { color: #ef4444; }
+</style>
+
+@code {
+    private List<ClassOffering> allOfferings = new();
+    private List<PendingTeacherInfo> teachers = new();
+    private bool isLoading = true;
+    private int selectedGrade = 7;
+
+    private bool showAssignModal = false;
+    private ClassOffering? selectedOffering;
+    private string teacherSearchText = "";
+    private List<PendingTeacherInfo> filteredTeachers => teachers
+        .Where(t => string.IsNullOrEmpty(teacherSearchText) || t.FullName.Contains(teacherSearchText, StringComparison.OrdinalIgnoreCase))
+        .ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        isLoading = true;
+        try
+        {
+            var http = HttpClientFactory.CreateClient("AttrakAPI");
+            var user = await AuthService.GetCurrentUserAsync();
+            
+            // 1. Load All Class Offerings for this school
+            if (user?.SchoolId != null)
+            {
+                allOfferings = await http.GetFromJsonAsync<List<ClassOffering>>($"/api/ClassOffering/all?schoolId={user.SchoolId}") ?? new();
+            }
+
+            // 2. Load All Teachers for the school
+            if (user?.SchoolId != null)
+            {
+                var allTeachers = await http.GetFromJsonAsync<List<PendingTeacherInfo>>($"/api/teacher/all/{user.SchoolId}") ?? new();
+                // We only want teachers who are approved to be assigned
+                teachers = allTeachers.Where(t => t.IsApproved == 1).ToList();
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowSnackbar($"Error: {ex.Message}", "error");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private Dictionary<string, List<ClassOffering>> GetGroupedOfferings()
+    {
+        return allOfferings
+            .Where(o => o.GradeLevel == selectedGrade)
+            .GroupBy(o => o.Section)
+            .ToDictionary(g => g.Key, g => g.OrderBy(o => o.ScheduleStart).ToList());
+    }
+
+    private void OpenAssignModal(ClassOffering offering)
+    {
+        selectedOffering = offering;
+        showAssignModal = true;
+    }
+
+    private void CloseAssignModal()
+    {
+        showAssignModal = false;
+        selectedOffering = null;
+    }
+
+    private void OnTeacherSearch(ChangeEventArgs e)
+    {
+        teacherSearchText = e.Value?.ToString() ?? "";
+    }
+
+    private string? CheckConflict(PendingTeacherInfo teacher)
+    {
+        if (selectedOffering == null) return null;
+
+        // Check against ALL existing assignments for this teacher
+        var assignedClasses = allOfferings.Where(o => o.TeacherId == teacher.TeacherId);
+
+        foreach (var cls in assignedClasses)
+        {
+            // Overlapping days?
+            var days1 = selectedOffering.DayOfWeek.Split(',').Select(d => d.Trim()).ToHashSet();
+            var days2 = cls.DayOfWeek.Split(',').Select(d => d.Trim());
+
+            if (days2.Any(d => days1.Contains(d)))
+            {
+                // Overlapping time?
+                if (selectedOffering.ScheduleStart < cls.ScheduleEnd && selectedOffering.ScheduleEnd > cls.ScheduleStart)
+                {
+                    return $"{cls.SubjectName} ({cls.Section})";
+                }
+            }
+        }
+        return null; // No conflict
+    }
+
+    private async Task AssignTeacher(PendingTeacherInfo teacher)
+    {
+        if (selectedOffering == null) return;
+
+        try
+        {
+            var http = HttpClientFactory.CreateClient("AttrakAPI");
+            // API expects JSON body for TeacherId
+            var body = new { TeacherId = teacher.TeacherId };
+            var response = await http.PutAsJsonAsync($"/api/ClassOffering/{selectedOffering.ClassOfferingId}/assign", body);
+            
+            if (response.IsSuccessStatusCode)
+            {
+                ShowSnackbar("Teacher assigned successfully!", "success");
+                selectedOffering.TeacherId = teacher.TeacherId;
+                selectedOffering.TeacherName = teacher.FullName;
+                CloseAssignModal();
+            }
+            else
+            {
+                var err = await response.Content.ReadAsStringAsync();
+                ShowSnackbar($"Failed: {err}", "error");
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowSnackbar(ex.Message, "error");
+        }
+    }
+
+    private async Task UnassignTeacher()
+    {
+        if (selectedOffering == null) return;
+
+        try
+        {
+            var http = HttpClientFactory.CreateClient("AttrakAPI");
+            var user = await AuthService.GetCurrentUserAsync();
+            
+            // Backend Unassign expects AdvisorId in body (as owner check)
+            var body = new { AdvisorId = user?.UserId };
+            var response = await http.PutAsJsonAsync($"/api/ClassOffering/{selectedOffering.ClassOfferingId}/unassign", body);
+            
+            if (response.IsSuccessStatusCode)
+            {
+                ShowSnackbar("Teacher unassigned successfully.", "success");
+                selectedOffering.TeacherId = null;
+                selectedOffering.TeacherName = null;
+                CloseAssignModal();
+            }
+            else
+            {
+                var err = await response.Content.ReadAsStringAsync();
+                ShowSnackbar($"Failed: {err}", "error");
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowSnackbar(ex.Message, "error");
+        }
+    }
+
+    // Snackbar Logic
+    private bool showSnackbar = false;
+    private string snackbarMessage = "";
+    private string snackbarType = "success";
+    private string snackbarIcon = "fas fa-check-circle";
+
+    private void ShowSnackbar(string message, string type)
+    {
+        snackbarMessage = message;
+        snackbarType = type;
+        snackbarIcon = type switch {
+            "success" => "fas fa-check-circle",
+            "warning" => "fas fa-exclamation-triangle",
+            "error" => "fas fa-times-circle",
+            _ => "fas fa-info-circle"
+        };
+        showSnackbar = true;
+        StateHasChanged();
+        
+        Task.Delay(3000).ContinueWith(_ => {
+            showSnackbar = false;
+            InvokeAsync(StateHasChanged);
+        });
+    }
+
+    private static string FormatDays(string dayOfWeek)
+    {
+        if (string.IsNullOrWhiteSpace(dayOfWeek)) return "";
+        var days = dayOfWeek.Split(',').Select(d => d.Trim());
+        return string.Join(", ", days.Select(d => d.Length >= 3 ? d.Substring(0, 3) : d));
+    }
+}

@@ -990,6 +990,7 @@ namespace ServerAtrrak.Services
                             SchoolName = reader.IsDBNull("SchoolName") ? "" : reader.GetString("SchoolName"),
                             RegisteredAt = reader.GetDateTime("RegisteredAt"),
                             UserType = reader.GetString("UserType"),
+                            IsApproved = reader.GetInt32("IsApproved"),
                             Password = reader.IsDBNull("Password") ? "" : reader.GetString("Password"),
                             GradeLevel = reader.IsDBNull("GradeLevel") ? (int?)null : reader.GetInt32("GradeLevel"),
                             Section = reader.IsDBNull("Section") ? null : reader.GetString("Section"),

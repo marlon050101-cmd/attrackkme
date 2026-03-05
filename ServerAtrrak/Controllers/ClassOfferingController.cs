@@ -17,6 +17,13 @@ namespace ServerAtrrak.Controllers
             _logger = logger;
         }
 
+        [HttpGet("all")]
+        public async Task<ActionResult<List<ClassOffering>>> GetAll([FromQuery] string? schoolId)
+        {
+            var list = await _service.GetAllAsync(schoolId);
+            return Ok(list);
+        }
+
         [HttpGet("advisor/{advisorId}")]
         public async Task<ActionResult<List<ClassOffering>>> GetByAdvisor(string advisorId)
         {
