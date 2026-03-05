@@ -267,12 +267,19 @@ namespace ServerAtrrak.Controllers
         {
             try
             {
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return BadRequest(new { message = "UserId is required" });
+                }
+
                 var result = await _teacherService.UpdateTeacherAsync(userId, request);
                 if (result)
                 {
                     return Ok(new { message = "Teacher information updated successfully" });
                 }
-                return NotFound(new { message = "Teacher not found" });
+                
+                // If we are here, something went wrong in the service
+                return BadRequest(new { message = "Failed to update teacher. Check server logs for details." });
             }
             catch (Exception ex)
             {

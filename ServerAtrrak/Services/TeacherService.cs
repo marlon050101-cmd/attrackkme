@@ -1011,6 +1011,12 @@ namespace ServerAtrrak.Services
         {
             try
             {
+                if (string.IsNullOrEmpty(userId))
+                {
+                    Console.WriteLine("DEBUG: UpdateTeacherAsync - UserId is null or empty");
+                    return false;
+                }
+
                 using var connection = await _dbConnection.GetConnectionAsync();
                 
                 // 1. Get TeacherId from user table
@@ -1020,13 +1026,12 @@ namespace ServerAtrrak.Services
                 {
                     cmd.Parameters.AddWithValue("@userId", userId);
                     var result = await cmd.ExecuteScalarAsync();
-                    teacherId = result?.ToString();
-                }
-
-                if (string.IsNullOrEmpty(teacherId)) 
-                {
-                    Console.WriteLine($"DEBUG: UpdateTeacherAsync - TeacherId not found for UserId: {userId}");
-                    return false;
+                    if (result == null || result == DBNull.Value)
+                    {
+                        Console.WriteLine($"DEBUG: UpdateTeacherAsync - TeacherId not found in user table for UserId: {userId}");
+                        return false;
+                    }
+                    teacherId = result.ToString();
                 }
 
                 // 2. Update user table (Email)
@@ -1039,8 +1044,7 @@ namespace ServerAtrrak.Services
                     await cmd.ExecuteNonQueryAsync();
                 }
 
-                // 3. Update teacher table (FullName, Email, GradeLevel, Section, Strand)
-                // Note: We update Email here too as it exists in both tables
+                // 3. Update teacher table
                 var updateTeacher = @"
                     UPDATE teacher 
                     SET FullName = @fullName, 
@@ -1071,16 +1075,14 @@ namespace ServerAtrrak.Services
                     cmd.Parameters.AddWithValue("@updatedAt", DateTime.Now);
                     cmd.Parameters.AddWithValue("@teacherId", teacherId);
                     
-                    // In MySQL, ExecuteNonQuery returns 0 if no rows were *changed*.
-                    // This can happen if the user clicks Save without changing anything.
-                    // We'll consider the operation successful if no exception occurred and the user was found.
                     await cmd.ExecuteNonQueryAsync();
                     return true;
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error in UpdateTeacherAsync: {ex.Message}");
+                Console.WriteLine($"DEBUG: EXCEPTION in UpdateTeacherAsync: {ex.Message}");
+                Console.WriteLine($"DEBUG: StackTrace: {ex.StackTrace}");
                 return false;
             }
         }

@@ -1053,10 +1053,21 @@
                 selectedTeacher.Strand = editModel.Strand;
                 
                 isEditMode = false;
+                _ = LoadTeachers(); // Refresh list to be sure
             }
             else
             {
-                errorMessage = "Failed to update teacher information.";
+                try 
+                {
+                    var errorData = await response.Content.ReadFromJsonAsync<Dictionary<string, object>>();
+                    errorMessage = errorData != null && errorData.ContainsKey("message") 
+                        ? errorData["message"].ToString() 
+                        : "Failed to update teacher information.";
+                }
+                catch 
+                {
+                    errorMessage = "Failed to update teacher information (404/400).";
+                }
             }
         }
         catch (Exception ex)
