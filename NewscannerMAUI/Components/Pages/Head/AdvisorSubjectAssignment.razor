@@ -1,4 +1,4 @@
-@page "/head/advisor-subjects"
+@page "/head/adviser-subjects"
 @using AttrackSharedClass.Models
 @using NewscannerMAUI.Services
 @layout HeadLayout
@@ -10,7 +10,7 @@
     <div class="page-header">
         <div class="header-text">
             <h1>Class Schedule</h1>
-            <p>Advisor Class management</p>
+            <p>Adviser Class management</p>
         </div>
     </div>
 
@@ -30,7 +30,7 @@
         <div class="loading-state">
             <div class="shimmer-card"></div>
             <div class="shimmer-card"></div>
-            <p>Loading advisors...</p>
+            <p>Loading advisers...</p>
         </div>
     }
     else if (!string.IsNullOrEmpty(errorMessage))
@@ -41,49 +41,49 @@
                 <strong>Error</strong>
                 <p>@errorMessage</p>
             </div>
-            <button class="btn-retry" @onclick="LoadAdvisors">Try Again</button>
+            <button class="btn-retry" @onclick="LoadAdvisers">Try Again</button>
         </div>
     }
-    else if (!advisors.Any())
+    else if (!advisers.Any())
     {
         <div class="empty-state glass">
             <div class="empty-icon"><i class="fas fa-user-tie"></i></div>
-            <h3>No Advisors Yet</h3>
-            <p>There are no approved advisors in your school yet.</p>
+            <h3>No Advisers Yet</h3>
+            <p>There are no approved advisers in your school yet.</p>
         </div>
     }
     else
     {
         <div class="list-wrapper">
             <div class="list-meta">
-                <span>@(filteredAdvisors.Count) Advisor@(filteredAdvisors.Count != 1 ? "s" : "")</span>
+                <span>@(filteredAdvisers.Count) Adviser@(filteredAdvisers.Count != 1 ? "s" : "")</span>
             </div>
 
-            <div class="advisor-list">
-                @foreach (var advisor in filteredAdvisors)
+            <div class="adviser-list">
+                @foreach (var adviser in filteredAdvisers)
                 {
-                    <div class="advisor-card glass-hover fade-in">
-                        <div class="advisor-meta">
-                            <div class="advisor-info">
-                                <h3 class="advisor-name">@advisor.FullName</h3>
-                                <div class="advisor-badge">
-                                    @if (advisor.GradeLevel.HasValue)
+                    <div class="adviser-card glass-hover fade-in">
+                        <div class="adviser-meta">
+                            <div class="adviser-info">
+                                <h3 class="adviser-name">@adviser.FullName</h3>
+                                <div class="adviser-badge">
+                                    @if (adviser.GradeLevel.HasValue)
                                     {
-                                        <span>Grade @advisor.GradeLevel</span>
+                                        <span>Grade @adviser.GradeLevel</span>
                                     }
-                                    @if (!string.IsNullOrEmpty(advisor.Section))
+                                    @if (!string.IsNullOrEmpty(adviser.Section))
                                     {
-                                        <span> • @advisor.Section</span>
+                                        <span> • @adviser.Section</span>
                                     }
-                                    @if (!string.IsNullOrEmpty(advisor.Strand))
+                                    @if (!string.IsNullOrEmpty(adviser.Strand))
                                     {
-                                        var displayStrand = advisor.Strand.Contains("Academic") ? "Academic" : (advisor.Strand.Contains("Tech") ? "TechPro" : advisor.Strand);
+                                        var displayStrand = adviser.Strand.Contains("Academic") ? "Academic" : (adviser.Strand.Contains("Tech") ? "TechPro" : adviser.Strand);
                                         <span> • @displayStrand</span>
                                     }
                                 </div>
                             </div>
                         </div>
-                        <button class="btn-manage" @onclick="() => OpenManageModal(advisor)">
+                        <button class="btn-manage" @onclick="() => OpenManageModal(adviser)">
                             <span>Manage</span>
                         </button>
                     </div>
@@ -94,21 +94,21 @@
 </div>
 
 @* ─── Manage Modal (Redesigned) ─── *@
-@if (showManageModal && selectedAdvisor != null)
+@if (showManageModal && selectedAdviser != null)
 {
     <div class="modal-overlay" @onclick="CloseManageModal">
         <div class="header-gradient-bg"></div>
         <div class="premium-modal fade-in" @onclick:stopPropagation="true">
-            @* Advisor Profile Section *@
+            @* Adviser Profile Section *@
             <div class="profile-section">
                 <div class="profile-meta">
                     <div class="profile-details">
-                        <h3 class="profile-name">@selectedAdvisor.FullName</h3>
+                        <h3 class="profile-name">@selectedAdviser.FullName</h3>
                         <p class="profile-sub">
-                            Grade @(selectedAdvisor.GradeLevel ?? 0) • @(selectedAdvisor.Section ?? "No Section")
-                            @if (!string.IsNullOrEmpty(selectedAdvisor.Strand))
+                            Grade @(selectedAdviser.GradeLevel ?? 0) • @(selectedAdviser.Section ?? "No Section")
+                            @if (!string.IsNullOrEmpty(selectedAdviser.Strand))
                             {
-                                <span> • @selectedAdvisor.Strand</span>
+                                <span> • @selectedAdviser.Strand</span>
                             }
                         </p>
                     </div>
@@ -276,7 +276,7 @@
         <div class="confirm-modal scale-in" @onclick:stopPropagation="true">
             <div class="confirm-icon"><i class="fas fa-trash-alt"></i></div>
             <h4>Remove Subject?</h4>
-            <p>Remove <strong>@classToRemove.SubjectName</strong> from @selectedAdvisor?.FullName's schedule?</p>
+            <p>Remove <strong>@classToRemove.SubjectName</strong> from @selectedAdviser?.FullName's schedule?</p>
             <div class="confirm-actions">
                 <button class="btn-cancel" @onclick="() => showRemoveConfirm = false">Cancel</button>
                 <button class="btn-confirm-remove" @onclick="ExecuteRemove" disabled="@isRemoving">
@@ -398,10 +398,10 @@
         background: var(--primary-purple);
         border-radius: 2px;
     }
-
-    .advisor-list { display: flex; flex-direction: column; gap: 0.75rem; }
-
-    .advisor-card {
+    
+    .adviser-list { display: flex; flex-direction: column; gap: 0.75rem; }
+    
+    .adviser-card {
         background: white;
         border-radius: 20px;
         padding: 1.15rem;
@@ -435,9 +435,9 @@
         flex-shrink: 0;
     }
 
-    .advisor-info { min-width: 0; }
-    .advisor-name { font-size: 1rem; font-weight: 800; color: var(--text-dark); margin: 0 0 0.2rem; }
-    .advisor-badge { font-size: 0.75rem; color: var(--text-muted); font-weight: 600; }
+    .adviser-info { min-width: 0; }
+    .adviser-name { font-size: 1rem; font-weight: 800; color: var(--text-dark); margin: 0 0 0.2rem; }
+    .adviser-badge { font-size: 0.75rem; color: var(--text-muted); font-weight: 600; }
 
     .btn-manage {
         background: #1e293b;
@@ -855,10 +855,10 @@
 @code {
     private static readonly string[] AllDays = { "Monday", "Tuesday", "Wednesday", "Thursday", "Friday" };
 
-    private List<PendingTeacherInfo> advisors = new();
-    private List<PendingTeacherInfo> filteredAdvisors => selectedGrade == null 
-        ? advisors 
-        : advisors.Where(a => a.GradeLevel == selectedGrade).ToList();
+    private List<PendingTeacherInfo> advisers = new();
+    private List<PendingTeacherInfo> filteredAdvisers => selectedGrade == null 
+        ? advisers 
+        : advisers.Where(a => a.GradeLevel == selectedGrade).ToList();
     private int? selectedGrade;
     private bool isLoading = true;
     private string? errorMessage;
@@ -866,7 +866,7 @@
 
     // Manage modal
     private bool showManageModal = false;
-    private PendingTeacherInfo? selectedAdvisor;
+    private PendingTeacherInfo? selectedAdviser;
     private List<ClassOffering> currentClasses = new();
     private bool isLoadingClasses = false;
 
@@ -917,10 +917,10 @@
 
     protected override async Task OnInitializedAsync()
     {
-        await LoadAdvisors();
+        await LoadAdvisers();
     }
 
-    private async Task LoadAdvisors()
+    private async Task LoadAdvisers()
     {
         try
         {
@@ -942,7 +942,7 @@
 
             var http = HttpClientFactory.CreateClient("AttrakAPI");
             var all = await http.GetFromJsonAsync<List<PendingTeacherInfo>>($"/api/teacher/all/{headSchoolId}");
-            advisors = (all ?? new()).Where(t => t.UserType == "Advisor").ToList();
+            advisers = (all ?? new()).Where(t => t.UserType == "Adviser").ToList();
         }
         catch (Exception ex)
         {
@@ -954,9 +954,9 @@
         }
     }
 
-    private async Task OpenManageModal(PendingTeacherInfo advisor)
+    private async Task OpenManageModal(PendingTeacherInfo adviser)
     {
-        selectedAdvisor = advisor;
+        selectedAdviser = adviser;
         showManageModal = true;
         subjectSearchText = "";
         selectedSubjectId = null;
@@ -966,14 +966,14 @@
         endTime = "08:30";
 
         await LoadCurrentClasses();
-        await LoadSubjectsForAdvisor();
+        await LoadSubjectsForAdviser();
         AutoAdjustStartTime();
     }
 
     private void CloseManageModal()
     {
         showManageModal = false;
-        selectedAdvisor = null;
+        selectedAdviser = null;
         currentClasses.Clear();
         allSubjectsForGrade.Clear();
         filteredSubjects.Clear();
@@ -981,23 +981,23 @@
 
     private async Task LoadCurrentClasses()
     {
-        if (selectedAdvisor?.TeacherId == null) return;
+        if (selectedAdviser?.TeacherId == null) return;
         isLoadingClasses = true;
         try
         {
             var http = HttpClientFactory.CreateClient("AttrakAPI");
-            var list = await http.GetFromJsonAsync<List<ClassOffering>>($"/api/ClassOffering/advisor/{selectedAdvisor.TeacherId}");
+            var list = await http.GetFromJsonAsync<List<ClassOffering>>($"/api/ClassOffering/adviser/{selectedAdviser.TeacherId}");
             currentClasses = list ?? new();
         }
         catch { currentClasses = new(); }
         finally { isLoadingClasses = false; }
     }
 
-    private async Task LoadSubjectsForAdvisor()
+    private async Task LoadSubjectsForAdviser()
     {
-        if (selectedAdvisor == null) return;
-        int grade = selectedAdvisor.GradeLevel ?? 7;
-        string? strand = string.IsNullOrEmpty(selectedAdvisor.Strand) ? null : selectedAdvisor.Strand;
+        if (selectedAdviser == null) return;
+        int grade = selectedAdviser.GradeLevel ?? 7;
+        string? strand = string.IsNullOrEmpty(selectedAdviser.Strand) ? null : selectedAdviser.Strand;
         try
         {
             var http = HttpClientFactory.CreateClient("AttrakAPI");
@@ -1028,13 +1028,13 @@
                             s.SubjectName.Contains(subjectSearchText, StringComparison.OrdinalIgnoreCase))
                 .Take(10).ToList();
 
-            if (filteredSubjects.Count < 3 && selectedAdvisor != null)
+            if (filteredSubjects.Count < 3 && selectedAdviser != null)
             {
                 try
                 {
                     var http = HttpClientFactory.CreateClient("AttrakAPI");
-                    int grade = selectedAdvisor.GradeLevel ?? 7;
-                    string? strand = string.IsNullOrEmpty(selectedAdvisor.Strand) ? null : selectedAdvisor.Strand;
+                    int grade = selectedAdviser.GradeLevel ?? 7;
+                    string? strand = string.IsNullOrEmpty(selectedAdviser.Strand) ? null : selectedAdviser.Strand;
                     var strandParam = strand != null ? $"&strand={Uri.EscapeDataString(strand)}" : "";
                     var extra = await http.GetFromJsonAsync<List<TeacherSubjectAssignment>>(
                         $"/api/ClassOffering/search-subjects?gradeLevel={grade}{strandParam}&keyword={Uri.EscapeDataString(subjectSearchText)}");
@@ -1080,9 +1080,9 @@
 
     private async Task AddSubject()
     {
-        if (selectedAdvisor?.TeacherId == null)
+        if (selectedAdviser?.TeacherId == null)
         {
-            _ = ShowSnackbar("Advisor profile not found.", "error");
+            _ = ShowSnackbar("Adviser profile not found.", "error");
             return;
         }
         if (string.IsNullOrEmpty(selectedSubjectId) && string.IsNullOrEmpty(subjectSearchText))
@@ -1104,12 +1104,12 @@
             var http = HttpClientFactory.CreateClient("AttrakAPI");
             var request = new CreateClassOfferingRequest
             {
-                AdvisorId = selectedAdvisor.TeacherId,
+                AdviserId = selectedAdviser.TeacherId,
                 SubjectId = selectedSubjectId ?? "",
                 SubjectName = string.IsNullOrEmpty(selectedSubjectId) ? subjectSearchText : null,
-                GradeLevel = selectedAdvisor.GradeLevel ?? 7,
-                Section = selectedAdvisor.Section ?? "",
-                Strand = string.IsNullOrEmpty(selectedAdvisor.Strand) ? null : selectedAdvisor.Strand,
+                GradeLevel = selectedAdviser.GradeLevel ?? 7,
+                Section = selectedAdviser.Section ?? "",
+                Strand = string.IsNullOrEmpty(selectedAdviser.Strand) ? null : selectedAdviser.Strand,
                 ScheduleStart = tStart,
                 ScheduleEnd = tEnd,
                 DayOfWeek = dayStr
@@ -1193,20 +1193,20 @@
 
     private async Task ExecuteRemove()
     {
-        if (classToRemove == null || selectedAdvisor?.TeacherId == null) return;
+        if (classToRemove == null || selectedAdviser?.TeacherId == null) return;
         isRemoving = true;
         try
         {
             var http = HttpClientFactory.CreateClient("AttrakAPI");
             var response = await http.DeleteAsync(
-                $"/api/ClassOffering/{classToRemove.ClassOfferingId}?advisorId={Uri.EscapeDataString(selectedAdvisor.TeacherId)}");
+                $"/api/ClassOffering/{classToRemove.ClassOfferingId}?adviserId={Uri.EscapeDataString(selectedAdviser.TeacherId)}");
             if (response.IsSuccessStatusCode)
             {
                 showRemoveConfirm = false;
                 classToRemove = null;
                 _ = ShowSnackbar("Subject removed.", "success");
                 await LoadCurrentClasses();
-                await LoadSubjectsForAdvisor();
+                await LoadSubjectsForAdviser();
             }
             else
             {

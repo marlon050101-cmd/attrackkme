@@ -6,8 +6,8 @@ namespace AttrackSharedClass.Models
     public class ClassOffering
     {
         public string ClassOfferingId { get; set; } = "";
-        public string AdvisorId { get; set; } = "";
-        public string? AdvisorName { get; set; }
+        public string AdviserId { get; set; } = "";
+        public string? AdviserName { get; set; }
         public string SubjectId { get; set; } = "";
         public string SubjectName { get; set; } = "";
         public string? SubjectCode { get; set; }
@@ -27,7 +27,7 @@ namespace AttrackSharedClass.Models
     public class CreateClassOfferingRequest
     {
         [Required]
-        public string AdvisorId { get; set; } = "";
+        public string AdviserId { get; set; } = "";
         [Required]
         public string SubjectId { get; set; } = "";
         public string? SubjectName { get; set; }

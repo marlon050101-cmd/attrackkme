@@ -727,12 +727,12 @@ namespace ServerAtrrak.Controllers
                 INSERT INTO user (UserId, Username, Email, Password, UserType, IsActive, IsApproved, CreatedAt, UpdatedAt, TeacherId)
                 VALUES (@UserId, @Username, @Email, @Password, @UserType, @IsActive, @IsApproved, @CreatedAt, @UpdatedAt, @TeacherId)";
 
-            // Primary type from request (e.g., Head, Advisor, SubjectTeacher)
+            // Primary type from request (e.g., Head, Adviser, SubjectTeacher)
             string primaryType = request.UserType.ToString();
             
             // Try actual type first, then fall back to GuidanceCounselor if ENUM is restricted
             var typesToTry = new List<string> { primaryType };
-            if (primaryType == "Head" || primaryType == "Advisor") 
+            if (primaryType == "Head" || primaryType == "Adviser") 
                 typesToTry.Add("GuidanceCounselor");
 
             foreach (var userTypeValue in typesToTry)
@@ -748,7 +748,7 @@ namespace ServerAtrrak.Controllers
                     command.Parameters.AddWithValue("@Password", request.Password);
                     command.Parameters.AddWithValue("@UserType", userTypeValue);
                     command.Parameters.AddWithValue("@IsActive", true);
-                    bool isTeacherRole = ((int)request.UserType == 2 || (int)request.UserType == 5) || userTypeValue == "SubjectTeacher" || userTypeValue == "Advisor"; 
+                    bool isTeacherRole = ((int)request.UserType == 2 || (int)request.UserType == 5) || userTypeValue == "SubjectTeacher" || userTypeValue == "Adviser"; 
                     command.Parameters.AddWithValue("@IsApproved", !isTeacherRole);
                     command.Parameters.AddWithValue("@CreatedAt", DateTime.Now);
                     command.Parameters.AddWithValue("@UpdatedAt", DateTime.Now);
@@ -785,8 +785,8 @@ namespace ServerAtrrak.Controllers
 
             var studentId = Guid.NewGuid().ToString();
             var query = @"
-                INSERT INTO student (StudentId, FullName, Email, GradeLevel, Section, Strand, SchoolId, ParentsNumber, Gender, QRImage, AdvisorId, EnrollmentStatus)
-                VALUES (@StudentId, @FullName, @Email, @GradeLevel, @Section, @Strand, @SchoolId, @ParentsNumber, @Gender, @QRImage, @AdvisorId, @EnrollmentStatus)";
+                INSERT INTO student (StudentId, FullName, Email, GradeLevel, Section, Strand, SchoolId, ParentsNumber, Gender, QRImage, AdviserId, EnrollmentStatus)
+                VALUES (@StudentId, @FullName, @Email, @GradeLevel, @Section, @Strand, @SchoolId, @ParentsNumber, @Gender, @QRImage, @AdviserId, @EnrollmentStatus)";
 
             using var command = new MySqlCommand(query, connection);
             command.Parameters.AddWithValue("@StudentId", studentId);
@@ -799,7 +799,7 @@ namespace ServerAtrrak.Controllers
             command.Parameters.AddWithValue("@ParentsNumber", request.ParentsNumber);
             command.Parameters.AddWithValue("@Gender", request.Gender);
             command.Parameters.AddWithValue("@QRImage", ""); // Will be updated after QR generation
-            command.Parameters.AddWithValue("@AdvisorId", request.AdvisorId ?? (object)DBNull.Value);
+            command.Parameters.AddWithValue("@AdviserId", request.AdviserId ?? (object)DBNull.Value);
             command.Parameters.AddWithValue("@EnrollmentStatus", "Pending");
 
             await command.ExecuteNonQueryAsync();
@@ -913,7 +913,7 @@ namespace ServerAtrrak.Controllers
             using var connection = new MySqlConnection(_dbConnection.GetConnection());
             await connection.OpenAsync();
 
-            var query = "SELECT StudentId, FullName, Email, GradeLevel, Section, Strand, SchoolId, ParentsNumber, Gender, QRImage, CreatedAt, UpdatedAt, IsActive, AdvisorId, EnrollmentStatus FROM student WHERE StudentId = @StudentId";
+            var query = "SELECT StudentId, FullName, Email, GradeLevel, Section, Strand, SchoolId, ParentsNumber, Gender, QRImage, CreatedAt, UpdatedAt, IsActive, AdviserId, EnrollmentStatus FROM student WHERE StudentId = @StudentId";
             using var command = new MySqlCommand(query, connection);
             command.Parameters.AddWithValue("@StudentId", studentId);
 
@@ -935,7 +935,7 @@ namespace ServerAtrrak.Controllers
                     CreatedAt = reader.IsDBNull("CreatedAt") ? DateTime.Now : reader.GetDateTime("CreatedAt"),
                     UpdatedAt = reader.IsDBNull("UpdatedAt") ? DateTime.Now : reader.GetDateTime("UpdatedAt"),
                     IsActive = reader.IsDBNull("IsActive") ? true : reader.GetBoolean("IsActive"),
-                    AdvisorId = reader.IsDBNull("AdvisorId") ? null : reader.GetString("AdvisorId"),
+                    AdviserId = reader.IsDBNull("AdviserId") ? null : reader.GetString("AdviserId"),
                     EnrollmentStatus = reader.IsDBNull("EnrollmentStatus") ? "Pending" : reader.GetString("EnrollmentStatus")
                 };
             }
@@ -1021,7 +1021,7 @@ namespace ServerAtrrak.Controllers
 
                 // Use the EXACT query that works in MySQL Workbench
                 query = @"
-                    SELECT s.StudentId, s.FullName, s.GradeLevel, s.Section, s.Strand, s.SchoolId, s.ParentsNumber, s.Gender, s.QRImage, s.CreatedAt, s.UpdatedAt, s.IsActive, s.EnrollmentStatus, s.AdvisorId
+                    SELECT s.StudentId, s.FullName, s.GradeLevel, s.Section, s.Strand, s.SchoolId, s.ParentsNumber, s.Gender, s.QRImage, s.CreatedAt, s.UpdatedAt, s.IsActive, s.EnrollmentStatus, s.AdviserId
                     FROM student s
                     WHERE s.SchoolId = @SchoolId AND s.Section = @Section AND s.IsActive = 1 AND s.EnrollmentStatus = 'Approved'
                     ORDER BY s.FullName";
@@ -1036,7 +1036,7 @@ namespace ServerAtrrak.Controllers
             else
             {
                 // Get all students if no teacher ID provided
-                query = "SELECT StudentId, FullName, GradeLevel, Section, Strand, SchoolId, ParentsNumber, Gender, QRImage, CreatedAt, UpdatedAt, IsActive, EnrollmentStatus, AdvisorId FROM student WHERE IsActive = 1 AND EnrollmentStatus = 'Approved' ORDER BY FullName";
+                query = "SELECT StudentId, FullName, GradeLevel, Section, Strand, SchoolId, ParentsNumber, Gender, QRImage, CreatedAt, UpdatedAt, IsActive, EnrollmentStatus, AdviserId FROM student WHERE IsActive = 1 AND EnrollmentStatus = 'Approved' ORDER BY FullName";
                 command = new MySqlCommand(query, connection);
             }
 
@@ -1059,7 +1059,7 @@ namespace ServerAtrrak.Controllers
                     ParentsNumber = reader.IsDBNull("ParentsNumber") ? "" : reader.GetString("ParentsNumber"),
                     Gender = reader.IsDBNull("Gender") ? "" : reader.GetString("Gender"),
                     QRImage = reader.IsDBNull("QRImage") ? "" : reader.GetString("QRImage"),
-                    AdvisorId = reader.IsDBNull("AdvisorId") ? null : reader.GetString("AdvisorId"),
+                    AdviserId = reader.IsDBNull("AdviserId") ? null : reader.GetString("AdviserId"),
                     EnrollmentStatus = reader.IsDBNull("EnrollmentStatus") ? "Pending" : reader.GetString("EnrollmentStatus"),
                     CreatedAt = reader.IsDBNull("CreatedAt") ? DateTime.Now : reader.GetDateTime("CreatedAt"),
                     UpdatedAt = reader.IsDBNull("UpdatedAt") ? DateTime.Now : reader.GetDateTime("UpdatedAt"),
@@ -1155,7 +1155,7 @@ namespace ServerAtrrak.Controllers
             await connection.OpenAsync();
 
             var query = @"
-                SELECT s.StudentId, s.FullName, s.GradeLevel, s.Section, s.Strand, s.SchoolId, s.ParentsNumber, s.Gender, sch.SchoolName, s.QRImage, s.AdvisorId, s.Status, s.EnrollmentStatus
+                SELECT s.StudentId, s.FullName, s.GradeLevel, s.Section, s.Strand, s.SchoolId, s.ParentsNumber, s.Gender, sch.SchoolName, s.QRImage, s.AdviserId, s.Status, s.EnrollmentStatus
                 FROM student s
                 INNER JOIN school sch ON s.SchoolId = sch.SchoolId
                 WHERE s.StudentId = @StudentId";
@@ -1184,7 +1184,7 @@ namespace ServerAtrrak.Controllers
                     Gender = reader.GetString("Gender"),
                     SchoolName = reader.GetString("SchoolName"),
                     QRImage = reader.IsDBNull("QRImage") ? "" : reader.GetString("QRImage"),
-                    AdvisorId = reader.IsDBNull("AdvisorId") ? null : reader.GetString("AdvisorId"),
+                    AdviserId = reader.IsDBNull("AdviserId") ? null : reader.GetString("AdviserId"),
                     Status = reader.IsDBNull("Status") ? "Good" : reader.GetString("Status"),
                     EnrollmentStatus = reader.IsDBNull("EnrollmentStatus") ? "Pending" : reader.GetString("EnrollmentStatus"),
                     QRCodeData = qrCodeData,
@@ -1196,25 +1196,25 @@ namespace ServerAtrrak.Controllers
             return null;
         }
 
-        [HttpGet("advisor/{advisorId}/students")]
-        public async Task<ActionResult<List<StudentDisplayInfo>>> GetStudentsByAdvisor(string advisorId)
+        [HttpGet("adviser/{adviserId}/students")]
+        public async Task<ActionResult<List<StudentDisplayInfo>>> GetStudentsByAdviser(string adviserId)
         {
             try
             {
-                Console.WriteLine($"DEBUG GetStudentsByAdvisor: Called with advisorId={advisorId}");
+                Console.WriteLine($"DEBUG GetStudentsByAdviser: Called with adviserId={adviserId}");
                 using var connection = new MySqlConnection(_dbConnection.GetConnection());
                 await connection.OpenAsync();
 
                 var query = @"
                     SELECT s.StudentId, s.FullName, s.GradeLevel, s.Section, s.Strand, s.SchoolId, s.ParentsNumber, s.Gender, 
-                           COALESCE(sch.SchoolName, '') AS SchoolName, s.QRImage, s.AdvisorId, s.EnrollmentStatus
+                           COALESCE(sch.SchoolName, '') AS SchoolName, s.QRImage, s.AdviserId, s.EnrollmentStatus
                     FROM student s
                     LEFT JOIN school sch ON s.SchoolId = sch.SchoolId
-                    WHERE s.AdvisorId = @AdvisorId
+                    WHERE s.AdviserId = @AdviserId
                     ORDER BY s.EnrollmentStatus DESC, s.FullName ASC";
 
                 using var command = new MySqlCommand(query, connection);
-                command.Parameters.AddWithValue("@AdvisorId", advisorId);
+                command.Parameters.AddWithValue("@AdviserId", adviserId);
 
                 var students = new List<StudentDisplayInfo>();
                 using var reader = await command.ExecuteReaderAsync();
@@ -1233,20 +1233,20 @@ namespace ServerAtrrak.Controllers
                         Gender = reader.IsDBNull("Gender") ? "" : reader.GetString("Gender"),
                         SchoolName = reader.IsDBNull("SchoolName") ? "" : reader.GetString("SchoolName"),
                         QRImage = reader.IsDBNull("QRImage") ? "" : System.Text.Encoding.UTF8.GetString((byte[])reader["QRImage"]),
-                        AdvisorId = reader.IsDBNull("AdvisorId") ? null : reader.GetString("AdvisorId"),
+                        AdviserId = reader.IsDBNull("AdviserId") ? null : reader.GetString("AdviserId"),
                         Status = "Good",
                         EnrollmentStatus = reader.IsDBNull("EnrollmentStatus") ? "Pending" : reader.GetString("EnrollmentStatus"),
                         IsValid = true
                     };
-                    Console.WriteLine($"DEBUG GetStudentsByAdvisor: Found student #{count}: {student.FullName} | Status={student.EnrollmentStatus}");
+                    Console.WriteLine($"DEBUG GetStudentsByAdviser: Found student #{count}: {student.FullName} | Status={student.EnrollmentStatus}");
                     students.Add(student);
                 }
-                Console.WriteLine($"DEBUG GetStudentsByAdvisor: Total students found = {count}");
+                Console.WriteLine($"DEBUG GetStudentsByAdviser: Total students found = {count}");
                 return Ok(students);
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"DEBUG GetStudentsByAdvisor ERROR: {ex.Message}");
+                Console.WriteLine($"DEBUG GetStudentsByAdviser ERROR: {ex.Message}");
                 return StatusCode(500, $"Internal server error: {ex.Message}");
             }
         }
@@ -1277,12 +1277,12 @@ namespace ServerAtrrak.Controllers
             }
         }
 
-        [HttpPost("advisor")]
-        public async Task<ActionResult<RegisterResponse>> RegisterAdvisor([FromBody] RegisterRequest request)
+        [HttpPost("adviser")]
+        public async Task<ActionResult<RegisterResponse>> RegisterAdviser([FromBody] RegisterRequest request)
         {
             try
             {
-                _logger.LogInformation("Advisor registration attempt for user: {Username}", request.Username);
+                _logger.LogInformation("Adviser registration attempt for user: {Username}", request.Username);
 
                 if (!ModelState.IsValid)
                 {
@@ -1299,7 +1299,7 @@ namespace ServerAtrrak.Controllers
 
                 var schoolId = await _schoolService.GetOrCreateSchoolAsync(request);
 
-                // Advisor validation: ensure section details are provided
+                // Adviser validation: ensure section details are provided
                 if (request.GradeLevel == null || request.GradeLevel < 7 || request.GradeLevel > 12)
                     return BadRequest(new RegisterResponse { Success = false, Message = "Please provide a valid grade level." });
 
@@ -1309,26 +1309,26 @@ namespace ServerAtrrak.Controllers
                 if (request.GradeLevel >= 11 && string.IsNullOrWhiteSpace(request.Strand))
                     return BadRequest(new RegisterResponse { Success = false, Message = "Please provide your strand." });
 
-                var advisorTeacherId = await CreateAdvisorTeacherRecordAsync(request, schoolId);
-                var userId = await CreateUserForAdvisorAsync(request, advisorTeacherId);
+                var adviserTeacherId = await CreateAdviserTeacherRecordAsync(request, schoolId);
+                var userId = await CreateUserForAdviserAsync(request, adviserTeacherId);
 
-                _logger.LogInformation("Advisor registered successfully: {Username}", request.Username);
+                _logger.LogInformation("Adviser registered successfully: {Username}", request.Username);
                 return Ok(new RegisterResponse
                 {
                     Success = true,
-                    Message = "Advisor registered successfully",
+                    Message = "Adviser registered successfully",
                     UserId = userId,
-                    TeacherId = advisorTeacherId
+                    TeacherId = adviserTeacherId
                 });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error during advisor registration for user: {Username}. Message: {Message}", request.Username, ex.Message);
+                _logger.LogError(ex, "Error during adviser registration for user: {Username}. Message: {Message}", request.Username, ex.Message);
                 return StatusCode(500, new RegisterResponse { Success = false, Message = $"An error occurred during registration: {ex.Message}" });
             }
         }
 
-        private async Task<string> CreateAdvisorTeacherRecordAsync(RegisterRequest request, string schoolId)
+        private async Task<string> CreateAdviserTeacherRecordAsync(RegisterRequest request, string schoolId)
         {
             using var connection = new MySqlConnection(_dbConnection.GetConnection());
             await connection.OpenAsync();
@@ -1348,7 +1348,7 @@ namespace ServerAtrrak.Controllers
             return teacherId;
         }
 
-        private async Task<string> CreateUserForAdvisorAsync(RegisterRequest request, string teacherId)
+        private async Task<string> CreateUserForAdviserAsync(RegisterRequest request, string teacherId)
         {
             var userId = Guid.NewGuid().ToString();
             var query = @"
@@ -1356,7 +1356,7 @@ namespace ServerAtrrak.Controllers
                 VALUES (@UserId, @Username, @Email, @Password, @UserType, @IsActive, @IsApproved, @CreatedAt, @UpdatedAt, @TeacherId)";
 
             // Try new ENUM value (after migration); fall back to GuidanceCounselor if ENUM not yet updated
-            foreach (var userTypeValue in new[] { "Advisor", "GuidanceCounselor" })
+            foreach (var userTypeValue in new[] { "Adviser", "GuidanceCounselor" })
             {
                 try
                 {
@@ -1374,7 +1374,7 @@ namespace ServerAtrrak.Controllers
                     command.Parameters.AddWithValue("@UpdatedAt", DateTime.Now);
                     command.Parameters.AddWithValue("@TeacherId", teacherId);
                     await command.ExecuteNonQueryAsync();
-                    _logger.LogInformation("Advisor user created with UserType={UserType}", userTypeValue);
+                    _logger.LogInformation("Adviser user created with UserType={UserType}", userTypeValue);
                     return userId;
                 }
                 catch (MySqlException ex) when (ex.Message.Contains("Data truncated") || ex.Message.Contains("incorrect") || ex.Number == 1265)
@@ -1382,7 +1382,7 @@ namespace ServerAtrrak.Controllers
                     _logger.LogWarning("UserType '{UserType}' not in ENUM yet, trying fallback.", userTypeValue);
                 }
             }
-            throw new InvalidOperationException("Failed to insert advisor user: ENUM does not accept 'Advisor' or 'GuidanceCounselor'.");
+            throw new InvalidOperationException("Failed to insert adviser user: ENUM does not accept 'Adviser' or 'GuidanceCounselor'.");
         }
 
         private async Task<string> CreateGuidanceCounselorAsync(RegisterRequest request, string schoolId)
@@ -1490,7 +1490,7 @@ namespace ServerAtrrak.Controllers
         [Required]
         public string Gender { get; set; } = string.Empty;
 
-        public string? AdvisorId { get; set; }
+        public string? AdviserId { get; set; }
     }
 
     public class UpdateStatusRequest

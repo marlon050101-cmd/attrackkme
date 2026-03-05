@@ -17,7 +17,7 @@ namespace ServerAtrrak.Services
         }
 
         private const string SelectColumns = @"
-            co.ClassOfferingId, co.AdvisorId, t.FullName as AdvisorName, co.SubjectId, s.SubjectName, s.SubjectCode,
+            co.ClassOfferingId, co.AdviserId, t.FullName as AdviserName, co.SubjectId, s.SubjectName, s.SubjectCode,
             co.GradeLevel, co.Section, co.Strand,
             TIME_FORMAT(co.ScheduleStart,'%H:%i:%s'), TIME_FORMAT(co.ScheduleEnd,'%H:%i:%s'),
             COALESCE(co.DayOfWeek,'Monday,Tuesday,Wednesday,Thursday,Friday') as DayOfWeek,
@@ -26,7 +26,7 @@ namespace ServerAtrrak.Services
         private const string FromJoins = @"
             FROM class_offering co
             INNER JOIN subject s ON co.SubjectId = s.SubjectId
-            LEFT JOIN teacher t ON co.AdvisorId = t.TeacherId
+            LEFT JOIN teacher t ON co.AdviserId = t.TeacherId
             LEFT JOIN teacher t2 ON co.TeacherId = t2.TeacherId";
 
         public async Task<List<ClassOffering>> GetAllAsync(string? schoolId)
@@ -51,7 +51,7 @@ namespace ServerAtrrak.Services
             return list;
         }
 
-        public async Task<List<ClassOffering>> GetByAdvisorAsync(string advisorId)
+        public async Task<List<ClassOffering>> GetByAdviserAsync(string adviserId)
         {
             var list = new List<ClassOffering>();
             try
@@ -59,21 +59,21 @@ namespace ServerAtrrak.Services
                 using var connection = new MySqlConnection(_dbConnection.GetConnection());
                 await connection.OpenAsync();
                 var query = $@"SELECT {SelectColumns} {FromJoins}
-                    WHERE co.AdvisorId = @AdvisorId
+                    WHERE co.AdviserId = @AdviserId
                     ORDER BY co.GradeLevel, co.Section, co.ScheduleStart";
                 using var cmd = new MySqlCommand(query, connection);
-                cmd.Parameters.AddWithValue("@AdvisorId", advisorId);
+                cmd.Parameters.AddWithValue("@AdviserId", adviserId);
                 using var reader = await cmd.ExecuteReaderAsync();
                 while (await reader.ReadAsync()) list.Add(ReadClassOffering(reader));
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting class offerings for advisor {AdvisorId}", advisorId);
+                _logger.LogError(ex, "Error getting class offerings for adviser {AdviserId}", adviserId);
             }
             return list;
         }
 
-        public async Task<List<ClassOffering>> GetBySectionAsync(string advisorId, string section, int gradeLevel, string? dayOfWeek = null)
+        public async Task<List<ClassOffering>> GetBySectionAsync(string adviserId, string section, int gradeLevel, string? dayOfWeek = null)
         {
             var list = new List<ClassOffering>();
             try
@@ -86,11 +86,11 @@ namespace ServerAtrrak.Services
                     : "AND (co.DayOfWeek IS NULL OR co.DayOfWeek = '' OR FIND_IN_SET(@DayOfWeek, co.DayOfWeek) > 0)";
 
                 var query = $@"SELECT {SelectColumns} {FromJoins}
-                    WHERE co.AdvisorId = @AdvisorId AND co.Section = @Section AND co.GradeLevel = @GradeLevel
+                    WHERE co.AdviserId = @AdviserId AND co.Section = @Section AND co.GradeLevel = @GradeLevel
                     {dayFilter}
                     ORDER BY co.ScheduleStart";
                 using var cmd = new MySqlCommand(query, connection);
-                cmd.Parameters.AddWithValue("@AdvisorId", advisorId);
+                cmd.Parameters.AddWithValue("@AdviserId", adviserId);
                 cmd.Parameters.AddWithValue("@Section", section);
                 cmd.Parameters.AddWithValue("@GradeLevel", gradeLevel);
                 if (!string.IsNullOrEmpty(dayOfWeek))
@@ -100,7 +100,7 @@ namespace ServerAtrrak.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting class offerings for advisor {AdvisorId}, section {Section}, grade {Grade}", advisorId, section, gradeLevel);
+                _logger.LogError(ex, "Error getting class offerings for adviser {AdviserId}, section {Section}, grade {Grade}", adviserId, section, gradeLevel);
             }
             return list;
         }
@@ -116,7 +116,7 @@ namespace ServerAtrrak.Services
                 var query = $@"SELECT {SelectColumns}
                     FROM class_offering co
                     INNER JOIN subject s ON co.SubjectId = s.SubjectId
-                    LEFT JOIN teacher t ON co.AdvisorId = t.TeacherId
+                    LEFT JOIN teacher t ON co.AdviserId = t.TeacherId
                     LEFT JOIN teacher t2 ON co.TeacherId = t2.TeacherId
                     WHERE co.TeacherId IS NULL";
 
@@ -218,11 +218,11 @@ namespace ServerAtrrak.Services
 
                 var id = Guid.NewGuid().ToString();
                 var sql = @"
-                    INSERT INTO class_offering (ClassOfferingId, AdvisorId, SubjectId, GradeLevel, Section, Strand, ScheduleStart, ScheduleEnd, DayOfWeek)
-                    VALUES (@Id, @AdvisorId, @SubjectId, @GradeLevel, @Section, @Strand, @Start, @End, @DayOfWeek)";
+                    INSERT INTO class_offering (ClassOfferingId, AdviserId, SubjectId, GradeLevel, Section, Strand, ScheduleStart, ScheduleEnd, DayOfWeek)
+                    VALUES (@Id, @AdviserId, @SubjectId, @GradeLevel, @Section, @Strand, @Start, @End, @DayOfWeek)";
                 using var cmd = new MySqlCommand(sql, connection);
                 cmd.Parameters.AddWithValue("@Id", id);
-                cmd.Parameters.AddWithValue("@AdvisorId", request.AdvisorId);
+                cmd.Parameters.AddWithValue("@AdviserId", request.AdviserId);
                 cmd.Parameters.AddWithValue("@SubjectId", finalSubjectId);
                 cmd.Parameters.AddWithValue("@GradeLevel", request.GradeLevel);
                 cmd.Parameters.AddWithValue("@Section", request.Section);
@@ -232,34 +232,34 @@ namespace ServerAtrrak.Services
                 cmd.Parameters.AddWithValue("@DayOfWeek", dayOfWeek);
                 await cmd.ExecuteNonQueryAsync();
 
-                _logger.LogInformation("Created class offering {Id} (Subject: {SubId}) by advisor {AdvisorId}", id, finalSubjectId, request.AdvisorId);
+                _logger.LogInformation("Created class offering {Id} (Subject: {SubId}) by adviser {AdviserId}", id, finalSubjectId, request.AdviserId);
 
-                // Auto-approve Advisor account if not already approved
+                // Auto-approve Adviser account if not already approved
                 try
                 {
                     // We'll try to find any user associated with this TeacherId that is not approved
-                    // AND we also try to update if AdvisorId itself was accidentally a UserId
+                    // AND we also try to update if AdviserId itself was accidentally a UserId
                     var approveSql = @"
                         UPDATE user 
                         SET IsApproved = 1, IsActive = 1 
                         WHERE (TeacherId = @Id OR UserId = @Id)";
                     
                     using var approveCmd = new MySqlCommand(approveSql, connection);
-                    approveCmd.Parameters.AddWithValue("@Id", request.AdvisorId);
+                    approveCmd.Parameters.AddWithValue("@Id", request.AdviserId);
                     int rows = await approveCmd.ExecuteNonQueryAsync();
                     
                     if (rows > 0)
                     {
-                        _logger.LogInformation("Auto-approved Advisor user(s) for ID: {Id}. Rows affected: {Rows}", request.AdvisorId, rows);
+                        _logger.LogInformation("Auto-approved Adviser user(s) for ID: {Id}. Rows affected: {Rows}", request.AdviserId, rows);
                     }
                     else
                     {
-                        _logger.LogWarning("Auto-approval ran but no user rows were updated for ID: {Id}. This teacher might already be approved or record not found in user table.", request.AdvisorId);
+                        _logger.LogWarning("Auto-approval ran but no user rows were updated for ID: {Id}. This teacher might already be approved or record not found in user table.", request.AdviserId);
                     }
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "FAILED to auto-approve Advisor {Id} during class creation", request.AdvisorId);
+                    _logger.LogError(ex, "FAILED to auto-approve Adviser {Id} during class creation", request.AdviserId);
                 }
 
                 var created = await GetByIdAsync(id);
@@ -272,7 +272,7 @@ namespace ServerAtrrak.Services
             }
         }
 
-        public async Task<ClassOfferingResponse> UpdateAsync(string classOfferingId, string advisorId, UpdateClassOfferingRequest request)
+        public async Task<ClassOfferingResponse> UpdateAsync(string classOfferingId, string adviserId, UpdateClassOfferingRequest request)
         {
             try
             {
@@ -281,7 +281,7 @@ namespace ServerAtrrak.Services
 
                 // Validate ownership
                 var existing = await GetByIdAsync(classOfferingId);
-                if (existing == null || existing.AdvisorId != advisorId)
+                if (existing == null || existing.AdviserId != adviserId)
                     return new ClassOfferingResponse { Success = false, Message = "Class not found or not your class." };
 
                 if (request.ScheduleStart.HasValue && request.ScheduleEnd.HasValue && request.ScheduleEnd <= request.ScheduleStart)
@@ -301,14 +301,14 @@ namespace ServerAtrrak.Services
                 if (!setClauses.Any())
                     return new ClassOfferingResponse { Success = false, Message = "Nothing to update." };
 
-                var sql = $"UPDATE class_offering SET {string.Join(", ", setClauses)} WHERE ClassOfferingId = @Id AND AdvisorId = @AdvisorId";
+                var sql = $"UPDATE class_offering SET {string.Join(", ", setClauses)} WHERE ClassOfferingId = @Id AND AdviserId = @AdviserId";
                 using var cmd = new MySqlCommand(sql, connection);
                 if (request.ScheduleStart.HasValue) cmd.Parameters.AddWithValue("@Start", request.ScheduleStart.Value);
                 if (request.ScheduleEnd.HasValue) cmd.Parameters.AddWithValue("@End", request.ScheduleEnd.Value);
                 if (request.DayOfWeek != null) cmd.Parameters.AddWithValue("@DayOfWeek", request.DayOfWeek);
                 if (!string.IsNullOrEmpty(finalSubjectId)) cmd.Parameters.AddWithValue("@SubjectId", finalSubjectId);
                 cmd.Parameters.AddWithValue("@Id", classOfferingId);
-                cmd.Parameters.AddWithValue("@AdvisorId", advisorId);
+                cmd.Parameters.AddWithValue("@AdviserId", adviserId);
                 await cmd.ExecuteNonQueryAsync();
 
                 var updated = await GetByIdAsync(classOfferingId);
@@ -343,16 +343,16 @@ namespace ServerAtrrak.Services
             }
         }
 
-        public async Task<ClassOfferingResponse> UnassignTeacherAsync(string classOfferingId, string advisorId)
+        public async Task<ClassOfferingResponse> UnassignTeacherAsync(string classOfferingId, string adviserId)
         {
             try
             {
                 using var connection = new MySqlConnection(_dbConnection.GetConnection());
                 await connection.OpenAsync();
-                var sql = "UPDATE class_offering SET TeacherId = NULL WHERE ClassOfferingId = @Id AND AdvisorId = @AdvisorId";
+                var sql = "UPDATE class_offering SET TeacherId = NULL WHERE ClassOfferingId = @Id AND AdviserId = @AdviserId";
                 using var cmd = new MySqlCommand(sql, connection);
                 cmd.Parameters.AddWithValue("@Id", classOfferingId);
-                cmd.Parameters.AddWithValue("@AdvisorId", advisorId);
+                cmd.Parameters.AddWithValue("@AdviserId", adviserId);
                 var rows = await cmd.ExecuteNonQueryAsync();
                 if (rows == 0) return new ClassOfferingResponse { Success = false, Message = "Not found or not your class." };
                 return new ClassOfferingResponse { Success = true, Message = "Teacher unassigned." };
@@ -364,16 +364,16 @@ namespace ServerAtrrak.Services
             }
         }
 
-        public async Task<ClassOfferingResponse> DeleteAsync(string classOfferingId, string advisorId)
+        public async Task<ClassOfferingResponse> DeleteAsync(string classOfferingId, string adviserId)
         {
             try
             {
                 using var connection = new MySqlConnection(_dbConnection.GetConnection());
                 await connection.OpenAsync();
-                var sql = "DELETE FROM class_offering WHERE ClassOfferingId = @Id AND AdvisorId = @AdvisorId";
+                var sql = "DELETE FROM class_offering WHERE ClassOfferingId = @Id AND AdviserId = @AdviserId";
                 using var cmd = new MySqlCommand(sql, connection);
                 cmd.Parameters.AddWithValue("@Id", classOfferingId);
-                cmd.Parameters.AddWithValue("@AdvisorId", advisorId);
+                cmd.Parameters.AddWithValue("@AdviserId", adviserId);
                 var rows = await cmd.ExecuteNonQueryAsync();
                 if (rows == 0) return new ClassOfferingResponse { Success = false, Message = "Not found or not your class." };
                 return new ClassOfferingResponse { Success = true, Message = "Class removed." };
@@ -490,8 +490,8 @@ namespace ServerAtrrak.Services
             return new ClassOffering
             {
                 ClassOfferingId = reader.GetString(0),
-                AdvisorId = reader.GetString(1),
-                AdvisorName = reader.IsDBNull(2) ? null : reader.GetString(2),
+                AdviserId = reader.GetString(1),
+                AdviserName = reader.IsDBNull(2) ? null : reader.GetString(2),
                 SubjectId = reader.GetString(3),
                 SubjectName = reader.GetString(4),
                 SubjectCode = reader.IsDBNull(5) ? null : reader.GetString(5),

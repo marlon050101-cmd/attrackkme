@@ -47,8 +47,8 @@ namespace AttrackSharedClass.Models
         Student = 3,
         /// <summary>Guidance Counselor — monitors students, counseling records.</summary>
         GuidanceCounselor = 4,
-        /// <summary>Advisor — creates section classes (subject + schedule), links students to section.</summary>
-        Advisor = 5,
+        /// <summary>Adviser — creates section classes (subject + schedule), links students to section.</summary>
+        Adviser = 5,
         /// <summary>Head — manages teachers and assigns roles.</summary>
         Head = 6
     }
