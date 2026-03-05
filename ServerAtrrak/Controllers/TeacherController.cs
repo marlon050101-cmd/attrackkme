@@ -260,6 +260,8 @@ namespace ServerAtrrak.Controllers
             {
                 return StatusCode(500, new { message = "Internal server error", error = ex.Message });
             }
+        }
+
         [HttpPut("update-info/{userId}")]
         public async Task<ActionResult> UpdateTeacher(string userId, [FromBody] UpdateTeacherRequest request)
         {

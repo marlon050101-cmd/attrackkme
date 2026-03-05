@@ -60,6 +60,8 @@ namespace AttrackSharedClass.Models
         public int? GradeLevel { get; set; }
         public string? Section { get; set; }
         public string? Strand { get; set; }
+    }
+
     public class UpdateTeacherRequest
     {
         public string FullName { get; set; } = string.Empty;

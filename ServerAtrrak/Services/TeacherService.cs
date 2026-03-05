@@ -1003,6 +1003,8 @@ namespace ServerAtrrak.Services
                 Console.WriteLine($"Error in GetAllTeachersBySchoolAsync: {ex.Message}");
                 return new List<PendingTeacherInfo>();
             }
+        }
+
         public async Task<bool> UpdateTeacherAsync(string userId, UpdateTeacherRequest request)
         {
             try
