@@ -6,6 +6,7 @@
 @inject AuthService AuthService
 @inject NavigationManager Navigation
 
+
 <div class="planner-container">
     <div class="page-header">
         <div class="header-text">
@@ -14,25 +15,40 @@
         </div>
     </div>
 
-    @* Filters & Stats *@
-    <div class="planner-meta-row">
-        <div class="stat-pill glass">
-            <i class="fas fa-layer-group"></i>
-            <span>@allOfferings.Count Total Slots</span>
+    @* Filter Section *@
+    <div class="planner-filters-row">
+        <div class="filter-group">
+            <label>GRADE LEVEL</label>
+            <div class="select-wrapper">
+                <select class="premium-select" value="@selectedGrade" @onchange="OnGradeChange">
+                    @foreach (var g in new[] { 7, 8, 9, 10, 11, 12 })
+                    {
+                        <option value="@g">Grade @g</option>
+                    }
+                </select>
+                <i class="fas fa-chevron-down select-icon"></i>
+            </div>
         </div>
-        <div class="stat-pill glass warning">
-            <i class="fas fa-user-slash"></i>
-            <span>@allOfferings.Count(o => string.IsNullOrEmpty(o.TeacherId)) Unassigned</span>
-        </div>
-    </div>
 
-    <div class="grade-tabs">
-        @foreach (var g in new[] { 7, 8, 9, 10, 11, 12 })
-        {
-            <button class="tab-btn @(selectedGrade == g ? "active" : "")" @onclick="() => selectedGrade = g">
-                Grade @g
-            </button>
-        }
+        <div class="filter-group">
+            <label>SECTION</label>
+            <div class="select-wrapper">
+                <select class="premium-select" value="@selectedSection" @onchange="OnSectionChange">
+                    @if (!availableSections.Any())
+                    {
+                        <option value="">No Sections</option>
+                    }
+                    else
+                    {
+                        @foreach (var sec in availableSections)
+                        {
+                            <option value="@sec">@sec</option>
+                        }
+                    }
+                </select>
+                <i class="fas fa-chevron-down select-icon"></i>
+            </div>
+        </div>
     </div>
 
     @if (isLoading)
@@ -45,13 +61,47 @@
     }
     else
     {
-        <div class="schedule-grid">
-            @foreach (var sec in GetGroupedOfferings())
+        <div class="schedule-view">
+            @if (!availableSections.Any())
             {
-                <div class="section-group glass">
-                    <div class="section-badge">@sec.Key</div>
+                <div class="empty-state">
+                    <i class="fas fa-folder-open"></i>
+                    <p>No sections found for Grade @selectedGrade</p>
+                </div>
+            }
+            else if (string.IsNullOrEmpty(selectedSection))
+            {
+                <div class="empty-state">
+                    <i class="fas fa-mouse-pointer"></i>
+                    <p>Select a section to view schedule</p>
+                </div>
+            }
+            else
+            {
+                var currentAdviser = GetAdviser();
+                <div class="section-schedule-container fade-in">
+                    <div class="adviser-header">
+                        <div class="adviser-main">
+                            <div class="adv-avatar">
+                                @if (currentAdviser != null)
+                                {
+                                    @currentAdviser.FullName.Substring(0, 1).ToUpper()
+                                }
+                                else
+                                {
+                                    <i class="fas fa-user-tie"></i>
+                                }
+                            </div>
+                            <div class="adv-info">
+                                <span class="adv-label">Class Adviser</span>
+                                <h2 class="adv-name">@(currentAdviser?.FullName ?? "No Adviser Assigned")</h2>
+                            </div>
+                        </div>
+                        <div class="section-tag">@selectedSection</div>
+                    </div>
+
                     <div class="slots-list">
-                        @foreach (var offering in sec.Value)
+                        @foreach (var offering in GetFilteredOfferings())
                         {
                             <div class="slot-card @(string.IsNullOrEmpty(offering.TeacherId) ? "unassigned" : "")">
                                 <div class="slot-info">
@@ -78,9 +128,9 @@
                                     }
                                     else
                                     {
-                                        <button class="btn-assign-empty" @onclick="() => OpenAssignModal(offering)">
+                                        <button class="btn-assign-compact" @onclick="() => OpenAssignModal(offering)">
                                             <i class="fas fa-user-plus"></i>
-                                            <span>Assign Teacher</span>
+                                            <span>Assign</span>
                                         </button>
                                     }
                                 </div>
@@ -121,20 +171,23 @@
                             <div class="t-avatar">@teacher.FullName.Substring(0, 1).ToUpper()</div>
                             <div class="t-details">
                                 <span class="t-fullname">@teacher.FullName</span>
-                                @if (selectedOffering.TeacherId == teacher.TeacherId)
-                                {
-                                    <span class="t-meta assigned">Currently Assigned</span>
-                                }
-                                else if (conflict != null)
-                                {
-                                    <span class="conflict-msg">
-                                        <i class="fas fa-exclamation-triangle"></i> Conflict: @conflict
-                                    </span>
-                                }
-                                else
-                                {
-                                    <span class="t-meta">Ready to assign</span>
-                                }
+                                <div class="t-role-row">
+                                    <span class="role-badge @((teacher.UserType ?? "teacher").Replace(" ", "").ToLower())">@teacher.UserType</span>
+                                    @if (selectedOffering.TeacherId == teacher.TeacherId)
+                                    {
+                                        <span class="t-meta assigned">Currently Assigned</span>
+                                    }
+                                    else if (conflict != null)
+                                    {
+                                        <span class="conflict-msg">
+                                            <i class="fas fa-exclamation-triangle"></i> Conflict: @conflict
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="t-meta">Ready to assign</span>
+                                    }
+                                </div>
                             </div>
                             @if (conflict == null && selectedOffering.TeacherId != teacher.TeacherId)
                             {
@@ -166,37 +219,51 @@
 </div>
 
 <style>
-    .planner-container { padding: 0; max-width: 800px; margin: 0 auto; font-family: 'Outfit', sans-serif; min-height: 100vh; background: #f8fafc; }
-    .page-header { background: linear-gradient(135deg, #1e1b4b 0%, #4c1d95 100%); padding: 1.5rem; margin-bottom: 1.5rem; border-radius: 0 0 24px 24px; color: white; }
-    .page-header h1 { font-size: 1.8rem; font-weight: 900; margin: 0; letter-spacing: -0.5px; }
-    .page-header p { opacity: 0.8; font-size: 0.95rem; margin-top: 5px; }
+    .planner-container { padding: 0; max-width: 800px; margin: 0 auto; min-height: 100vh; background: #fcfcfc; }
+    .page-header { background: #1e1b4b; padding: 2rem 1.5rem; margin-bottom: 2rem; border-radius: 0 0 32px 32px; color: white; border-bottom: 2px solid #4c1d95; }
+    .page-header h1 { font-size: 2rem; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
+    .page-header p { opacity: 0.7; font-size: 0.9rem; margin-top: 8px; font-weight: 500; text-transform: uppercase; letter-spacing: 1px; }
 
-    .planner-meta-row { display: flex; gap: 10px; padding: 0 1.5rem; margin-bottom: 1.5rem; }
-    .stat-pill { background: white; padding: 10px 16px; border-radius: 16px; display: flex; align-items: center; gap: 10px; font-size: 0.85rem; font-weight: 800; color: #475569; border: 1px solid #f1f5f9; }
+    .stat-pill { background: white; padding: 10px 16px; border-radius: 16px; display: flex; align-items: center; gap: 10px; font-size: 0.85rem; font-weight: 800; color: #475569; border: 1px solid #e2e8f0; }
     .stat-pill i { color: #7c3aed; }
     .stat-pill.warning { border-color: #fee2e2; }
     .stat-pill.warning i { color: #ef4444; }
 
-    .grade-tabs { display: flex; gap: 8px; padding: 0 1.5rem; margin-bottom: 1.5rem; overflow-x: auto; scrollbar-width: none; }
-    .grade-tabs::-webkit-scrollbar { display: none; }
-    .tab-btn { padding: 10px 20px; border-radius: 14px; border: 2px solid transparent; background: white; color: #64748b; font-weight: 800; cursor: pointer; transition: 0.2s; white-space: nowrap; }
-    .tab-btn.active { background: #7c3aed; color: white; box-shadow: 0 8px 15px rgba(124, 58, 237, 0.2); }
+    .slots-list { display: grid; gap: 16px; }
 
-    .schedule-grid { padding: 0 1.5rem 2rem; display: flex; flex-direction: column; gap: 2rem; }
-    .section-group { border-radius: 20px; padding: 1.5rem; }
-    .section-badge { display: inline-block; background: #1e293b; color: white; padding: 4px 12px; border-radius: 8px; font-size: 0.75rem; font-weight: 900; text-transform: uppercase; margin-bottom: 1rem; }
-    .slots-list { display: grid; gap: 12px; }
+    .slot-card { background: white; border-radius: 20px; padding: 1.25rem; border: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; gap: 1rem; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
+    .slot-card.unassigned { border-left: 6px solid #4c1d95; background: #fafafa; }
+    .subject-name { font-size: 1.05rem; font-weight: 600; margin: 0 0 6px; color: #1e1b4b; }
+    .slot-time, .slot-days { font-size: 0.75rem; color: #64748b; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+    .slot-time i { color: #94a3b8; }
 
-    .slot-card { background: #f8fafc; border-radius: 16px; padding: 1rem; border: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
-    .slot-card.unassigned { border-left: 4px solid #ef4444; background: #fffbff; }
-    .subject-name { font-size: 0.95rem; font-weight: 800; margin: 0 0 5px; color: #1e293b; }
-    .slot-time, .slot-days { font-size: 0.75rem; color: #64748b; font-weight: 600; display: flex; align-items: center; gap: 5px; }
+    .btn-assign-compact {
+        background: white;
+        border: 2px solid #4c1d95;
+        color: #4c1d95;
+        padding: 8px 16px;
+        border-radius: 12px;
+        font-weight: 800;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        transition: 0.2s;
+    }
 
-    .btn-assign-empty { background: white; border: 2px dashed #e2e8f0; color: #7c3aed; padding: 10px 16px; border-radius: 12px; font-weight: 800; cursor: pointer; display: flex; align-items: center; gap: 8px; font-size: 0.8rem; }
+    .btn-assign-compact:hover {
+        background: #4c1d95;
+        color: white;
+    }
+    
     .assigned-teacher { display: flex; align-items: center; gap: 12px; }
-    .t-label { font-size: 0.65rem; color: #94a3b8; font-weight: 700; text-transform: uppercase; display: block; }
-    .t-name { font-size: 0.85rem; font-weight: 800; color: #1e293b; }
-    .btn-change-t { width: 34px; height: 34px; border-radius: 10px; border: none; background: #ede9fe; color: #7c3aed; cursor: pointer; }
+    .t-label { font-size: 0.65rem; color: #94a3b8; font-weight: 700; text-transform: uppercase; display: block; margin-bottom: 2px; }
+    .t-name { font-size: 0.9rem; font-weight: 700; color: #1e1b4b; }
+    .btn-change-t { width: 36px; height: 36px; border-radius: 10px; border: 1.5px solid #e2e8f0; background: white; color: #4c1d95; cursor: pointer; transition: 0.2s; }
+    .btn-change-t:hover { border-color: #4c1d95; background: #fafafa; }
 
     /* Modal Styling */
     .modal-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.4); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; z-index: 2000; padding: 1rem; }
@@ -228,7 +295,217 @@
     .btn-unassign-global { width: 100%; margin-top: 1.5rem; padding: 14px; border-radius: 16px; border: 2px solid #fee2e2; background: #fff1f2; color: #ef4444; font-weight: 800; display: flex; align-items: center; justify-content: center; gap: 10px; cursor: pointer; transition: 0.2s; }
     .btn-unassign-global:hover { background: #fee2e2; transform: translateY(-2px); }
 
-    .glass { background: white; border: 1px solid #f1f5f9; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.05); }
+    /* New UI Elements */
+    .planner-filters { padding: 0 1.5rem; margin-bottom: 1.5rem; }
+    
+    .section-tabs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 1.25rem;
+    }
+
+    .section-pill {
+        background: #f1f5f9;
+        color: #475569;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 12px;
+        font-size: 0.85rem;
+        font-weight: 800;
+        cursor: pointer;
+        transition: all 0.2s;
+        text-transform: uppercase;
+    }
+
+    .section-pill.active {
+        background: #1e293b;
+        color: white;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    }
+
+    .schedule-view { padding: 0 1.5rem 3rem; }
+
+    .adviser-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 1.5rem;
+        border-radius: 24px;
+        margin-bottom: 2rem;
+        background: white;
+        border: 1px solid #e2e8f0;
+        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+    }
+
+    .adviser-main {
+        display: flex;
+        align-items: center;
+        gap: 1.5rem;
+    }
+
+    .adv-avatar {
+        width: 56px;
+        height: 56px;
+        background: #f1f5f9;
+        color: #1e1b4b;
+        border-radius: 18px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 900;
+        font-size: 1.4rem;
+        border: 1.5px solid #e2e8f0;
+    }
+
+    .adv-info {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .adv-label {
+        font-size: 0.75rem;
+        color: #94a3b8;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+    }
+
+    .adv-name {
+        font-size: 1.2rem;
+        font-weight: 700;
+        color: #1e1b4b;
+        margin: 2px 0 0;
+    }
+
+    .section-tag {
+        background: #1e1b4b;
+        color: white;
+        padding: 6px 16px;
+        border-radius: 10px;
+        font-size: 0.8rem;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 3rem 1.5rem;
+        border-radius: 24px;
+        color: #94a3b8;
+    }
+
+    .empty-state i {
+        font-size: 2.5rem;
+        margin-bottom: 1rem;
+        opacity: 0.5;
+    }
+
+    .empty-state p {
+        font-size: 1rem;
+        font-weight: 700;
+    }
+
+    .fade-in {
+        animation: fadeIn 0.3s ease-out;
+    }
+
+    /* Dropdown UI */
+    .planner-filters-row {
+        display: flex;
+        gap: 1rem;
+        padding: 0 1.5rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .filter-group {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
+    }
+
+    .filter-group label {
+        font-size: 0.65rem;
+        font-weight: 800;
+        color: #94a3b8;
+        letter-spacing: 0.5px;
+        text-indent: 4px;
+    }
+
+    .select-wrapper {
+        position: relative;
+        display: flex;
+        align-items: center;
+    }
+
+    .premium-select {
+        width: 100%;
+        appearance: none;
+        background: white;
+        border: 1px solid #e2e8f0;
+        border-radius: 14px;
+        padding: 0.75rem 1rem;
+        font-size: 0.9rem;
+        font-weight: 800;
+        color: #1e293b;
+        cursor: pointer;
+        transition: all 0.2s;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+    }
+
+    .premium-select:focus {
+        border-color: #7c3aed;
+        box-shadow: 0 4px 12px rgba(124, 58, 237, 0.1);
+        outline: none;
+    }
+
+    .select-icon {
+        position: absolute;
+        right: 1rem;
+        font-size: 0.75rem;
+        color: #94a3b8;
+        pointer-events: none;
+    }
+
+    /* Compact Assign Button */
+    .btn-assign-compact {
+        background: white;
+        border: 2px dashed #e2e8f0;
+        color: #7c3aed;
+        padding: 6px 12px;
+        border-radius: 10px;
+        font-weight: 800;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.72rem;
+        white-space: nowrap;
+        transition: 0.2s;
+    }
+
+    .btn-assign-compact:hover {
+        border-color: #7c3aed;
+        background: #f5f3ff;
+    }
+
+    /* Role Badges */
+    .t-role-row { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
+    .role-badge {
+        font-size: 0.6rem;
+        font-weight: 900;
+        padding: 1px 6px;
+        border-radius: 4px;
+        text-transform: uppercase;
+        background: #f1f5f9;
+        color: #64748b;
+    }
+    .role-badge.adviser { background: #e0e7ff; color: #4338ca; }
+    .role-badge.subjectteacher { background: #fef3c7; color: #92400e; }
+    .role-badge.teacher { background: #dcfce7; color: #166534; }
+
     @@keyframes scaleIn { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 
     /* Snackbar - Top position */
@@ -250,6 +527,14 @@
     private List<PendingTeacherInfo> teachers = new();
     private bool isLoading = true;
     private int selectedGrade = 7;
+    private string? selectedSection;
+
+    private List<string> availableSections => allOfferings
+        .Where(o => o.GradeLevel == selectedGrade && !string.IsNullOrEmpty(o.Section))
+        .Select(o => o.Section)
+        .Distinct()
+        .OrderBy(s => s)
+        .ToList();
 
     private bool showAssignModal = false;
     private ClassOffering? selectedOffering;
@@ -282,7 +567,17 @@
             {
                 var allTeachers = await http.GetFromJsonAsync<List<PendingTeacherInfo>>($"/api/teacher/all/{user.SchoolId}") ?? new();
                 // We only want teachers who are approved to be assigned
-                teachers = allTeachers.Where(t => t.IsApproved == 1).ToList();
+                teachers = allTeachers.Where(t => 
+                    string.Equals(t.UserType, "Adviser", StringComparison.OrdinalIgnoreCase) || 
+                    string.Equals(t.UserType, "SubjectTeacher", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(t.UserType, "Subject Teacher", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(t.UserType, "Teacher", StringComparison.OrdinalIgnoreCase)).ToList();
+            }
+
+            // Set initial section
+            if (availableSections.Any())
+            {
+                selectedSection = availableSections.First();
             }
         }
         catch (Exception ex)
@@ -295,12 +590,34 @@
         }
     }
 
-    private Dictionary<string, List<ClassOffering>> GetGroupedOfferings()
+    private void OnGradeChange(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out int grade))
+        {
+            selectedGrade = grade;
+            selectedSection = availableSections.FirstOrDefault();
+        }
+    }
+
+    private void OnSectionChange(ChangeEventArgs e)
+    {
+        selectedSection = e.Value?.ToString();
+    }
+
+    private List<ClassOffering> GetFilteredOfferings()
     {
         return allOfferings
-            .Where(o => o.GradeLevel == selectedGrade)
-            .GroupBy(o => o.Section)
-            .ToDictionary(g => g.Key, g => g.OrderBy(o => o.ScheduleStart).ToList());
+            .Where(o => o.GradeLevel == selectedGrade && o.Section == selectedSection)
+            .OrderBy(o => o.ScheduleStart)
+            .ToList();
+    }
+
+    private PendingTeacherInfo? GetAdviser()
+    {
+        return teachers.FirstOrDefault(t => 
+            t.UserType == "Adviser" && 
+            t.GradeLevel == selectedGrade && 
+            t.Section == selectedSection);
     }
 
     private void OpenAssignModal(ClassOffering offering)

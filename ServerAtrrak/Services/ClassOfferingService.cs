@@ -332,7 +332,31 @@ namespace ServerAtrrak.Services
                 cmd.Parameters.AddWithValue("@TeacherId", teacherId);
                 cmd.Parameters.AddWithValue("@Id", classOfferingId);
                 var rows = await cmd.ExecuteNonQueryAsync();
+                
                 if (rows == 0) return new ClassOfferingResponse { Success = false, Message = "Class not found or already assigned." };
+
+                // Auto-approve Teacher account if not already approved
+                try
+                {
+                    var approveSql = @"
+                        UPDATE user 
+                        SET IsApproved = 1, IsActive = 1 
+                        WHERE (TeacherId = @Id OR UserId = @Id)";
+                    
+                    using var approveCmd = new MySqlCommand(approveSql, connection);
+                    approveCmd.Parameters.AddWithValue("@Id", teacherId);
+                    int approveRows = await approveCmd.ExecuteNonQueryAsync();
+                    
+                    if (approveRows > 0)
+                    {
+                        _logger.LogInformation("Auto-approved Teacher user(s) for ID: {Id} upon assignment. Rows affected: {Rows}", teacherId, approveRows);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "FAILED to auto-approve Teacher {Id} during assignment", teacherId);
+                }
+
                 var updated = await GetByIdAsync(classOfferingId);
                 return new ClassOfferingResponse { Success = true, Message = "You are now assigned to this class.", ClassOffering = updated };
             }

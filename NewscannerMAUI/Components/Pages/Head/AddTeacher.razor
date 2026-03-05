@@ -729,6 +729,18 @@
         width: 95%;
         max-width: 450px;
         position: relative;
+        max-height: 85vh;
+        overflow-y: auto;
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    }
+    
+    .details-modal::-webkit-scrollbar {
+        width: 6px;
+    }
+    
+    .details-modal::-webkit-scrollbar-thumb {
+        background: #e2e8f0;
+        border-radius: 10px;
     }
 
     .modal-header {
@@ -989,6 +1001,7 @@
         align-items: center;
         justify-content: center;
         z-index: 2000;
+        padding: 1.5rem;
     }
 
     .success-modal {
