@@ -284,6 +284,28 @@ namespace ServerAtrrak.Controllers
             {
                 return StatusCode(500, new { message = "Internal server error", error = ex.Message });
             }
+        [HttpDelete("{userId}")]
+        public async Task<ActionResult> DeleteTeacher(string userId)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return BadRequest(new { message = "UserId is required" });
+                }
+
+                var (success, message) = await _teacherService.DeleteTeacherAsync(userId);
+                if (success)
+                {
+                    return Ok(new { message = message });
+                }
+                
+                return BadRequest(new { message = message });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Internal server error", error = ex.Message });
+            }
         }
     }
 

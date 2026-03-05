@@ -81,7 +81,7 @@
                         <label>Assigned Section</label>
                         <div class="input-wrapper">
                             <i class="fas fa-chalkboard-user"></i>
-                            <input type="text" @bind="newTeacher.Section" placeholder="e.g. Einstein" />
+                            <input type="text" @bind="newTeacher.Section" @oninput='(e) => { newTeacher.Section = e.Value?.ToString()?.ToUpper(); }' placeholder="e.g. Einstein" />
                         </div>
                     </div>
 
@@ -105,7 +105,7 @@
                     <label>Full Name <span class="hint"><i>(Last name, First name MI)</i></span></label>
                     <div class="input-wrapper">
                         <i class="fas fa-user"></i>
-                        <input type="text" @bind="newTeacher.FullName" placeholder="e.g. Doe, John D." @oninput="UpdateGeneratedUsername" />
+                        <input type="text" @bind="newTeacher.FullName" placeholder="e.g. Doe, John D." @oninput='(e) => { newTeacher.FullName = e.Value?.ToString()?.ToUpper(); UpdateGeneratedUsername(e); }' />
                     </div>
                 </div>
 
@@ -238,7 +238,7 @@
                     {
                         <div class="edit-group full-width">
                             <label>Full Name</label>
-                            <input type="text" @bind="editModel.FullName" class="edit-input" />
+                            <input type="text" @bind="editModel.FullName" @oninput='(e) => { editModel.FullName = e.Value?.ToString()?.ToUpper(); }' class="edit-input" />
                         </div>
                         <div class="edit-group">
                             <label>Email Address</label>
@@ -260,7 +260,7 @@
                             </div>
                             <div class="edit-group">
                                 <label>Section</label>
-                                <input type="text" @bind="editModel.Section" class="edit-input" />
+                                <input type="text" @bind="editModel.Section" @oninput='(e) => { editModel.Section = e.Value?.ToString()?.ToUpper(); }' class="edit-input" />
                             </div>
                             @if (editModel.GradeLevel >= 11)
                             {
@@ -308,6 +308,9 @@
             <div class="modal-footer">
                 @if (!isEditMode)
                 {
+                    <button class="btn-delete-action" @onclick="HandleDelete" disabled="@isUpdating">
+                        <i class="fas fa-trash-alt"></i> Remove Teacher
+                    </button>
                     <button class="btn-edit-action" @onclick="ToggleEdit">
                         <i class="fas fa-edit"></i> Edit Information
                     </button>
@@ -892,6 +895,27 @@
         gap: 0.5rem;
     }
 
+    .btn-delete-action {
+        width: 100%;
+        padding: 1rem;
+        background: #fee2e2;
+        color: #dc2626;
+        border: none;
+        border-radius: 14px;
+        font-weight: 800;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        transition: all 0.2s;
+    }
+
+    .btn-delete-action:hover {
+        background: #fecaca;
+        transform: translateY(-2px);
+    }
+
     .btn-cancel {
         width: 100%;
         padding: 0.9rem;
@@ -1078,6 +1102,44 @@
         {
             errorMessage = "Connection error: " + ex.Message;
             Console.WriteLine($"DEBUG: Connection error: {ex.Message}");
+        }
+        finally
+        {
+            isUpdating = false;
+        }
+    }
+
+    private async Task HandleDelete()
+    {
+        if (selectedTeacher == null) return;
+
+        bool confirmed = await App.Current.MainPage.DisplayAlert("Confirm Removal", 
+            $"Are you sure you want to remove {selectedTeacher.FullName} from the teacher list?", "Yes", "No");
+        
+        if (!confirmed) return;
+
+        try
+        {
+            isUpdating = true;
+            errorMessage = null;
+            var http = HttpClientFactory.CreateClient("AttrakAPI");
+            var response = await http.DeleteAsync($"/api/teacher/{selectedTeacher.UserId}");
+
+            if (response.IsSuccessStatusCode)
+            {
+                showDetailsModal = false;
+                await LoadTeachers();
+                await App.Current.MainPage.DisplayAlert("Success", "Teacher removed successfully.", "OK");
+            }
+            else
+            {
+                var errorBody = await response.Content.ReadAsStringAsync();
+                errorMessage = "Failed to remove teacher: " + errorBody;
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = "Connection error: " + ex.Message;
         }
         finally
         {

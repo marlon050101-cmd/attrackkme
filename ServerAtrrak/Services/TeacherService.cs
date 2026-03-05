@@ -971,6 +971,7 @@ namespace ServerAtrrak.Services
                     LEFT JOIN teacher t ON u.TeacherId = t.TeacherId
                     LEFT JOIN school s ON t.SchoolId = s.SchoolId
                     WHERE t.SchoolId = @schoolId
+                    AND u.IsActive = 1
                     AND (u.UserType = 'Teacher' OR u.UserType = 'SubjectTeacher' OR u.UserType = 'Adviser')";
 
                 var teachers = new List<PendingTeacherInfo>();
@@ -1086,6 +1087,38 @@ namespace ServerAtrrak.Services
             catch (Exception ex)
             {
                 Console.WriteLine($"DEBUG: EXCEPTION in UpdateTeacherAsync: {ex.Message}");
+                return (false, $"Database error: {ex.Message}");
+            }
+        }
+        public async Task<(bool success, string message)> DeleteTeacherAsync(string userId)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return (false, "UserId is null or empty");
+                }
+
+                using var connection = await _dbConnection.GetConnectionAsync();
+                
+                // Soft delete by setting IsActive = 0 and IsApproved = 0
+                var deleteQuery = "UPDATE user SET IsActive = 0, IsApproved = 0, UpdatedAt = @updatedAt WHERE UserId = @userId";
+                using (var cmd = new MySqlCommand(deleteQuery, connection))
+                {
+                    cmd.Parameters.AddWithValue("@updatedAt", DateTime.Now);
+                    cmd.Parameters.AddWithValue("@userId", userId);
+                    
+                    int rows = await cmd.ExecuteNonQueryAsync();
+                    if (rows > 0)
+                    {
+                        return (true, "Teacher removed successfully");
+                    }
+                    return (false, "Teacher record not found or already removed");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"DEBUG: EXCEPTION in DeleteTeacherAsync: {ex.Message}");
                 return (false, $"Database error: {ex.Message}");
             }
         }
