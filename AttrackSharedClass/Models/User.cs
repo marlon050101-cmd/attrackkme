@@ -43,7 +43,7 @@ namespace AttrackSharedClass.Models
     {
         Admin = 1,
         /// <summary>Subject Teacher — picks class offerings created by Advisor and takes attendance.</summary>
-        Teacher = 2,
+        SubjectTeacher = 2,
         Student = 3,
         /// <summary>Guidance Counselor — monitors students, counseling records.</summary>
         GuidanceCounselor = 4,
