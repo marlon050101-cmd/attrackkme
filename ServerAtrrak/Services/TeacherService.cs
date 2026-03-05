@@ -1007,14 +1007,13 @@ namespace ServerAtrrak.Services
             }
         }
 
-        public async Task<bool> UpdateTeacherAsync(string userId, UpdateTeacherRequest request)
+        public async Task<(bool success, string message)> UpdateTeacherAsync(string userId, UpdateTeacherRequest request)
         {
             try
             {
                 if (string.IsNullOrEmpty(userId))
                 {
-                    Console.WriteLine("DEBUG: UpdateTeacherAsync - UserId is null or empty");
-                    return false;
+                    return (false, "UserId is null or empty");
                 }
 
                 using var connection = await _dbConnection.GetConnectionAsync();
@@ -1028,10 +1027,14 @@ namespace ServerAtrrak.Services
                     var result = await cmd.ExecuteScalarAsync();
                     if (result == null || result == DBNull.Value)
                     {
-                        Console.WriteLine($"DEBUG: UpdateTeacherAsync - TeacherId not found in user table for UserId: {userId}");
-                        return false;
+                        return (false, $"Teacher record reference not found in user table for UserId: {userId}");
                     }
                     teacherId = result.ToString();
+                }
+
+                if (string.IsNullOrEmpty(teacherId))
+                {
+                    return (false, "TeacherId is linked but is an empty string in the user table.");
                 }
 
                 // 2. Update user table (Email)
@@ -1075,15 +1078,15 @@ namespace ServerAtrrak.Services
                     cmd.Parameters.AddWithValue("@updatedAt", DateTime.Now);
                     cmd.Parameters.AddWithValue("@teacherId", teacherId);
                     
-                    await cmd.ExecuteNonQueryAsync();
-                    return true;
+                    int rows = await cmd.ExecuteNonQueryAsync();
+                    // We return success even if rows=0 (data identical), as long as it didn't crash.
+                    return (true, "Updated successfully");
                 }
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"DEBUG: EXCEPTION in UpdateTeacherAsync: {ex.Message}");
-                Console.WriteLine($"DEBUG: StackTrace: {ex.StackTrace}");
-                return false;
+                return (false, $"Database error: {ex.Message}");
             }
         }
     }

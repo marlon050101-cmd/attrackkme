@@ -1059,20 +1059,25 @@
             {
                 try 
                 {
-                    var errorData = await response.Content.ReadFromJsonAsync<Dictionary<string, object>>();
+                    var errorBody = await response.Content.ReadAsStringAsync();
+                    Console.WriteLine($"DEBUG: API Error Body: {errorBody}");
+                    
+                    var errorData = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(errorBody);
                     errorMessage = errorData != null && errorData.ContainsKey("message") 
                         ? errorData["message"].ToString() 
-                        : "Failed to update teacher information.";
+                        : $"Error ({response.StatusCode}): {response.ReasonPhrase}";
                 }
-                catch 
+                catch (Exception jsonEx)
                 {
-                    errorMessage = "Failed to update teacher information (404/400).";
+                    errorMessage = $"Failed to parse error: {response.ReasonPhrase}. Code: {response.StatusCode}";
+                    Console.WriteLine($"DEBUG: JSON Parse Error: {jsonEx.Message}");
                 }
             }
         }
         catch (Exception ex)
         {
-            errorMessage = "Update error: " + ex.Message;
+            errorMessage = "Connection error: " + ex.Message;
+            Console.WriteLine($"DEBUG: Connection error: {ex.Message}");
         }
         finally
         {
