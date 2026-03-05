@@ -981,6 +981,7 @@ namespace ServerAtrrak.Services
                         var info = new PendingTeacherInfo
                         {
                             UserId = reader.GetString("UserId"),
+                            TeacherId = reader.IsDBNull("TeacherId") ? null : reader.GetString("TeacherId"),
                             Username = reader.GetString("Username"),
                             Email = reader.GetString("Email"),
                             FullName = reader.IsDBNull("FullName") ? "" : reader.GetString("FullName"),
@@ -1010,7 +1011,6 @@ namespace ServerAtrrak.Services
             try
             {
                 using var connection = await _dbConnection.GetConnectionAsync();
-                Console.WriteLine($"DEBUG: UpdateTeacherAsync - Starting for UserId: {userId}");
                 
                 // 1. Get TeacherId from user table
                 var userQuery = "SELECT TeacherId FROM user WHERE UserId = @userId";
@@ -1022,7 +1022,6 @@ namespace ServerAtrrak.Services
                     teacherId = result?.ToString();
                 }
 
-                Console.WriteLine($"DEBUG: UpdateTeacherAsync - Found TeacherId: {teacherId}");
                 if (string.IsNullOrEmpty(teacherId)) 
                 {
                     Console.WriteLine($"DEBUG: UpdateTeacherAsync - TeacherId not found for UserId: {userId}");
@@ -1030,19 +1029,21 @@ namespace ServerAtrrak.Services
                 }
 
                 // 2. Update user table (Email)
-                var updateUser = "UPDATE user SET Email = @email WHERE UserId = @userId";
+                var updateUser = "UPDATE user SET Email = @email, UpdatedAt = @updatedAt WHERE UserId = @userId";
                 using (var cmd = new MySqlCommand(updateUser, connection))
                 {
                     cmd.Parameters.AddWithValue("@email", request.Email);
+                    cmd.Parameters.AddWithValue("@updatedAt", DateTime.Now);
                     cmd.Parameters.AddWithValue("@userId", userId);
-                    var userRows = await cmd.ExecuteNonQueryAsync();
-                    Console.WriteLine($"DEBUG: UpdateTeacherAsync - User table updated, rows affected: {userRows}");
+                    await cmd.ExecuteNonQueryAsync();
                 }
 
-                // 3. Update teacher table (FullName, GradeLevel, Section, Strand)
+                // 3. Update teacher table (FullName, Email, GradeLevel, Section, Strand)
+                // Note: We update Email here too as it exists in both tables
                 var updateTeacher = @"
                     UPDATE teacher 
                     SET FullName = @fullName, 
+                        Email = @email,
                         Gradelvl = @gradeLevel, 
                         Section = @section, 
                         Strand = @strand,
@@ -1052,21 +1053,33 @@ namespace ServerAtrrak.Services
                 using (var cmd = new MySqlCommand(updateTeacher, connection))
                 {
                     cmd.Parameters.AddWithValue("@fullName", request.FullName);
+                    cmd.Parameters.AddWithValue("@email", request.Email);
                     cmd.Parameters.AddWithValue("@gradeLevel", request.GradeLevel ?? 0);
                     cmd.Parameters.AddWithValue("@section", request.Section ?? "");
-                    cmd.Parameters.AddWithValue("@strand", (object)request.Strand ?? DBNull.Value);
+                    
+                    // Grade 7-10 should have NO strand
+                    if (request.GradeLevel.HasValue && request.GradeLevel.Value <= 10)
+                    {
+                        cmd.Parameters.AddWithValue("@strand", DBNull.Value);
+                    }
+                    else
+                    {
+                        cmd.Parameters.AddWithValue("@strand", (object)request.Strand ?? DBNull.Value);
+                    }
+
                     cmd.Parameters.AddWithValue("@updatedAt", DateTime.Now);
                     cmd.Parameters.AddWithValue("@teacherId", teacherId);
                     
-                    var rows = await cmd.ExecuteNonQueryAsync();
-                    Console.WriteLine($"DEBUG: UpdateTeacherAsync - Teacher table updated, rows affected: {rows}");
-                    return rows > 0;
+                    // In MySQL, ExecuteNonQuery returns 0 if no rows were *changed*.
+                    // This can happen if the user clicks Save without changing anything.
+                    // We'll consider the operation successful if no exception occurred and the user was found.
+                    await cmd.ExecuteNonQueryAsync();
+                    return true;
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"DEBUG: Error in UpdateTeacherAsync: {ex.Message}");
-                Console.WriteLine($"DEBUG: StackTrace: {ex.StackTrace}");
+                Console.WriteLine($"Error in UpdateTeacherAsync: {ex.Message}");
                 return false;
             }
         }
