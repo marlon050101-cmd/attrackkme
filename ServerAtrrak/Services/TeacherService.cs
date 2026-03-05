@@ -788,7 +788,7 @@ namespace ServerAtrrak.Services
                 }
 
                 var query = @"
-                    SELECT u.UserId, u.Username, u.Email, u.UserType, u.CreatedAt as RegisteredAt,
+                    SELECT u.UserId, u.TeacherId, u.Username, u.Email, u.UserType, u.CreatedAt as RegisteredAt,
                            COALESCE(t.FullName, u.Username) as FullName, 
                            t.SchoolId, t.Gradelvl as GradeLevel, t.Section, t.Strand,
                            s.SchoolName
@@ -809,6 +809,7 @@ namespace ServerAtrrak.Services
                         var info = new PendingTeacherInfo
                         {
                             UserId = reader.GetString("UserId"),
+                            TeacherId = reader.IsDBNull("TeacherId") ? null : reader.GetString("TeacherId"),
                             Username = reader.GetString("Username"),
                             Email = reader.GetString("Email"),
                             FullName = reader.IsDBNull("FullName") ? "" : reader.GetString("FullName"),
@@ -960,7 +961,7 @@ namespace ServerAtrrak.Services
             {
                 using var connection = await _dbConnection.GetConnectionAsync();
                 var query = @"
-                    SELECT u.UserId, u.Username, u.Email, u.Password, u.UserType, u.CreatedAt as RegisteredAt,
+                    SELECT u.UserId, u.TeacherId, u.Username, u.Email, u.Password, u.UserType, u.CreatedAt as RegisteredAt,
                            u.IsApproved, u.IsActive,
                            COALESCE(t.FullName, u.Username) as FullName, 
                            t.SchoolId, t.Gradelvl as GradeLevel, t.Section, t.Strand,
