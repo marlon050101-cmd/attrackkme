@@ -284,6 +284,8 @@ namespace ServerAtrrak.Controllers
             {
                 return StatusCode(500, new { message = "Internal server error", error = ex.Message });
             }
+        }
+
         [HttpDelete("{userId}")]
         public async Task<ActionResult> DeleteTeacher(string userId)
         {
