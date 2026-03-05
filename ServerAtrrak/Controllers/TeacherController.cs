@@ -248,6 +248,19 @@ namespace ServerAtrrak.Controllers
                 return StatusCode(500, new { message = "Internal server error", error = ex.Message });
             }
         }
+        [HttpGet("all/{schoolId}")]
+        public async Task<ActionResult<List<PendingTeacherInfo>>> GetAllTeachers(string schoolId)
+        {
+            try
+            {
+                var teachers = await _teacherService.GetAllTeachersBySchoolAsync(schoolId?.Trim() ?? "");
+                return Ok(teachers);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Internal server error", error = ex.Message });
+            }
+        }
     }
 
     public class UpdateFullNameRequest

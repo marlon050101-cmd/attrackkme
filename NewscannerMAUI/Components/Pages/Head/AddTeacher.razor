@@ -1,0 +1,565 @@
+@page "/head/add-teacher"
+@using AttrackSharedClass.Models
+@using NewscannerMAUI.Services
+@layout HeadLayout
+@inject IHttpClientFactory HttpClientFactory
+@inject AuthService AuthService
+@inject NavigationManager Navigation
+
+<div class="add-teacher-container">
+    <div class="page-header">
+        <div class="header-icon">
+            <i class="fas fa-user-plus"></i>
+        </div>
+        <div class="header-text">
+            <h1>Teacher Management</h1>
+            <p>Register new staff or manage existing accounts</p>
+        </div>
+    </div>
+
+    <div class="tabs-container">
+        <button class="tab-btn @(activeTab == "register" ? "active" : "")" @onclick='() => activeTab = "register"'>
+            <i class="fas fa-user-plus"></i> Register Teacher
+        </button>
+        <button class="tab-btn @(activeTab == "list" ? "active" : "")" @onclick='() => activeTab = "list"'>
+            <i class="fas fa-list"></i> Teacher List
+        </button>
+    </div>
+
+    <div class="tab-content">
+        @if (activeTab == "register")
+        {
+            <div class="register-form glass fade-in">
+                <h3>Register New Teacher</h3>
+                <p class="form-hint">Fill in the details below. Username and password will be auto-generated.</p>
+
+                <div class="form-group">
+                    <label>Full Name</label>
+                    <div class="input-wrapper">
+                        <i class="fas fa-user"></i>
+                        <input type="text" @bind="newTeacher.FullName" placeholder="e.g. John Doe" @oninput="UpdateGeneratedUsername" />
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Email Address</label>
+                    <div class="input-wrapper">
+                        <i class="fas fa-envelope"></i>
+                        <input type="email" @bind="newTeacher.Email" placeholder="e.g. john@example.com" />
+                    </div>
+                </div>
+
+                <div class="generated-credentials">
+                    <div class="credential-item">
+                        <span>Generated Username:</span>
+                        <strong>@(string.IsNullOrEmpty(generatedUsername) ? "..." : generatedUsername)</strong>
+                    </div>
+                    <div class="credential-item">
+                        <span>Generated Password:</span>
+                        <strong>@(string.IsNullOrEmpty(generatedPassword) ? "..." : generatedPassword)</strong>
+                    </div>
+                </div>
+
+                @if (!string.IsNullOrEmpty(errorMessage))
+                {
+                    <div class="error-msg">
+                        <i class="fas fa-exclamation-circle"></i> @errorMessage
+                    </div>
+                }
+
+                <button class="btn-primary" @onclick="HandleRegister" disabled="@isSubmitting">
+                    @if (isSubmitting)
+                    {
+                        <div class="spinner-sm"></div>
+                    }
+                    else
+                    {
+                        <span>Register Teacher</span>
+                    }
+                </button>
+            </div>
+        }
+        else
+        {
+            <div class="teacher-list-tab fade-in">
+                <div class="list-controls">
+                    <div class="search-box">
+                        <i class="fas fa-search"></i>
+                        <input type="text" @bind="searchTerm" @bind:event="oninput" placeholder="Search by name..." />
+                    </div>
+                </div>
+
+                @if (isLoadingList)
+                {
+                    <div class="loading-state">
+                        <div class="spinner"></div>
+                        <p>Fetching teacher records...</p>
+                    </div>
+                }
+                else if (filteredTeachers == null || !filteredTeachers.Any())
+                {
+                    <div class="empty-state">
+                        <i class="fas fa-users-slash"></i>
+                        <p>No teachers found.</p>
+                    </div>
+                }
+                else
+                {
+                    <div class="teacher-grid">
+                        @foreach (var teacher in filteredTeachers)
+                        {
+                            <div class="teacher-card glass">
+                                <div class="teacher-avatar">
+                                    @teacher.FullName.Substring(0, 1).ToUpper()
+                                </div>
+                                <div class="teacher-info">
+                                    <h4>@teacher.FullName</h4>
+                                    <span class="teacher-email">@teacher.Email</span>
+                                    <span class="teacher-user">@@@teacher.Username</span>
+                                </div>
+                                <div class="teacher-status @teacher.UserType.ToLower()">
+                                    @teacher.UserType
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@if (showSuccessModal)
+{
+    <div class="modal-overlay">
+        <div class="success-modal scale-in">
+            <div class="success-icon">
+                <i class="fas fa-check-circle"></i>
+            </div>
+            <h3>Registration Successful!</h3>
+            <p><strong>@lastRegisteredName</strong> has been registered.</p>
+            <div class="modal-credentials">
+                <p>Username: <code>@generatedUsername</code></p>
+                <p>Password: <code>@generatedPassword</code></p>
+            </div>
+            <p class="warning-text">Please share these credentials with the teacher.</p>
+            <button class="btn-done" @onclick="CloseSuccessModal">Done</button>
+        </div>
+    </div>
+}
+
+<style>
+    .add-teacher-container {
+        padding: 2rem;
+        max-width: 800px;
+        margin: 0 auto;
+        font-family: 'Inter', sans-serif;
+    }
+
+    .page-header {
+        display: flex;
+        align-items: center;
+        gap: 1.5rem;
+        margin-bottom: 2.5rem;
+    }
+
+    .header-icon {
+        width: 60px;
+        height: 60px;
+        background: linear-gradient(135deg, #6f42c1 0%, #4b2ea2 100%);
+        color: white;
+        border-radius: 18px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.8rem;
+        box-shadow: 0 10px 20px rgba(111, 66, 193, 0.2);
+    }
+
+    .header-text h1 {
+        margin: 0;
+        font-size: 1.8rem;
+        font-weight: 800;
+        color: #1a202c;
+    }
+
+    .header-text p {
+        margin: 0;
+        color: #718096;
+        font-weight: 500;
+    }
+
+    .tabs-container {
+        display: flex;
+        gap: 1rem;
+        margin-bottom: 2rem;
+        background: #edf2f7;
+        padding: 0.5rem;
+        border-radius: 14px;
+    }
+
+    .tab-btn {
+        flex: 1;
+        padding: 0.8rem;
+        border: none;
+        background: transparent;
+        color: #4a5568;
+        font-weight: 700;
+        border-radius: 10px;
+        cursor: pointer;
+        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+    }
+
+    .tab-btn.active {
+        background: white;
+        color: #6f42c1;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+    }
+
+    .glass {
+        background: rgba(255, 255, 255, 0.8);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        box-shadow: 0 8px 32px rgba(31, 38, 135, 0.07);
+    }
+
+    .register-form {
+        padding: 2.5rem;
+        border-radius: 24px;
+        max-width: 500px;
+        margin: 0 auto;
+    }
+
+    .form-group {
+        margin-bottom: 1.5rem;
+    }
+
+    .form-group label {
+        display: block;
+        margin-bottom: 0.5rem;
+        font-weight: 700;
+        color: #2d3748;
+        font-size: 0.9rem;
+    }
+
+    .input-wrapper {
+        position: relative;
+    }
+
+    .input-wrapper i {
+        position: absolute;
+        left: 1rem;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #a0aec0;
+    }
+
+    .input-wrapper input {
+        width: 100%;
+        padding: 0.8rem 1rem 0.8rem 2.8rem;
+        border: 2px solid #e2e8f0;
+        border-radius: 12px;
+        font-size: 1rem;
+        transition: border-color 0.2s;
+    }
+
+    .input-wrapper input:focus {
+        outline: none;
+        border-color: #6f42c1;
+    }
+
+    .generated-credentials {
+        background: #f7fafc;
+        padding: 1rem;
+        border-radius: 12px;
+        margin-bottom: 1.5rem;
+        border: 1px dashed #cbd5e1;
+    }
+
+    .credential-item {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 0.5rem;
+        font-size: 0.9rem;
+    }
+
+    .credential-item span { color: #718096; }
+    .credential-item strong { color: #6f42c1; }
+
+    .btn-primary {
+        width: 100%;
+        padding: 1rem;
+        background: #6f42c1;
+        color: white;
+        border: none;
+        border-radius: 12px;
+        font-weight: 800;
+        font-size: 1rem;
+        cursor: pointer;
+        transition: transform 0.2s, background 0.2s;
+    }
+
+    .btn-primary:hover:not(:disabled) {
+        background: #5a32a3;
+        transform: translateY(-2px);
+    }
+
+    .btn-primary:active {
+        transform: scale(0.98);
+    }
+
+    .teacher-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+        gap: 1.5rem;
+    }
+
+    .teacher-card {
+        padding: 1.5rem;
+        border-radius: 20px;
+        text-align: center;
+        transition: transform 0.3s;
+    }
+
+    .teacher-card:hover { transform: translateY(-5px); }
+
+    .teacher-avatar {
+        width: 60px;
+        height: 60px;
+        background: #edf2f7;
+        color: #6f42c1;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.5rem;
+        font-weight: 800;
+        margin: 0 auto 1rem;
+    }
+
+    .teacher-info h4 { margin: 0 0 0.25rem; font-size: 1.1rem; color: #1a202c; }
+    .teacher-email { display: block; font-size: 0.85rem; color: #718096; margin-bottom: 0.25rem; }
+    .teacher-user { font-size: 0.8rem; color: #6f42c1; font-weight: 600; }
+
+    .teacher-status {
+        margin-top: 1rem;
+        display: inline-block;
+        padding: 0.25rem 0.75rem;
+        border-radius: 20px;
+        font-size: 0.75rem;
+        font-weight: 700;
+        text-transform: uppercase;
+    }
+
+    .teacher-status.teacher { background: #e0e7ff; color: #4338ca; }
+    .teacher-status.subjectteacher { background: #e0e7ff; color: #4338ca; }
+    .teacher-status.advisor { background: #fef3c7; color: #d97706; }
+
+    .search-box {
+        position: relative;
+        margin-bottom: 1.5rem;
+        max-width: 300px;
+    }
+
+    .search-box i {
+        position: absolute;
+        left: 1rem;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #a0aec0;
+    }
+
+    .search-box input {
+        width: 100%;
+        padding: 0.6rem 1rem 0.6rem 2.8rem;
+        border: 2px solid #e2e8f0;
+        border-radius: 12px;
+        outline: none;
+    }
+
+    /* Modal */
+    .modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.5);
+        backdrop-filter: blur(5px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 2000;
+    }
+
+    .success-modal {
+        background: white;
+        padding: 2.5rem;
+        border-radius: 32px;
+        text-align: center;
+        width: 90%;
+        max-width: 400px;
+    }
+
+    .success-icon { font-size: 4rem; color: #48bb78; margin-bottom: 1rem; }
+    .modal-credentials { background: #f7fafc; padding: 1rem; border-radius: 12px; margin: 1.5rem 0; text-align: left; }
+    .modal-credentials p { margin: 0.5rem 0; font-family: monospace; }
+    .warning-text { font-size: 0.8rem; color: #e53e3e; font-weight: 600; }
+    .btn-done { width: 100%; padding: 1rem; background: #6f42c1; color: white; border: none; border-radius: 12px; font-weight: 800; cursor: pointer; }
+
+    .fade-in { animation: fadeIn 0.3s ease-out; }
+    .scale-in { animation: scaleIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+
+    @@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    @@keyframes scaleIn { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+    .spinner-sm { width: 20px; height: 20px; border: 3px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+
+@code {
+    private string activeTab = "register";
+    private RegisterRequest newTeacher = new() { UserType = UserType.Teacher };
+    private string generatedUsername = "";
+    private string generatedPassword = "";
+    private string? errorMessage;
+    private bool isSubmitting = false;
+
+    private List<PendingTeacherInfo>? allTeachers;
+    private string searchTerm = "";
+    private bool isLoadingList = true;
+
+    private bool showSuccessModal = false;
+    private string lastRegisteredName = "";
+    private UserInfo? headUser;
+
+    protected override async Task OnInitializedAsync()
+    {
+        headUser = await AuthService.GetCurrentUserAsync();
+        if (headUser == null)
+        {
+            Navigation.NavigateTo("/");
+            return;
+        }
+        
+        await LoadTeachers();
+        GeneratePassword();
+    }
+
+    private void UpdateGeneratedUsername(ChangeEventArgs e)
+    {
+        var name = e.Value?.ToString() ?? "";
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            generatedUsername = "";
+            return;
+        }
+
+        // Clean name and take first part + 4 random digits
+        var cleanName = new string(name.ToLower().Where(c => char.IsLetter(c)).ToArray());
+        if (cleanName.Length > 8) cleanName = cleanName.Substring(0, 8);
+        
+        var random = new Random();
+        generatedUsername = $"{cleanName}{random.Next(1000, 9999)}";
+    }
+
+    private void GeneratePassword()
+    {
+        const string chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+        var random = new Random();
+        generatedPassword = new string(Enumerable.Repeat(chars, 8)
+            .Select(s => s[random.Next(s.Length)]).ToArray());
+    }
+
+    private async Task HandleRegister()
+    {
+        if (string.IsNullOrWhiteSpace(newTeacher.FullName) || string.IsNullOrWhiteSpace(newTeacher.Email))
+        {
+            errorMessage = "Please fill in all fields.";
+            return;
+        }
+
+        try
+        {
+            isSubmitting = true;
+            errorMessage = null;
+
+            // Pre-fill from Head's info
+            newTeacher.Username = generatedUsername;
+            newTeacher.Password = generatedPassword;
+            
+            // We need school info
+            var http = HttpClientFactory.CreateClient("AttrakAPI");
+            var schoolInfo = await http.GetFromJsonAsync<SchoolInfo>($"/api/register/school/{headUser.SchoolId}");
+            
+            if (schoolInfo == null)
+            {
+                errorMessage = "Failed to retrieve school information.";
+                return;
+            }
+
+            newTeacher.SchoolName = schoolInfo.SchoolName;
+            newTeacher.Region = schoolInfo.Region;
+            newTeacher.Division = schoolInfo.Division;
+            newTeacher.District = schoolInfo.District;
+
+            var response = await http.PostAsJsonAsync("/api/register/teacher", newTeacher);
+            
+            if (response.IsSuccessStatusCode)
+            {
+                lastRegisteredName = newTeacher.FullName;
+                showSuccessModal = true;
+                // Don't reset everything yet so user can see credentials in modal
+            }
+            else
+            {
+                var errorResponse = await response.Content.ReadFromJsonAsync<RegisterResponse>();
+                errorMessage = errorResponse?.Message ?? "Registration failed. Username or Email might already exist.";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = "An error occurred: " + ex.Message;
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+
+    private async Task LoadTeachers()
+    {
+        try
+        {
+            isLoadingList = true;
+            if (headUser?.SchoolId != null)
+            {
+                var http = HttpClientFactory.CreateClient("AttrakAPI");
+                allTeachers = await http.GetFromJsonAsync<List<PendingTeacherInfo>>($"/api/teacher/all/{headUser.SchoolId}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("Error loading teachers list: " + ex.Message);
+        }
+        finally
+        {
+            isLoadingList = false;
+        }
+    }
+
+    private List<PendingTeacherInfo>? filteredTeachers => 
+        string.IsNullOrWhiteSpace(searchTerm) 
+            ? allTeachers 
+            : allTeachers?.Where(t => t.FullName.Contains(searchTerm, StringComparison.OrdinalIgnoreCase)).ToList();
+
+    private void CloseSuccessModal()
+    {
+        showSuccessModal = false;
+        newTeacher = new() { UserType = UserType.Teacher };
+        generatedUsername = "";
+        GeneratePassword();
+        _ = LoadTeachers(); // Refresh list in background
+    }
+}

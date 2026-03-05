@@ -951,5 +951,51 @@ namespace ServerAtrrak.Services
                 return new { Error = ex.Message };
             }
         }
+        public async Task<List<PendingTeacherInfo>> GetAllTeachersBySchoolAsync(string schoolId)
+        {
+            try
+            {
+                using var connection = await _dbConnection.GetConnectionAsync();
+                var query = @"
+                    SELECT u.UserId, u.Username, u.Email, u.UserType, u.CreatedAt as RegisteredAt,
+                           u.IsApproved, u.IsActive,
+                           COALESCE(t.FullName, u.Username) as FullName, 
+                           t.SchoolId, 
+                           s.SchoolName
+                    FROM user u
+                    LEFT JOIN teacher t ON u.TeacherId = t.TeacherId
+                    LEFT JOIN school s ON t.SchoolId = s.SchoolId
+                    WHERE t.SchoolId = @schoolId
+                    AND (u.UserType = 'Teacher' OR u.UserType = 'SubjectTeacher' OR u.UserType = 'Advisor')";
+
+                var teachers = new List<PendingTeacherInfo>();
+                using (var command = new MySqlCommand(query, connection))
+                {
+                    command.Parameters.AddWithValue("@schoolId", schoolId);
+                    using var reader = await command.ExecuteReaderAsync();
+                    while (await reader.ReadAsync())
+                    {
+                        var info = new PendingTeacherInfo
+                        {
+                            UserId = reader.GetString("UserId"),
+                            Username = reader.GetString("Username"),
+                            Email = reader.GetString("Email"),
+                            FullName = reader.IsDBNull("FullName") ? "" : reader.GetString("FullName"),
+                            SchoolId = reader.IsDBNull("SchoolId") ? "" : reader.GetString("SchoolId"),
+                            SchoolName = reader.IsDBNull("SchoolName") ? "" : reader.GetString("SchoolName"),
+                            RegisteredAt = reader.GetDateTime("RegisteredAt"),
+                            UserType = reader.GetString("UserType")
+                        };
+                        teachers.Add(info);
+                    }
+                }
+                return teachers;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error in GetAllTeachersBySchoolAsync: {ex.Message}");
+                return new List<PendingTeacherInfo>();
+            }
+        }
     }
 }
