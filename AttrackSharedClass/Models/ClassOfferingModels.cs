@@ -10,6 +10,7 @@ namespace AttrackSharedClass.Models
         public string? AdvisorName { get; set; }
         public string SubjectId { get; set; } = "";
         public string SubjectName { get; set; } = "";
+        public string? SubjectCode { get; set; }
         public int GradeLevel { get; set; }
         public string Section { get; set; } = "";
         public string? Strand { get; set; }

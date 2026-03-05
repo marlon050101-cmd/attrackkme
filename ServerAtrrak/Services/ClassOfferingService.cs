@@ -17,7 +17,7 @@ namespace ServerAtrrak.Services
         }
 
         private const string SelectColumns = @"
-            co.ClassOfferingId, co.AdvisorId, t.FullName as AdvisorName, co.SubjectId, s.SubjectName,
+            co.ClassOfferingId, co.AdvisorId, t.FullName as AdvisorName, co.SubjectId, s.SubjectName, s.SubjectCode,
             co.GradeLevel, co.Section, co.Strand,
             TIME_FORMAT(co.ScheduleStart,'%H:%i:%s'), TIME_FORMAT(co.ScheduleEnd,'%H:%i:%s'),
             COALESCE(co.DayOfWeek,'Monday,Tuesday,Wednesday,Thursday,Friday') as DayOfWeek,
@@ -345,7 +345,7 @@ namespace ServerAtrrak.Services
                 string query; MySqlCommand cmd;
                 if (normalizedStrand != null)
                 {
-                    query = @"SELECT s.SubjectId, s.SubjectName, s.GradeLevel, s.Strand FROM subject s
+                    query = @"SELECT s.SubjectId, s.SubjectName, s.GradeLevel, s.Strand, s.SubjectCode FROM subject s
                         WHERE s.GradeLevel = @GradeLevel AND (s.Strand = @Strand OR s.Strand IS NULL OR s.Strand = '')
                         ORDER BY s.SubjectName";
                     cmd = new MySqlCommand(query, connection);
@@ -354,14 +354,22 @@ namespace ServerAtrrak.Services
                 }
                 else
                 {
-                    query = @"SELECT s.SubjectId, s.SubjectName, s.GradeLevel, s.Strand FROM subject s
+                    query = @"SELECT s.SubjectId, s.SubjectName, s.GradeLevel, s.Strand, s.SubjectCode FROM subject s
                         WHERE s.GradeLevel = @GradeLevel ORDER BY s.SubjectName";
                     cmd = new MySqlCommand(query, connection);
                     cmd.Parameters.AddWithValue("@GradeLevel", gradeLevel);
                 }
                 using var reader = await cmd.ExecuteReaderAsync();
                 while (await reader.ReadAsync())
-                    list.Add(new TeacherSubjectAssignment { SubjectId = reader.GetString(0), SubjectName = reader.GetString(1), GradeLevel = reader.GetInt32(2), Strand = reader.IsDBNull(3) ? null : reader.GetString(3), ScheduleStart = TimeSpan.Zero, ScheduleEnd = TimeSpan.Zero });
+                    list.Add(new TeacherSubjectAssignment { 
+                        SubjectId = reader.GetString(0), 
+                        SubjectName = reader.GetString(1), 
+                        GradeLevel = reader.GetInt32(2), 
+                        Strand = reader.IsDBNull(3) ? null : reader.GetString(3), 
+                        SubjectCode = reader.IsDBNull(4) ? null : reader.GetString(4),
+                        ScheduleStart = TimeSpan.Zero, 
+                        ScheduleEnd = TimeSpan.Zero 
+                    });
             }
             catch (Exception ex) { _logger.LogError(ex, "Error getting subjects for grade/strand"); }
             return list;
@@ -379,7 +387,7 @@ namespace ServerAtrrak.Services
                 var conditions = new List<string> { "s.GradeLevel = @GradeLevel" };
                 if (normalizedStrand != null) conditions.Add("(s.Strand = @Strand OR s.Strand IS NULL OR s.Strand = '')");
                 if (normalizedKeyword != null) conditions.Add("s.SubjectName LIKE @Keyword");
-                var query = $@"SELECT s.SubjectId, s.SubjectName, s.GradeLevel, s.Strand FROM subject s
+                var query = $@"SELECT s.SubjectId, s.SubjectName, s.GradeLevel, s.Strand, s.SubjectCode FROM subject s
                     WHERE {string.Join(" AND ", conditions)} ORDER BY s.SubjectName LIMIT 20";
                 using var cmd = new MySqlCommand(query, connection);
                 cmd.Parameters.AddWithValue("@GradeLevel", gradeLevel);
@@ -387,7 +395,15 @@ namespace ServerAtrrak.Services
                 if (normalizedKeyword != null) cmd.Parameters.AddWithValue("@Keyword", normalizedKeyword);
                 using var reader = await cmd.ExecuteReaderAsync();
                 while (await reader.ReadAsync())
-                    list.Add(new TeacherSubjectAssignment { SubjectId = reader.GetString(0), SubjectName = reader.GetString(1), GradeLevel = reader.GetInt32(2), Strand = reader.IsDBNull(3) ? null : reader.GetString(3), ScheduleStart = TimeSpan.Zero, ScheduleEnd = TimeSpan.Zero });
+                    list.Add(new TeacherSubjectAssignment { 
+                        SubjectId = reader.GetString(0), 
+                        SubjectName = reader.GetString(1), 
+                        GradeLevel = reader.GetInt32(2), 
+                        Strand = reader.IsDBNull(3) ? null : reader.GetString(3), 
+                        SubjectCode = reader.IsDBNull(4) ? null : reader.GetString(4),
+                        ScheduleStart = TimeSpan.Zero, 
+                        ScheduleEnd = TimeSpan.Zero 
+                    });
             }
             catch (Exception ex) { _logger.LogError(ex, "Error searching subjects"); }
             return list;
@@ -427,15 +443,16 @@ namespace ServerAtrrak.Services
                 AdvisorName = reader.IsDBNull(2) ? null : reader.GetString(2),
                 SubjectId = reader.GetString(3),
                 SubjectName = reader.GetString(4),
-                GradeLevel = reader.GetInt32(5),
-                Section = reader.GetString(6),
-                Strand = reader.IsDBNull(7) ? null : reader.GetString(7),
-                ScheduleStart = TimeSpan.Parse(reader.GetString(8)),
-                ScheduleEnd = TimeSpan.Parse(reader.GetString(9)),
-                DayOfWeek = reader.IsDBNull(10) ? "Monday,Tuesday,Wednesday,Thursday,Friday" : reader.GetString(10),
-                TeacherId = reader.IsDBNull(11) ? null : reader.GetString(11),
-                TeacherName = reader.IsDBNull(12) ? null : reader.GetString(12),
-                CreatedAt = reader.GetDateTime(13)
+                SubjectCode = reader.IsDBNull(5) ? null : reader.GetString(5),
+                GradeLevel = reader.GetInt32(6),
+                Section = reader.GetString(7),
+                Strand = reader.IsDBNull(8) ? null : reader.GetString(8),
+                ScheduleStart = TimeSpan.Parse(reader.GetString(9)),
+                ScheduleEnd = TimeSpan.Parse(reader.GetString(10)),
+                DayOfWeek = reader.IsDBNull(11) ? "Monday,Tuesday,Wednesday,Thursday,Friday" : reader.GetString(11),
+                TeacherId = reader.IsDBNull(12) ? null : reader.GetString(12),
+                TeacherName = reader.IsDBNull(13) ? null : reader.GetString(13),
+                CreatedAt = reader.GetDateTime(14)
             };
         }
     }

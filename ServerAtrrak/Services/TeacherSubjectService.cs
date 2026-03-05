@@ -36,7 +36,8 @@ namespace ServerAtrrak.Services
                         ts.AdvisorId,
                         adv.FullName as AdvisorName,
                         TIME_FORMAT(ts.ScheduleStart, '%H:%i:%s') as ScheduleStart,
-                        TIME_FORMAT(ts.ScheduleEnd, '%H:%i:%s') as ScheduleEnd
+                        TIME_FORMAT(ts.ScheduleEnd, '%H:%i:%s') as ScheduleEnd,
+                        s.SubjectCode
                     FROM teachersubject ts
                     INNER JOIN subject s ON ts.SubjectId = s.SubjectId
                     LEFT JOIN teacher adv ON ts.AdvisorId = adv.TeacherId
@@ -64,6 +65,7 @@ namespace ServerAtrrak.Services
                         AdvisorName = reader.IsDBNull(8) ? null : reader.GetString(8),
                         ScheduleStart = reader.IsDBNull(scheduleStartIdx) ? TimeSpan.Zero : TimeSpan.Parse(reader.GetString(scheduleStartIdx)),
                         ScheduleEnd = reader.IsDBNull(scheduleEndIdx) ? TimeSpan.Zero : TimeSpan.Parse(reader.GetString(scheduleEndIdx)),
+                        SubjectCode = reader.IsDBNull(11) ? null : reader.GetString(11),
                         CreatedAt = DateTime.Now
                     });
                 }
@@ -95,7 +97,8 @@ namespace ServerAtrrak.Services
                         s.SubjectId,
                         s.SubjectName,
                         s.GradeLevel,
-                        s.Strand
+                        s.Strand,
+                        s.SubjectCode
                     FROM subject s
                     WHERE s.SubjectId NOT IN (
                         SELECT DISTINCT ts.SubjectId 
@@ -136,6 +139,7 @@ namespace ServerAtrrak.Services
                         SubjectName = reader.GetString(1),
                         GradeLevel = reader.GetInt32(2),
                         Strand = reader.IsDBNull(3) ? null : reader.GetString(3),
+                        SubjectCode = reader.IsDBNull(4) ? null : reader.GetString(4),
                         ScheduleStart = TimeSpan.Zero,
                         ScheduleEnd = TimeSpan.Zero
                     });
@@ -594,7 +598,8 @@ namespace ServerAtrrak.Services
                         TIME_FORMAT(ts.ScheduleEnd, '%H:%i:%s') as ScheduleEnd,
                         t.FullName as TeacherName,
                         t.TeacherId,
-                        1 as HasTeacher
+                        1 as HasTeacher,
+                        s.SubjectCode
                     FROM subject s
                     INNER JOIN teachersubject ts ON s.SubjectId = ts.SubjectId
                     INNER JOIN teacher t ON ts.TeacherId = t.TeacherId

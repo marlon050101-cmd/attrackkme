@@ -1,0 +1,1190 @@
+@page "/head/advisor-subjects"
+@using AttrackSharedClass.Models
+@using NewscannerMAUI.Services
+@layout HeadLayout
+@inject IHttpClientFactory HttpClientFactory
+@inject AuthService AuthService
+@inject NavigationManager Navigation
+
+<div class="asgn-container">
+    <div class="page-header">
+        <div class="header-icon">
+            <i class="fas fa-chalkboard-teacher"></i>
+        </div>
+        <div class="header-text">
+            <h1>Assign Subjects</h1>
+            <p>Manage class subjects for advisors in your school</p>
+        </div>
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="loading-state">
+            <div class="shimmer-card"></div>
+            <div class="shimmer-card"></div>
+            <p>Loading advisors...</p>
+        </div>
+    }
+    else if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="error-panel">
+            <div class="error-icon"><i class="fas fa-circle-exclamation"></i></div>
+            <div class="error-content">
+                <strong>Error</strong>
+                <p>@errorMessage</p>
+            </div>
+            <button class="btn-retry" @onclick="LoadAdvisors">Try Again</button>
+        </div>
+    }
+    else if (!advisors.Any())
+    {
+        <div class="empty-state glass">
+            <div class="empty-icon"><i class="fas fa-user-tie"></i></div>
+            <h3>No Advisors Yet</h3>
+            <p>There are no approved advisors in your school yet.</p>
+        </div>
+    }
+    else
+    {
+        <div class="advisor-list">
+            <div class="list-meta">
+                <span><i class="fas fa-user-tie"></i> @advisors.Count Advisor@(advisors.Count != 1 ? "s" : "")</span>
+            </div>
+
+            @foreach (var advisor in advisors)
+            {
+                <div class="advisor-card glass-hover fade-in">
+                    <div class="advisor-meta">
+                        <div class="advisor-avatar">
+                            @(advisor.FullName.Length > 0 ? advisor.FullName.Substring(0, 1).ToUpper() : "?")
+                        </div>
+                        <div class="advisor-info">
+                            <h3 class="advisor-name">@advisor.FullName</h3>
+                            <span class="advisor-badge">
+                                @if (advisor.GradeLevel.HasValue)
+                                {
+                                    <span>Grade @advisor.GradeLevel</span>
+                                }
+                                @if (!string.IsNullOrEmpty(advisor.Section))
+                                {
+                                    <span>• @advisor.Section</span>
+                                }
+                                @if (!string.IsNullOrEmpty(advisor.Strand))
+                                {
+                                    <span>• @advisor.Strand</span>
+                                }
+                            </span>
+                        </div>
+                    </div>
+                    <button class="btn-manage" @onclick="() => OpenManageModal(advisor)">
+                        <i class="fas fa-books"></i>
+                        <span>Manage</span>
+                    </button>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@* ─── Manage Modal ─── *@
+@if (showManageModal && selectedAdvisor != null)
+{
+    <div class="modal-overlay" @onclick="CloseManageModal">
+        <div class="manage-modal fade-in" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <div class="modal-avatar">
+                    @(selectedAdvisor.FullName.Length > 0 ? selectedAdvisor.FullName.Substring(0, 1).ToUpper() : "?")
+                </div>
+                <div>
+                    <h3>@selectedAdvisor.FullName</h3>
+                    <p class="modal-sub">
+                        @if (selectedAdvisor.GradeLevel.HasValue) { <span>Grade @selectedAdvisor.GradeLevel</span> }
+                        @if (!string.IsNullOrEmpty(selectedAdvisor.Section)) { <span> • @selectedAdvisor.Section</span> }
+                        @if (!string.IsNullOrEmpty(selectedAdvisor.Strand)) { <span> • @selectedAdvisor.Strand</span> }
+                    </p>
+                </div>
+                <button class="btn-close" @onclick="CloseManageModal"><i class="fas fa-times"></i></button>
+            </div>
+
+            @* Current subjects *@
+            <div class="modal-section-title">
+                <i class="fas fa-list-ul"></i> Current Subjects
+            </div>
+            @if (isLoadingClasses)
+            {
+                <div class="mini-loading"><div class="spinner-sm"></div><span>Loading...</span></div>
+            }
+            else if (!currentClasses.Any())
+            {
+                <div class="no-subjects">No subjects assigned yet.</div>
+            }
+            else
+            {
+                <div class="subject-chips">
+                    @foreach (var cls in currentClasses.OrderBy(c => c.ScheduleStart))
+                    {
+                        <div class="subject-chip">
+                            <div class="chip-info">
+                                <div class="chip-title">
+                                    <span class="chip-name">@cls.SubjectName</span>
+                                    @if (!string.IsNullOrEmpty(cls.SubjectCode))
+                                    {
+                                        <span class="subject-code-tag">@cls.SubjectCode</span>
+                                    }
+                                </div>
+                                <span class="chip-time">
+                                    @cls.ScheduleStart.ToString(@"hh\:mm") – @cls.ScheduleEnd.ToString(@"hh\:mm")
+                                    @if (!string.IsNullOrEmpty(cls.DayOfWeek))
+                                    {
+                                        <span class="chip-days">(@(FormatDays(cls.DayOfWeek)))</span>
+                                    }
+                                </span>
+                            </div>
+                            <button class="btn-remove-chip" @onclick="() => ConfirmRemove(cls)" title="Remove">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                    }
+                </div>
+            }
+
+            @* Add new subject *@
+            <div class="modal-section-title mt-section">
+                <i class="fas fa-plus-circle"></i> Add Subject
+            </div>
+
+            @if (!string.IsNullOrEmpty(modalError))
+            {
+                <div class="modal-error">@modalError</div>
+            }
+            @if (!string.IsNullOrEmpty(modalSuccess))
+            {
+                <div class="modal-success">@modalSuccess</div>
+            }
+
+            @* Subject picker *@
+            <div class="form-field subject-search-wrap">
+                <label>Subject</label>
+                <div class="search-box-wrap">
+                    <input type="text" class="form-input" placeholder="Search or type subject name..."
+                           value="@subjectSearchText"
+                           @oninput="OnSubjectSearch"
+                           @onfocus="() => showDropdown = true" />
+                    @if (showDropdown && filteredSubjects.Any())
+                    {
+                        <div class="subject-dropdown">
+                            @foreach (var s in filteredSubjects)
+                            {
+                                <div class="dropdown-item @(s.SubjectId == selectedSubjectId ? "selected" : "")"
+                                     @onclick="() => SelectSubject(s)">
+                                    <div class="dropdown-main">
+                                        <strong>@s.SubjectName</strong>
+                                        @if (!string.IsNullOrEmpty(s.SubjectCode))
+                                        {
+                                            <span class="subject-code-tag tiny">@s.SubjectCode</span>
+                                        }
+                                    </div>
+                                    @if (!string.IsNullOrEmpty(s.Strand))
+                                    {
+                                        <span class="strand-tag">@s.Strand</span>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+                @if (!string.IsNullOrEmpty(selectedSubjectId))
+                {
+                    <div class="selected-badge">
+                        <i class="fas fa-check-circle"></i>
+                        <strong>@subjectSearchText</strong>
+                        <button class="btn-clear-subject" @onclick="ClearSubject">×</button>
+                    </div>
+                }
+            </div>
+
+            @* Days *@
+            <div class="form-field">
+                <label>Days</label>
+                <div class="day-picker">
+                    @foreach (var day in AllDays)
+                    {
+                        var active = selectedDays.Contains(day);
+                        <button type="button" class="day-btn @(active ? "active" : "")"
+                                @onclick="() => ToggleDay(day)">
+                            @day.Substring(0, 3)
+                        </button>
+                    }
+                </div>
+            </div>
+
+            @* Time *@
+            <div class="form-row">
+                <div class="form-field half">
+                    <label>Start Time</label>
+                    <input type="time" class="form-input" value="@startTime" @onchange="e => startTime = e.Value?.ToString() ?? startTime" />
+                </div>
+                <div class="form-field half">
+                    <label>End Time</label>
+                    <input type="time" class="form-input" value="@endTime" @onchange="e => endTime = e.Value?.ToString() ?? endTime" />
+                </div>
+            </div>
+
+            <button class="btn-add-subject" @onclick="AddSubject" disabled="@isSaving">
+                @if (isSaving)
+                {
+                    <div class="spinner-sm"></div>
+                }
+                else
+                {
+                    <i class="fas fa-plus"></i>
+                    <span>Add Subject</span>
+                }
+            </button>
+        </div>
+    </div>
+}
+
+@* ─── Remove Confirm ─── *@
+@if (showRemoveConfirm && classToRemove != null)
+{
+    <div class="modal-overlay" @onclick="() => showRemoveConfirm = false">
+        <div class="confirm-modal scale-in" @onclick:stopPropagation="true">
+            <div class="confirm-icon"><i class="fas fa-trash-alt"></i></div>
+            <h4>Remove Subject?</h4>
+            <p>Remove <strong>@classToRemove.SubjectName</strong> from @selectedAdvisor?.FullName's schedule?</p>
+            <div class="confirm-actions">
+                <button class="btn-cancel" @onclick="() => showRemoveConfirm = false">Cancel</button>
+                <button class="btn-confirm-remove" @onclick="ExecuteRemove" disabled="@isRemoving">
+                    @if (isRemoving) { <div class="spinner-sm white"></div> } else { <span>Remove</span> }
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .asgn-container {
+        padding: 2rem 1.5rem;
+        max-width: 520px;
+        margin: 0 auto;
+        font-family: 'Outfit', sans-serif;
+    }
+
+    /* Header */
+    .page-header {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        margin-bottom: 2.5rem;
+    }
+
+    .header-icon {
+        width: 52px;
+        height: 52px;
+        background: linear-gradient(135deg, #4c1d95, #7c3aed);
+        color: white;
+        border-radius: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.3rem;
+        flex-shrink: 0;
+    }
+
+    .header-text h1 {
+        font-size: 2rem;
+        font-weight: 900;
+        color: #0f172a;
+        margin: 0;
+        letter-spacing: -1px;
+    }
+
+    .header-text p {
+        color: #64748b;
+        margin: 0.15rem 0 0;
+        font-weight: 500;
+        font-size: 0.9rem;
+    }
+
+    /* List */
+    .list-meta {
+        margin-bottom: 1.2rem;
+        font-size: 0.75rem;
+        font-weight: 800;
+        color: #94a3b8;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+
+    .advisor-card {
+        background: white;
+        border: 1px solid #f1f5f9;
+        border-radius: 20px;
+        padding: 1rem 1.25rem;
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        margin-bottom: 0.9rem;
+        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.03);
+        transition: all 0.3s cubic-bezier(0.4,0,0.2,1);
+    }
+
+    .advisor-card:hover {
+        border-color: #cbd5e1;
+        transform: translateY(-2px);
+        box-shadow: 0 10px 15px -3px rgba(0,0,0,0.05);
+    }
+
+    .advisor-meta {
+        display: flex;
+        align-items: center;
+        gap: 0.9rem;
+        flex: 1;
+        min-width: 0;
+    }
+
+    .advisor-avatar {
+        width: 44px;
+        height: 44px;
+        background: linear-gradient(135deg, #fef3c7, #fde68a);
+        color: #92400e;
+        border-radius: 14px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 900;
+        font-size: 1.1rem;
+        flex-shrink: 0;
+    }
+
+    .advisor-name {
+        font-size: 1rem;
+        font-weight: 700;
+        color: #1e293b;
+        margin: 0 0 0.2rem;
+        word-break: break-word;
+        line-height: 1.2;
+    }
+
+    .advisor-badge {
+        font-size: 0.75rem;
+        color: #64748b;
+        font-weight: 600;
+    }
+
+    .btn-manage {
+        background: #0f172a;
+        color: white;
+        border: none;
+        padding: 0.55rem 1.1rem;
+        border-radius: 12px;
+        font-weight: 800;
+        font-size: 0.8rem;
+        cursor: pointer;
+        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        flex-shrink: 0;
+    }
+
+    .btn-manage:hover {
+        background: #334155;
+        transform: scale(1.05);
+    }
+
+    /* Manage Modal */
+    .manage-modal {
+        background: white;
+        border-radius: 28px;
+        width: 95%;
+        max-width: 420px;
+        max-height: 88vh;
+        overflow-y: auto;
+        padding: 1.75rem;
+        box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    .modal-header {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        padding-bottom: 1rem;
+        border-bottom: 1px solid #f1f5f9;
+    }
+
+    .modal-avatar {
+        width: 52px;
+        height: 52px;
+        background: linear-gradient(135deg, #fef3c7, #fde68a);
+        color: #92400e;
+        border-radius: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.3rem;
+        font-weight: 900;
+        flex-shrink: 0;
+    }
+
+    .modal-header h3 {
+        font-size: 1.1rem;
+        font-weight: 800;
+        color: #0f172a;
+        margin: 0;
+    }
+
+    .modal-sub {
+        font-size: 0.78rem;
+        color: #64748b;
+        margin: 0.15rem 0 0;
+        font-weight: 600;
+    }
+
+    .btn-close {
+        margin-left: auto;
+        background: #f8fafc;
+        border: none;
+        width: 34px;
+        height: 34px;
+        border-radius: 10px;
+        color: #64748b;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.9rem;
+        flex-shrink: 0;
+        transition: all 0.15s;
+    }
+
+    .btn-close:hover { background: #fee2e2; color: #ef4444; }
+
+    .modal-section-title {
+        font-size: 0.75rem;
+        font-weight: 800;
+        color: #7c3aed;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+    }
+
+    .mt-section { margin-top: 0.5rem; }
+
+    /* Subject chips */
+    .subject-chips { display: flex; flex-direction: column; gap: 0.5rem; }
+
+    .subject-chip {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 0.6rem 0.9rem;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }
+
+    .chip-info { flex: 1; min-width: 0; }
+
+    .chip-name {
+        font-size: 0.88rem;
+        font-weight: 700;
+        color: #1e293b;
+    }
+
+    .chip-title {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-bottom: 0.1rem;
+    }
+
+    .subject-code-tag {
+        font-size: 0.65rem;
+        background: #e2e8f0;
+        color: #475569;
+        padding: 1px 6px;
+        border-radius: 6px;
+        font-weight: 800;
+        text-transform: uppercase;
+    }
+
+    .subject-code-tag.tiny {
+        font-size: 0.6rem;
+        padding: 1px 4px;
+    }
+
+    .chip-time {
+        font-size: 0.72rem;
+        color: #64748b;
+        font-weight: 600;
+    }
+
+    .chip-days { color: #94a3b8; }
+
+    .btn-remove-chip {
+        background: transparent;
+        border: 1px solid #fca5a5;
+        color: #ef4444;
+        width: 26px;
+        height: 26px;
+        border-radius: 8px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.75rem;
+        flex-shrink: 0;
+        transition: all 0.15s;
+    }
+
+    .btn-remove-chip:hover { background: #fee2e2; }
+
+    .no-subjects {
+        font-size: 0.82rem;
+        color: #94a3b8;
+        text-align: center;
+        padding: 0.75rem;
+        background: #f8fafc;
+        border-radius: 10px;
+        font-weight: 600;
+    }
+
+    .mini-loading { display: flex; align-items: center; gap: 0.5rem; color: #94a3b8; font-size: 0.82rem; padding: 0.5rem 0; }
+
+    /* Form */
+    .form-field { display: flex; flex-direction: column; gap: 0.4rem; }
+    .form-field.half { flex: 1; }
+    .form-row { display: flex; gap: 0.75rem; }
+
+    .form-field label {
+        font-size: 0.76rem;
+        font-weight: 700;
+        color: #374151;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .form-input {
+        border: 1.5px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 0.55rem 0.9rem;
+        font-size: 0.88rem;
+        font-family: inherit;
+        width: 100%;
+        box-sizing: border-box;
+        outline: none;
+        transition: border-color 0.2s;
+    }
+
+    .form-input:focus { border-color: #7c3aed; box-shadow: 0 0 0 3px rgba(124,58,237,0.1); }
+
+    /* Subject search */
+    .subject-search-wrap { position: relative; }
+
+    .search-box-wrap { position: relative; }
+
+    .subject-dropdown {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: white;
+        border: 1.5px solid #e2e8f0;
+        border-radius: 14px;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.1);
+        z-index: 200;
+        max-height: 180px;
+        overflow-y: auto;
+        margin-top: 4px;
+    }
+
+    .dropdown-item {
+        padding: 0.55rem 1rem;
+        cursor: pointer;
+        font-size: 0.87rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        transition: background 0.15s;
+    }
+
+    .dropdown-item:hover, .dropdown-item.selected { background: #f5f3ff; }
+
+    .strand-tag {
+        font-size: 0.68rem;
+        background: #ede9fe;
+        color: #6d28d9;
+        padding: 2px 8px;
+        border-radius: 20px;
+        font-weight: 700;
+    }
+
+    .selected-badge {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        background: #f0fdf4;
+        border: 1px solid #bbf7d0;
+        border-radius: 10px;
+        padding: 0.35rem 0.75rem;
+        font-size: 0.82rem;
+        color: #065f46;
+        margin-top: 4px;
+    }
+
+    .selected-badge i { color: #10b981; }
+
+    .btn-clear-subject {
+        background: none;
+        border: none;
+        color: #94a3b8;
+        font-size: 1.1rem;
+        line-height: 1;
+        cursor: pointer;
+        padding: 0;
+        margin-left: auto;
+    }
+
+    /* Days */
+    .day-picker { display: flex; gap: 6px; flex-wrap: wrap; }
+
+    .day-btn {
+        padding: 6px 12px;
+        border-radius: 20px;
+        border: 1.5px solid #e2e8f0;
+        background: #f8fafc;
+        color: #64748b;
+        font-size: 0.75rem;
+        font-weight: 700;
+        cursor: pointer;
+        transition: all 0.15s;
+        font-family: inherit;
+    }
+
+    .day-btn.active { background: #7c3aed; border-color: #7c3aed; color: white; }
+
+    /* Add button */
+    .btn-add-subject {
+        width: 100%;
+        background: linear-gradient(135deg, #4c1d95, #7c3aed);
+        color: white;
+        border: none;
+        padding: 0.85rem;
+        border-radius: 16px;
+        font-weight: 800;
+        font-size: 0.95rem;
+        cursor: pointer;
+        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        font-family: inherit;
+        margin-top: 0.25rem;
+    }
+
+    .btn-add-subject:hover:not(:disabled) { opacity: 0.9; transform: scale(1.01); }
+    .btn-add-subject:disabled { opacity: 0.6; }
+
+    /* Feedback */
+    .modal-error {
+        background: #fef2f2;
+        border: 1px solid #fecaca;
+        color: #991b1b;
+        border-radius: 10px;
+        padding: 0.5rem 0.85rem;
+        font-size: 0.82rem;
+        font-weight: 600;
+    }
+
+    .modal-success {
+        background: #f0fdf4;
+        border: 1px solid #bbf7d0;
+        color: #065f46;
+        border-radius: 10px;
+        padding: 0.5rem 0.85rem;
+        font-size: 0.82rem;
+        font-weight: 600;
+    }
+
+    /* Confirm modal */
+    .confirm-modal {
+        background: white;
+        border-radius: 24px;
+        padding: 2rem 1.75rem;
+        width: 90%;
+        max-width: 320px;
+        text-align: center;
+        box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);
+    }
+
+    .confirm-icon {
+        width: 56px;
+        height: 56px;
+        background: #fee2e2;
+        color: #ef4444;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.3rem;
+        margin: 0 auto 1rem;
+    }
+
+    .confirm-modal h4 { font-size: 1.2rem; font-weight: 800; color: #0f172a; margin: 0 0 0.5rem; }
+    .confirm-modal p { font-size: 0.85rem; color: #64748b; margin: 0 0 1.5rem; }
+
+    .confirm-actions { display: flex; gap: 0.75rem; }
+
+    .btn-cancel {
+        flex: 1;
+        background: #f8fafc;
+        border: 1.5px solid #e2e8f0;
+        color: #64748b;
+        padding: 0.7rem;
+        border-radius: 14px;
+        font-weight: 700;
+        font-size: 0.88rem;
+        cursor: pointer;
+        font-family: inherit;
+    }
+
+    .btn-confirm-remove {
+        flex: 1;
+        background: #ef4444;
+        color: white;
+        border: none;
+        padding: 0.7rem;
+        border-radius: 14px;
+        font-weight: 700;
+        font-size: 0.88rem;
+        cursor: pointer;
+        font-family: inherit;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    /* Shared */
+    .modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.6);
+        backdrop-filter: blur(8px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 2000;
+        padding: 1rem;
+    }
+
+    .glass-hover { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+
+    .loading-state {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        align-items: center;
+        padding: 3rem 0;
+        color: #94a3b8;
+        font-size: 0.88rem;
+    }
+
+    .shimmer-card {
+        width: 100%;
+        height: 72px;
+        background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+        background-size: 200% 100%;
+        animation: shimmer 1.5s infinite;
+        border-radius: 20px;
+    }
+
+    @@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+    .error-panel {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        background: #fef2f2;
+        border: 1px solid #fecaca;
+        border-radius: 16px;
+        padding: 1.25rem;
+    }
+
+    .error-icon { color: #ef4444; font-size: 1.4rem; }
+    .error-content { flex: 1; }
+    .error-content strong { display: block; font-size: 0.9rem; color: #991b1b; }
+    .error-content p { margin: 0; font-size: 0.82rem; color: #b91c1c; }
+
+    .btn-retry {
+        background: #ef4444;
+        color: white;
+        border: none;
+        padding: 0.5rem 1rem;
+        border-radius: 10px;
+        font-weight: 700;
+        font-size: 0.8rem;
+        cursor: pointer;
+    }
+
+    .empty-state {
+        background: white;
+        border: 1px solid #f1f5f9;
+        border-radius: 24px;
+        padding: 3rem 2rem;
+        text-align: center;
+    }
+
+    .empty-icon {
+        font-size: 2.5rem;
+        color: #cbd5e1;
+        margin-bottom: 1rem;
+    }
+
+    .empty-state h3 { font-size: 1.2rem; font-weight: 800; color: #1e293b; margin: 0 0 0.5rem; }
+    .empty-state p { color: #64748b; font-size: 0.88rem; margin: 0; }
+
+    .fade-in { animation: fadeIn 0.4s ease-out; }
+    .scale-in { animation: scaleIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); }
+
+    @@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    @@keyframes scaleIn { from { transform: scale(0.85); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+    .spinner-sm {
+        width: 16px;
+        height: 16px;
+        border: 2px solid rgba(124,58,237,0.2);
+        border-top-color: #7c3aed;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+    }
+
+    .spinner-sm.white {
+        border-color: rgba(255,255,255,0.3);
+        border-top-color: white;
+    }
+
+    @@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+
+@code {
+    private static readonly string[] AllDays = { "Monday", "Tuesday", "Wednesday", "Thursday", "Friday" };
+
+    private List<PendingTeacherInfo> advisors = new();
+    private bool isLoading = true;
+    private string? errorMessage;
+    private string? headSchoolId;
+
+    // Manage modal
+    private bool showManageModal = false;
+    private PendingTeacherInfo? selectedAdvisor;
+    private List<ClassOffering> currentClasses = new();
+    private bool isLoadingClasses = false;
+
+    // Add form
+    private string subjectSearchText = "";
+    private string? selectedSubjectId;
+    private bool showDropdown = false;
+    private List<TeacherSubjectAssignment> allSubjectsForGrade = new();
+    private List<TeacherSubjectAssignment> filteredSubjects = new();
+    private HashSet<string> selectedDays = new(new[] { "Monday", "Tuesday", "Wednesday", "Thursday", "Friday" });
+    private string startTime = "07:30";
+    private string endTime = "08:30";
+    private bool isSaving = false;
+    private string modalError = "";
+    private string modalSuccess = "";
+
+    // Remove confirm
+    private bool showRemoveConfirm = false;
+    private ClassOffering? classToRemove;
+    private bool isRemoving = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAdvisors();
+    }
+
+    private async Task LoadAdvisors()
+    {
+        try
+        {
+            isLoading = true;
+            errorMessage = null;
+            var user = await AuthService.GetCurrentUserAsync();
+            if (user == null)
+            {
+                errorMessage = "Could not get your account info.";
+                return;
+            }
+
+            headSchoolId = user.SchoolId;
+            if (string.IsNullOrEmpty(headSchoolId))
+            {
+                errorMessage = "Your account is not linked to a school.";
+                return;
+            }
+
+            var http = HttpClientFactory.CreateClient("AttrakAPI");
+            var all = await http.GetFromJsonAsync<List<PendingTeacherInfo>>($"/api/teacher/all/{headSchoolId}");
+            advisors = (all ?? new()).Where(t => t.UserType == "Advisor").ToList();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task OpenManageModal(PendingTeacherInfo advisor)
+    {
+        selectedAdvisor = advisor;
+        showManageModal = true;
+        modalError = "";
+        modalSuccess = "";
+        subjectSearchText = "";
+        selectedSubjectId = null;
+        showDropdown = false;
+        selectedDays = new HashSet<string>(AllDays);
+        startTime = "07:30";
+        endTime = "08:30";
+
+        await LoadCurrentClasses();
+        await LoadSubjectsForAdvisor();
+    }
+
+    private void CloseManageModal()
+    {
+        showManageModal = false;
+        selectedAdvisor = null;
+        currentClasses.Clear();
+        allSubjectsForGrade.Clear();
+        filteredSubjects.Clear();
+    }
+
+    private async Task LoadCurrentClasses()
+    {
+        if (selectedAdvisor?.TeacherId == null) return;
+        isLoadingClasses = true;
+        try
+        {
+            var http = HttpClientFactory.CreateClient("AttrakAPI");
+            var list = await http.GetFromJsonAsync<List<ClassOffering>>($"/api/ClassOffering/advisor/{selectedAdvisor.TeacherId}");
+            currentClasses = list ?? new();
+        }
+        catch { currentClasses = new(); }
+        finally { isLoadingClasses = false; }
+    }
+
+    private async Task LoadSubjectsForAdvisor()
+    {
+        if (selectedAdvisor == null) return;
+        int grade = selectedAdvisor.GradeLevel ?? 7;
+        string? strand = string.IsNullOrEmpty(selectedAdvisor.Strand) ? null : selectedAdvisor.Strand;
+        try
+        {
+            var http = HttpClientFactory.CreateClient("AttrakAPI");
+            var strandParam = strand != null ? $"&strand={Uri.EscapeDataString(strand)}" : "";
+            var list = await http.GetFromJsonAsync<List<TeacherSubjectAssignment>>(
+                $"/api/ClassOffering/subjects-for-grade?gradeLevel={grade}{strandParam}");
+            allSubjectsForGrade = list ?? new();
+            var existingIds = currentClasses.Select(c => c.SubjectId).ToHashSet();
+            filteredSubjects = allSubjectsForGrade.Where(s => !existingIds.Contains(s.SubjectId)).Take(10).ToList();
+        }
+        catch { allSubjectsForGrade = new(); filteredSubjects = new(); }
+    }
+
+    private async Task OnSubjectSearch(ChangeEventArgs e)
+    {
+        subjectSearchText = e.Value?.ToString() ?? "";
+        showDropdown = true;
+        var existingIds = currentClasses.Select(c => c.SubjectId).ToHashSet();
+
+        if (string.IsNullOrWhiteSpace(subjectSearchText))
+        {
+            filteredSubjects = allSubjectsForGrade.Where(s => !existingIds.Contains(s.SubjectId)).Take(10).ToList();
+        }
+        else
+        {
+            filteredSubjects = allSubjectsForGrade
+                .Where(s => !existingIds.Contains(s.SubjectId) &&
+                            s.SubjectName.Contains(subjectSearchText, StringComparison.OrdinalIgnoreCase))
+                .Take(10).ToList();
+
+            if (filteredSubjects.Count < 3 && selectedAdvisor != null)
+            {
+                try
+                {
+                    var http = HttpClientFactory.CreateClient("AttrakAPI");
+                    int grade = selectedAdvisor.GradeLevel ?? 7;
+                    string? strand = string.IsNullOrEmpty(selectedAdvisor.Strand) ? null : selectedAdvisor.Strand;
+                    var strandParam = strand != null ? $"&strand={Uri.EscapeDataString(strand)}" : "";
+                    var extra = await http.GetFromJsonAsync<List<TeacherSubjectAssignment>>(
+                        $"/api/ClassOffering/search-subjects?gradeLevel={grade}{strandParam}&keyword={Uri.EscapeDataString(subjectSearchText)}");
+                    if (extra != null)
+                        filteredSubjects.AddRange(extra.Where(s =>
+                            !existingIds.Contains(s.SubjectId) &&
+                            !filteredSubjects.Any(fs => fs.SubjectId == s.SubjectId)));
+                }
+                catch { }
+            }
+        }
+    }
+
+    private void SelectSubject(TeacherSubjectAssignment s)
+    {
+        selectedSubjectId = s.SubjectId;
+        subjectSearchText = s.SubjectName;
+        showDropdown = false;
+        modalError = "";
+    }
+
+    private void ClearSubject()
+    {
+        selectedSubjectId = null;
+        subjectSearchText = "";
+        showDropdown = false;
+        var existingIds = currentClasses.Select(c => c.SubjectId).ToHashSet();
+        filteredSubjects = allSubjectsForGrade.Where(s => !existingIds.Contains(s.SubjectId)).Take(10).ToList();
+    }
+
+    private void ToggleDay(string day)
+    {
+        if (selectedDays.Contains(day))
+        {
+            if (selectedDays.Count > 1) selectedDays.Remove(day);
+        }
+        else
+        {
+            selectedDays.Add(day);
+        }
+    }
+
+    private async Task AddSubject()
+    {
+        modalError = "";
+        modalSuccess = "";
+
+        if (selectedAdvisor?.TeacherId == null)
+        {
+            modalError = "Advisor profile not found.";
+            return;
+        }
+        if (string.IsNullOrEmpty(selectedSubjectId) && string.IsNullOrEmpty(subjectSearchText))
+        {
+            modalError = "Please select or enter a subject name.";
+            return;
+        }
+        if (!TimeSpan.TryParse(startTime, out var tStart) || !TimeSpan.TryParse(endTime, out var tEnd) || tEnd <= tStart)
+        {
+            modalError = "Invalid time. End must be after start.";
+            return;
+        }
+
+        // Check time conflict
+        var dayStr = string.Join(",", selectedDays.OrderBy(d => Array.IndexOf(AllDays, d)));
+        var overlap = currentClasses.FirstOrDefault(c =>
+            (c.DayOfWeek ?? "").Split(',').Any(d => selectedDays.Contains(d.Trim())) &&
+            tStart < c.ScheduleEnd && tEnd > c.ScheduleStart);
+        if (overlap != null)
+        {
+            modalError = $"Time conflict with '{overlap.SubjectName}' ({overlap.ScheduleStart:hh\\:mm}–{overlap.ScheduleEnd:hh\\:mm}).";
+            return;
+        }
+
+        isSaving = true;
+        try
+        {
+            var http = HttpClientFactory.CreateClient("AttrakAPI");
+            var request = new CreateClassOfferingRequest
+            {
+                AdvisorId = selectedAdvisor.TeacherId,
+                SubjectId = selectedSubjectId ?? "",
+                SubjectName = string.IsNullOrEmpty(selectedSubjectId) ? subjectSearchText : null,
+                GradeLevel = selectedAdvisor.GradeLevel ?? 7,
+                Section = selectedAdvisor.Section ?? "",
+                Strand = string.IsNullOrEmpty(selectedAdvisor.Strand) ? null : selectedAdvisor.Strand,
+                ScheduleStart = tStart,
+                ScheduleEnd = tEnd,
+                DayOfWeek = dayStr
+            };
+
+            var response = await http.PostAsJsonAsync("/api/ClassOffering", request);
+            if (response.IsSuccessStatusCode)
+            {
+                modalSuccess = "Subject added successfully!";
+                ClearSubject();
+                selectedDays = new HashSet<string>(AllDays);
+                startTime = "07:30";
+                endTime = "08:30";
+                await LoadCurrentClasses();
+                await LoadSubjectsForAdvisor();
+            }
+            else
+            {
+                var err = await response.Content.ReadAsStringAsync();
+                modalError = $"Failed to add: {err}";
+            }
+        }
+        catch (Exception ex)
+        {
+            modalError = ex.Message;
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private void ConfirmRemove(ClassOffering cls)
+    {
+        classToRemove = cls;
+        showRemoveConfirm = true;
+    }
+
+    private async Task ExecuteRemove()
+    {
+        if (classToRemove == null || selectedAdvisor?.TeacherId == null) return;
+        isRemoving = true;
+        try
+        {
+            var http = HttpClientFactory.CreateClient("AttrakAPI");
+            var response = await http.DeleteAsync(
+                $"/api/ClassOffering/{classToRemove.ClassOfferingId}?advisorId={Uri.EscapeDataString(selectedAdvisor.TeacherId)}");
+            if (response.IsSuccessStatusCode)
+            {
+                showRemoveConfirm = false;
+                classToRemove = null;
+                await LoadCurrentClasses();
+                await LoadSubjectsForAdvisor();
+            }
+            else
+            {
+                modalError = "Failed to remove subject.";
+                showRemoveConfirm = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            modalError = ex.Message;
+            showRemoveConfirm = false;
+        }
+        finally { isRemoving = false; }
+    }
+
+    private static string FormatDays(string dayOfWeek)
+    {
+        if (string.IsNullOrWhiteSpace(dayOfWeek)) return "";
+        var days = dayOfWeek.Split(',').Select(d => d.Trim());
+        return string.Join(", ", days.Select(d => d.Length >= 3 ? d.Substring(0, 3) : d));
+    }
+}
