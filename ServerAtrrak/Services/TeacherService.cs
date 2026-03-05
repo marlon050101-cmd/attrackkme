@@ -1003,6 +1003,60 @@ namespace ServerAtrrak.Services
                 Console.WriteLine($"Error in GetAllTeachersBySchoolAsync: {ex.Message}");
                 return new List<PendingTeacherInfo>();
             }
+        public async Task<bool> UpdateTeacherAsync(string userId, UpdateTeacherRequest request)
+        {
+            try
+            {
+                using var connection = await _dbConnection.GetConnectionAsync();
+                
+                // 1. Get TeacherId from user table
+                var userQuery = "SELECT TeacherId FROM user WHERE UserId = @userId";
+                string? teacherId = null;
+                using (var cmd = new MySqlCommand(userQuery, connection))
+                {
+                    cmd.Parameters.AddWithValue("@userId", userId);
+                    teacherId = (await cmd.ExecuteScalarAsync())?.ToString();
+                }
+
+                if (string.IsNullOrEmpty(teacherId)) return false;
+
+                // 2. Update user table (Email)
+                var updateUser = "UPDATE user SET Email = @email WHERE UserId = @userId";
+                using (var cmd = new MySqlCommand(updateUser, connection))
+                {
+                    cmd.Parameters.AddWithValue("@email", request.Email);
+                    cmd.Parameters.AddWithValue("@userId", userId);
+                    await cmd.ExecuteNonQueryAsync();
+                }
+
+                // 3. Update teacher table (FullName, GradeLevel, Section, Strand)
+                var updateTeacher = @"
+                    UPDATE teacher 
+                    SET FullName = @fullName, 
+                        Gradelvl = @gradeLevel, 
+                        Section = @section, 
+                        Strand = @strand,
+                        UpdatedAt = @updatedAt
+                    WHERE TeacherId = @teacherId";
+                
+                using (var cmd = new MySqlCommand(updateTeacher, connection))
+                {
+                    cmd.Parameters.AddWithValue("@fullName", request.FullName);
+                    cmd.Parameters.AddWithValue("@gradeLevel", request.GradeLevel ?? 0);
+                    cmd.Parameters.AddWithValue("@section", request.Section ?? "");
+                    cmd.Parameters.AddWithValue("@strand", request.Strand);
+                    cmd.Parameters.AddWithValue("@updatedAt", DateTime.Now);
+                    cmd.Parameters.AddWithValue("@teacherId", teacherId);
+                    
+                    var rows = await cmd.ExecuteNonQueryAsync();
+                    return rows > 0;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error in UpdateTeacherAsync: {ex.Message}");
+                return false;
+            }
         }
     }
 }

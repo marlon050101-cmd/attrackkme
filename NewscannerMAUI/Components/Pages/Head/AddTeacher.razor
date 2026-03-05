@@ -199,57 +199,135 @@
                 </button>
             </div>
             <div class="modal-body">
-                <div class="info-item">
-                    <label>Full Name</label>
-                    <div class="info-text">@selectedTeacher.FullName</div>
-                </div>
-                <div class="info-item">
-                    <label>Email Address</label>
-                    <div class="info-text">@selectedTeacher.Email</div>
-                </div>
-                <div class="info-item">
-                    <label>User Type</label>
-                    <div class="info-text">@(selectedTeacher.UserType == "SubjectTeacher" ? "Subject Teacher" : selectedTeacher.UserType)</div>
-                </div>
-
-                @if (selectedTeacher.UserType == "Advisor")
-                {
-                    <div class="info-item">
-                        <label>Grade Level</label>
-                        <div class="info-text">Grade @selectedTeacher.GradeLevel</div>
-                    </div>
-                    <div class="info-item">
-                        <label>Assigned Section</label>
-                        <div class="info-text">@selectedTeacher.Section</div>
-                    </div>
-                    @if (!string.IsNullOrEmpty(selectedTeacher.Strand))
+                <div class="info-grid">
+                    @if (!isEditMode)
                     {
                         <div class="info-item">
-                            <label>Strand</label>
-                            <div class="info-text">@selectedTeacher.Strand</div>
+                            <label>Full Name</label>
+                            <div class="info-text">@selectedTeacher.FullName</div>
                         </div>
+                        <div class="info-item">
+                            <label>Email Address</label>
+                            <div class="info-text">@selectedTeacher.Email</div>
+                        </div>
+                        <div class="info-item">
+                            <label>User Type</label>
+                            <div class="info-text">@(selectedTeacher.UserType == "SubjectTeacher" ? "Subject Teacher" : selectedTeacher.UserType)</div>
+                        </div>
+
+                        @if (selectedTeacher.UserType == "Advisor")
+                        {
+                            <div class="info-item">
+                                <label>Grade Level</label>
+                                <div class="info-text">Grade @selectedTeacher.GradeLevel</div>
+                            </div>
+                            <div class="info-item">
+                                <label>Assigned Section</label>
+                                <div class="info-text">@selectedTeacher.Section</div>
+                            </div>
+                            @if (!string.IsNullOrEmpty(selectedTeacher.Strand))
+                            {
+                                <div class="info-item">
+                                    <label>Strand</label>
+                                    <div class="info-text">@selectedTeacher.Strand</div>
+                                </div>
+                            }
+                        }
                     }
+                    else
+                    {
+                        <div class="edit-group full-width">
+                            <label>Full Name</label>
+                            <input type="text" @bind="editModel.FullName" class="edit-input" />
+                        </div>
+                        <div class="edit-group">
+                            <label>Email Address</label>
+                            <input type="email" @bind="editModel.Email" class="edit-input" />
+                        </div>
+                        
+                        @if (selectedTeacher.UserType == "Advisor")
+                        {
+                            <div class="edit-group">
+                                <label>Grade Level</label>
+                                <select @bind="editModel.GradeLevel" class="edit-input">
+                                    <option value="7">Grade 7</option>
+                                    <option value="8">Grade 8</option>
+                                    <option value="9">Grade 9</option>
+                                    <option value="10">Grade 10</option>
+                                    <option value="11">Grade 11</option>
+                                    <option value="12">Grade 12</option>
+                                </select>
+                            </div>
+                            <div class="edit-group">
+                                <label>Section</label>
+                                <input type="text" @bind="editModel.Section" class="edit-input" />
+                            </div>
+                            @if (editModel.GradeLevel >= 11)
+                            {
+                                <div class="edit-group">
+                                    <label>Strand</label>
+                                    <select @bind="editModel.Strand" class="edit-input">
+                                        <option value="Academic Track">Academic Track</option>
+                                        <option value="Technical-Professional (TechPro)">Technical-Professional (TechPro)</option>
+                                    </select>
+                                </div>
+                            }
+                        }
+                    }
+                </div>
+
+                @if (!isEditMode)
+                {
+                    <div class="credentials-section">
+                        <div class="cred-header">
+                            <i class="fas fa-key"></i>
+                            <span>Account Access</span>
+                            <button class="btn-share-icon" title="Share Credentials" @onclick="() => ShareTeacherCredentials(selectedTeacher.FullName, selectedTeacher.Username, selectedTeacher.Password)">
+                                <i class="fas fa-share-alt"></i>
+                            </button>
+                        </div>
+                        <div class="cred-item">
+                            <label>Username</label>
+                            <div class="cred-value">@selectedTeacher.Username</div>
+                        </div>
+                        <div class="cred-item">
+                            <label>Password</label>
+                            <div class="cred-value">@selectedTeacher.Password</div>
+                        </div>
+                    </div>
                 }
 
-                <div class="credentials-section">
-                    <div class="cred-header">
-                        <i class="fas fa-key"></i>
-                        <span>Account Access</span>
-                        <button class="btn-share-icon" title="Share Credentials" @onclick="() => ShareTeacherCredentials(selectedTeacher.FullName, selectedTeacher.Username, selectedTeacher.Password)">
-                            <i class="fas fa-share-alt"></i>
-                        </button>
+                @if (!string.IsNullOrEmpty(errorMessage))
+                {
+                    <div class="modal-error">
+                        <i class="fas fa-exclamation-circle"></i> @errorMessage
                     </div>
-                    <div class="cred-item">
-                        <label>Username</label>
-                        <div class="cred-value">@selectedTeacher.Username</div>
-                    </div>
-                    <div class="cred-item">
-                        <label>Password</label>
-                        <div class="cred-value">@selectedTeacher.Password</div>
-                    </div>
-                </div>
+                }
             </div>
-            <button class="btn-close" @onclick="() => showDetailsModal = false">Close</button>
+            
+            <div class="modal-footer">
+                @if (!isEditMode)
+                {
+                    <button class="btn-edit-action" @onclick="ToggleEdit">
+                        <i class="fas fa-edit"></i> Edit Information
+                    </button>
+                    <button class="btn-close-action" @onclick="() => showDetailsModal = false">Close</button>
+                }
+                else
+                {
+                    <button class="btn-save" @onclick="HandleUpdate" disabled="@isUpdating">
+                        @if (isUpdating)
+                    {
+                        <div class="spinner-sm"></div>
+                    }
+                    else
+                    {
+                        <i class="fas fa-save"></i> <span>Save Changes</span>
+                    }
+                    </button>
+                    <button class="btn-cancel" @onclick="ToggleEdit">Cancel</button>
+                }
+            </div>
         </div>
     </div>
 }
@@ -712,7 +790,7 @@
     .cred-item:last-child { margin-bottom: 0; }
     .cred-item label { display: block; font-size: 0.65rem; font-weight: 700; color: #64748b; margin-bottom: 0.15rem; }
 
-    .btn-close {
+    .btn-close-action {
         width: 100%;
         padding: 0.9rem;
         background: #f1f5f9;
@@ -724,7 +802,118 @@
         transition: background 0.2s;
     }
 
-    .btn-close:hover { background: #e2e8f0; }
+    .btn-close-action:hover { background: #e2e8f0; }
+
+    .info-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1.5rem;
+        margin-bottom: 2rem;
+    }
+
+    .info-grid .info-item:first-child {
+        grid-column: span 2;
+    }
+
+    .edit-group {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .edit-group.full-width {
+        grid-column: span 2;
+    }
+
+    .edit-group label {
+        font-size: 0.75rem;
+        font-weight: 800;
+        color: #94a3b8;
+        text-transform: uppercase;
+    }
+
+    .edit-input {
+        width: 100%;
+        padding: 0.8rem 1rem;
+        border: 2px solid #f1f5f9;
+        border-radius: 12px;
+        font-size: 0.95rem;
+        background: #f8fafc;
+        color: #1e293b;
+        box-sizing: border-box;
+    }
+
+    .edit-input:focus {
+        outline: none;
+        border-color: #6f42c1;
+        background: white;
+    }
+
+    .modal-footer {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        margin-top: 1rem;
+    }
+
+    .btn-edit-action {
+        width: 100%;
+        padding: 1rem;
+        background: #6f42c1;
+        color: white;
+        border: none;
+        border-radius: 14px;
+        font-weight: 800;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        transition: all 0.2s;
+    }
+
+    .btn-edit-action:hover {
+        background: #5a32a3;
+        transform: translateY(-2px);
+    }
+
+    .btn-save {
+        width: 100%;
+        padding: 1rem;
+        background: #10b981;
+        color: white;
+        border: none;
+        border-radius: 14px;
+        font-weight: 800;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+    }
+
+    .btn-cancel {
+        width: 100%;
+        padding: 0.9rem;
+        background: #f1f5f9;
+        color: #64748b;
+        border: none;
+        border-radius: 14px;
+        font-weight: 700;
+        cursor: pointer;
+    }
+
+    .modal-error {
+        background: #fff5f5;
+        color: #e53e3e;
+        padding: 0.75rem;
+        border-radius: 12px;
+        font-size: 0.85rem;
+        margin-bottom: 1rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
 
     .btn-share-icon {
         background: none;
@@ -819,14 +1008,73 @@
 
     private bool showSuccessModal = false;
     private bool showDetailsModal = false;
+    private bool isEditMode = false;
+    private bool isUpdating = false;
     private PendingTeacherInfo? selectedTeacher;
+    private UpdateTeacherRequest editModel = new();
     private string lastRegisteredName = "";
     private UserInfo? headUser;
+
+    private void ToggleEdit()
+    {
+        if (selectedTeacher == null) return;
+        
+        isEditMode = !isEditMode;
+        if (isEditMode)
+        {
+            editModel = new UpdateTeacherRequest
+            {
+                FullName = selectedTeacher.FullName,
+                Email = selectedTeacher.Email,
+                GradeLevel = selectedTeacher.GradeLevel,
+                Section = selectedTeacher.Section,
+                Strand = selectedTeacher.Strand
+            };
+        }
+    }
+
+    private async Task HandleUpdate()
+    {
+        if (selectedTeacher == null) return;
+
+        try
+        {
+            isUpdating = true;
+            var http = HttpClientFactory.CreateClient("AttrakAPI");
+            var response = await http.PutAsJsonAsync($"/api/teacher/update-info/{selectedTeacher.UserId}", editModel);
+
+            if (response.IsSuccessStatusCode)
+            {
+                // Update local list
+                selectedTeacher.FullName = editModel.FullName;
+                selectedTeacher.Email = editModel.Email;
+                selectedTeacher.GradeLevel = editModel.GradeLevel;
+                selectedTeacher.Section = editModel.Section;
+                selectedTeacher.Strand = editModel.Strand;
+                
+                isEditMode = false;
+            }
+            else
+            {
+                errorMessage = "Failed to update teacher information.";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = "Update error: " + ex.Message;
+        }
+        finally
+        {
+            isUpdating = false;
+        }
+    }
 
     private void ShowTeacherDetails(PendingTeacherInfo teacher)
     {
         selectedTeacher = teacher;
         showDetailsModal = true;
+        isEditMode = false;
+        errorMessage = null;
     }
 
     private async Task ShareTeacherCredentials(string name, string username, string password)
