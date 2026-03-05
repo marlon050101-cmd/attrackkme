@@ -2,7 +2,7 @@ using System.ComponentModel.DataAnnotations;
 
 namespace AttrackSharedClass.Models
 {
-    /// <summary>Class slot created by advisor: section + subject + schedule. Subject teacher picks and assigns self (TeacherId).</summary>
+    /// <summary>Class slot created by adviser: section + subject + schedule. Subject teacher picks and assigns self (TeacherId).</summary>
     public class ClassOffering
     {
         public string ClassOfferingId { get; set; } = "";

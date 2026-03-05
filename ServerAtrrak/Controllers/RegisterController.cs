@@ -354,21 +354,21 @@ namespace ServerAtrrak.Controllers
             }
         }
 
-        [HttpGet("advisors/search")]
-        public async Task<ActionResult<List<TeacherInfo>>> SearchAdvisors([FromQuery] string schoolId, [FromQuery] string name)
+        [HttpGet("advisers/search")]
+        public async Task<ActionResult<List<TeacherInfo>>> SearchAdvisers([FromQuery] string schoolId, [FromQuery] string name)
         {
             try
             {
                 using var connection = new MySqlConnection(_dbConnection.GetConnection());
                 await connection.OpenAsync();
 
-                // UserType 5 is Advisor
+                // UserType 5 is Adviser
                 var query = @"
                     SELECT t.TeacherId, t.FullName, t.Email, s.SchoolName, s.SchoolId, t.Gradelvl, t.Section, t.Strand
                     FROM teacher t
                     INNER JOIN school s ON t.SchoolId = s.SchoolId
                     INNER JOIN user u ON t.TeacherId = u.TeacherId
-                    WHERE t.SchoolId = @SchoolId AND t.FullName LIKE @Name AND u.UserType = 'Advisor'
+                    WHERE t.SchoolId = @SchoolId AND t.FullName LIKE @Name AND (u.UserType = 'Adviser' OR u.UserType = 'Advisor')
                     LIMIT 20";
 
                 using var command = new MySqlCommand(query, connection);
@@ -395,7 +395,7 @@ namespace ServerAtrrak.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error searching advisors");
+                _logger.LogError(ex, "Error searching advisers");
                 return StatusCode(500, new List<TeacherInfo>());
             }
         }

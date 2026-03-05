@@ -32,7 +32,7 @@ namespace AttrackSharedClass.Models
 
     public class SubjectAttendanceBatchRequest
     {
-        /// <summary>Use when class is from class_offering (advisor-created).</summary>
+        /// <summary>Use when class is from class_offering (adviser-created).</summary>
         public string? ClassOfferingId { get; set; }
         /// <summary>Use when class is from teachersubject (legacy).</summary>
         public string? TeacherSubjectId { get; set; }
@@ -55,8 +55,8 @@ namespace AttrackSharedClass.Models
         public string Message { get; set; } = "";
     }
 
-    /// <summary>Advisor (GuidanceCounselor) for dropdowns.</summary>
-    public class AdvisorInfo
+    /// <summary>Adviser (GuidanceCounselor) for dropdowns.</summary>
+    public class AdviserInfo
     {
         public string TeacherId { get; set; } = "";
         public string FullName { get; set; } = "";

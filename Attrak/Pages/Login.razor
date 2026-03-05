@@ -112,7 +112,7 @@
                                             <label for="reg-usertype" class="form-label">User Type</label>
                                             <InputSelect id="reg-usertype" class="form-select" @bind-Value="registerRequest.UserType" @bind-Value:after="OnUserTypeChanged">
                                                 <option value="2">Subject Teacher</option>
-                                                <option value="5">Advisor</option>
+                                                <option value="5">Adviser</option>
                                                 <option value="4">Guidance Counselor</option>
                                             </InputSelect>
                                             <ValidationMessage For="@(() => registerRequest.UserType)" class="text-danger" />
@@ -243,13 +243,13 @@
                                             </div>
                                         </div>
                                     }
-                                    else if (registerRequest.UserType == UserType.Advisor)
+                                    else if (registerRequest.UserType == UserType.Adviser)
                                     {
                                         <div class="row">
                                             <div class="col-12 mb-3">
                                                 <div class="alert alert-info">
                                                     <i class="fas fa-info-circle me-2"></i>
-                                                    <strong>Advisor Registration:</strong> You will be registered as an Advisor. You can create section classes (subject + schedule) that Subject Teachers will pick to teach.
+                                                    <strong>Adviser Registration:</strong> You will be registered as an Adviser. You can create section classes (subject + schedule) that Subject Teachers will pick to teach.
                                                 </div>
                                             </div>
                                         </div>
@@ -291,7 +291,7 @@
                                     }
                                     else
                                     {
-                                        <span>Register as @(registerRequest.UserType == UserType.Advisor ? "Advisor" : registerRequest.UserType == UserType.GuidanceCounselor ? "Guidance Counselor" : "Subject Teacher")</span>
+                                        <span>Register as @(registerRequest.UserType == UserType.Adviser ? "Adviser" : registerRequest.UserType == UserType.GuidanceCounselor ? "Guidance Counselor" : "Subject Teacher")</span>
                                     }
                                 </button>
                             </div>
@@ -336,9 +336,9 @@
             {
                 Navigation.NavigateTo("/student-portal");
             }
-            else if (currentUser.UserType == UserType.Advisor)
+            else if (currentUser.UserType == UserType.Adviser)
             {
-                Navigation.NavigateTo("/advisor-section-classes");
+                Navigation.NavigateTo("/adviser-section-classes");
             }
             else if (currentUser.UserType == UserType.SubjectTeacher)
             {
@@ -404,7 +404,7 @@
     private void OnUserTypeChanged()
     {
         if (registerRequest.UserType == UserType.GuidanceCounselor ||
-            registerRequest.UserType == UserType.Advisor)
+            registerRequest.UserType == UserType.Adviser)
         {
             registerRequest.GradeLevel = null;
             registerRequest.Section = null;
@@ -444,9 +444,9 @@
                     await AuthService.LogoutAsync();
                     errorMessage = "Student accounts must log in through the Student Portal.";
                 }
-                else if (response.User?.UserType == UserType.Advisor)
+                else if (response.User?.UserType == UserType.Adviser)
                 {
-                    Navigation.NavigateTo("/advisor-section-classes");
+                    Navigation.NavigateTo("/adviser-section-classes");
                 }
                 else if (response.User?.UserType == UserType.SubjectTeacher)
                 {
@@ -501,7 +501,7 @@
             var endpoint = registerRequest.UserType switch
             {
                 UserType.GuidanceCounselor => "api/register/guidance",
-                UserType.Advisor => "api/register/advisor",
+                UserType.Adviser => "api/register/adviser",
                 _ => "api/register/teacher"
             };
             var response = await Http.PostAsJsonAsync($"{ApiConfig.BaseUrl}{endpoint}", registerRequest);

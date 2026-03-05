@@ -14,7 +14,7 @@
                 <i class="fas fa-hand-pointer me-2"></i>
                 Pick classes to teach
             </h3>
-            <p class="text-muted mb-0">Advisors set section, subject, and class time. You only pick which class you will teach.</p>
+            <p class="text-muted mb-0">Advisers set section, subject, and class time. You only pick which class you will teach.</p>
         </div>
         <div class="card-body">
             @if (!string.IsNullOrEmpty(errorMessage))
@@ -36,7 +36,7 @@
                                 <th>Subject</th>
                                 <th>Grade / Section / Strand</th>
                                 <th>Time</th>
-                                <th>Advisor</th>
+                                <th>Adviser</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -46,7 +46,7 @@
                                     <td>@c.SubjectName</td>
                                     <td>G@c.GradeLevel @c.Section @(string.IsNullOrEmpty(c.Strand) ? "" : c.Strand)</td>
                                     <td>@c.ScheduleStart.ToString("hh\\:mm") - @c.ScheduleEnd.ToString("hh\\:mm")</td>
-                                    <td>@(c.AdvisorName ?? "-")</td>
+                                    <td>@(c.AdviserName ?? "-")</td>
                                 </tr>
                             }
                         </tbody>
@@ -95,7 +95,7 @@
                                 <th>Subject</th>
                                 <th>Grade/Section/Strand</th>
                                 <th>Time</th>
-                                <th>Advisor</th>
+                                <th>Adviser</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -115,7 +115,7 @@
                                     <td>
                                         <div class="d-flex align-items-center">
                                             <i class="fas fa-chalkboard-teacher me-2 text-secondary"></i>
-                                            <span>@(c.AdvisorName ?? "-")</span>
+                                            <span>@(c.AdviserName ?? "-")</span>
                                         </div>
                                     </td>
                                 </tr>
@@ -163,7 +163,7 @@
                                 <th>Subject</th>
                                 <th>Grade/Section/Strand</th>
                                 <th>Time</th>
-                                <th>Advisor</th>
+                                <th>Adviser</th>
                                 <th class="text-end">Action</th>
                             </tr>
                         </thead>
@@ -184,7 +184,7 @@
                                     <td>
                                         <div class="d-flex align-items-center">
                                             <i class="fas fa-user-tie me-2 text-secondary"></i>
-                                            <span>@(c.AdvisorName ?? "-")</span>
+                                            <span>@(c.AdviserName ?? "-")</span>
                                         </div>
                                     </td>
                                     <td class="text-end">

@@ -17,9 +17,9 @@ namespace AttrackSharedClass.Models
         public int GradeLevel { get; set; }
         public string? Strand { get; set; }
         public string? Section { get; set; }
-        /// <summary>TeacherId of the advisor (GuidanceCounselor) for this class.</summary>
-        public string? AdvisorId { get; set; }
-        public string? AdvisorName { get; set; }
+        /// <summary>TeacherId of the adviser (GuidanceCounselor) for this class.</summary>
+        public string? AdviserId { get; set; }
+        public string? AdviserName { get; set; }
         public TimeSpan ScheduleStart { get; set; }
         public TimeSpan ScheduleEnd { get; set; }
         public DateTime CreatedAt { get; set; }
@@ -41,8 +41,8 @@ namespace AttrackSharedClass.Models
         
         [Required]
         public string Section { get; set; } = string.Empty;
-        /// <summary>Optional. TeacherId of the advisor (GuidanceCounselor) for this class.</summary>
-        public string? AdvisorId { get; set; }
+        /// <summary>Optional. TeacherId of the adviser (GuidanceCounselor) for this class.</summary>
+        public string? AdviserId { get; set; }
         public int GradeLevel { get; set; }
         public string? Strand { get; set; }
     }
@@ -127,7 +127,7 @@ namespace AttrackSharedClass.Models
         public string SchoolName { get; set; } = string.Empty;
         public string? QRCodeData { get; set; }
         public string? QRImage { get; set; }
-        public string? AdvisorId { get; set; }
+        public string? AdviserId { get; set; }
         public string Status { get; set; } = "Good";
         public string EnrollmentStatus { get; set; } = "Pending";
         public bool IsValid { get; set; }

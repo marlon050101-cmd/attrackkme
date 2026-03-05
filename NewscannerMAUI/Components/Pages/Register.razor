@@ -222,6 +222,7 @@
                 <option value="SubjectTeacher">Subject Teacher</option>
                 <option value="Head">Head</option>
                 <option value="Student">Student</option>
+                <option value="Adviser">Adviser</option>
                 <option value="GuidanceCounselor">Guidance</option>
             </select>
         </div>
@@ -331,8 +332,8 @@
                 </div>
             }
 
-            <!-- Grade/Section/Strand for Advisor, Student -->
-            @if (selectedUserType == "Advisor" || selectedUserType == "Student")
+            <!-- Grade/Section/Strand for Adviser, Student -->
+            @if (selectedUserType == "Adviser" || selectedUserType == "Student")
             {
                 <div class="row g-2 mb-2 mt-1">
                     <div class="col-4">
@@ -389,31 +390,31 @@
                 @if (selectedUserType == "Student" && !string.IsNullOrEmpty(selectedSchoolId))
                 {
                     <div class="mb-2 mt-2">
-                        <label class="form-label">Search My Advisor (Teacher)</label>
-                        @if (string.IsNullOrEmpty(selectedAdvisorName))
+                        <label class="form-label">Search My Adviser (Teacher)</label>
+                        @if (string.IsNullOrEmpty(selectedAdviserName))
                         {
                             <div class="search-wrapper">
                                 <div class="d-flex gap-2 align-items-center">
                                     <span class="position-absolute ms-3 text-muted" style="z-index: 5;">
                                         <i class="fas fa-search"></i>
                                     </span>
-                                    <input class="form-control ps-5 @(IsInvalid("Advisor") ? "is-invalid" : "")"
+                                    <input class="form-control ps-5 @(IsInvalid("Adviser") ? "is-invalid" : "")"
                                            type="text"
-                                           placeholder="Type advisor's name..."
-                                           value="@advisorSearchText"
-                                           @oninput="OnAdvisorSearchInput" />
-                                    @if (isLoadingAdvisors)
+                                           placeholder="Type adviser's name..."
+                                           value="@adviserSearchText"
+                                           @oninput="OnAdviserSearchInput" />
+                                    @if (isLoadingAdvisers)
                                     {
                                         <span class="spinner-border spinner-border-sm spinner-sm text-primary position-absolute end-0 me-3" role="status"></span>
                                     }
                                 </div>
 
-                                @if (advisorSearchResults.Count > 0)
+                                @if (adviserSearchResults.Count > 0)
                                 {
                                     <div class="search-result-list">
-                                        @foreach (var adv in advisorSearchResults)
+                                        @foreach (var adv in adviserSearchResults)
                                         {
-                                            <div class="search-result-item" @onclick="() => SelectAdvisor(adv)">
+                                            <div class="search-result-item" @onclick="() => SelectAdviser(adv)">
                                                 <div class="fw-bold">@adv.FullName</div>
                                                 <div class="search-subtext">@adv.Section • Grade @adv.GradeLevel</div>
                                             </div>
@@ -427,9 +428,9 @@
                             <div class="school-selected-card border-primary">
                                 <div class="d-flex justify-content-between align-items-center">
                                     <div class="fw-bold text-primary">
-                                        <i class="fas fa-user-tie me-2"></i>@selectedAdvisorName
+                                        <i class="fas fa-user-tie me-2"></i>@selectedAdviserName
                                     </div>
-                                    <button type="button" class="btn btn-sm btn-outline-secondary border-0 p-0" @onclick="ClearAdvisor">
+                                    <button type="button" class="btn btn-sm btn-outline-secondary border-0 p-0" @onclick="ClearAdviser">
                                         <i class="fas fa-sync-alt me-1"></i>Change
                                     </button>
                                 </div>
@@ -529,13 +530,13 @@
     private string gender = string.Empty;
     private string parentsNumber = string.Empty;
 
-    // --- Advisor Search ---
-    private List<TeacherInfo> advisorSearchResults = new();
-    private string advisorSearchText = string.Empty;
-    private string selectedAdvisorId = string.Empty;
-    private string selectedAdvisorName = string.Empty;
-    private bool isLoadingAdvisors = false;
-    private System.Threading.CancellationTokenSource? advisorSearchCts;
+    // --- Adviser Search ---
+    private List<TeacherInfo> adviserSearchResults = new();
+    private string adviserSearchText = string.Empty;
+    private string selectedAdviserId = string.Empty;
+    private string selectedAdviserName = string.Empty;
+    private bool isLoadingAdvisers = false;
+    private System.Threading.CancellationTokenSource? adviserSearchCts;
 
     // --- UI State ---
     private bool isLoading = false;
@@ -720,30 +721,30 @@
         sectionSearchResults.Clear();
     }
 
-    private async Task OnAdvisorSearchInput(ChangeEventArgs e)
+    private async Task OnAdviserSearchInput(ChangeEventArgs e)
     {
-        advisorSearchText = e.Value?.ToString() ?? string.Empty;
-        advisorSearchResults.Clear();
+        adviserSearchText = e.Value?.ToString() ?? string.Empty;
+        adviserSearchResults.Clear();
 
-        if (advisorSearchText.Length < 2 || string.IsNullOrEmpty(selectedSchoolId)) return;
+        if (adviserSearchText.Length < 2 || string.IsNullOrEmpty(selectedSchoolId)) return;
 
-        advisorSearchCts?.Cancel();
-        advisorSearchCts = new System.Threading.CancellationTokenSource();
-        var token = advisorSearchCts.Token;
+        adviserSearchCts?.Cancel();
+        adviserSearchCts = new System.Threading.CancellationTokenSource();
+        var token = adviserSearchCts.Token;
 
         await Task.Delay(300, token).ContinueWith(_ => { }, TaskContinuationOptions.None);
         if (token.IsCancellationRequested) return;
 
-        isLoadingAdvisors = true;
+        isLoadingAdvisers = true;
         StateHasChanged();
 
         try
         {
             var http = HttpClientFactory.CreateClient("AttrakAPI");
-            var result = await http.GetFromJsonAsync<List<TeacherInfo>>($"api/register/advisors/search?schoolId={selectedSchoolId}&name={Uri.EscapeDataString(advisorSearchText)}", token);
+            var result = await http.GetFromJsonAsync<List<TeacherInfo>>($"api/register/advisers/search?schoolId={selectedSchoolId}&name={Uri.EscapeDataString(adviserSearchText)}", token);
             if (!token.IsCancellationRequested && result != null)
             {
-                advisorSearchResults = result;
+                adviserSearchResults = result;
             }
         }
         catch (Exception) { }
@@ -751,27 +752,27 @@
         {
             if (!token.IsCancellationRequested)
             {
-                isLoadingAdvisors = false;
+                isLoadingAdvisers = false;
                 StateHasChanged();
             }
         }
     }
 
-    private void SelectAdvisor(TeacherInfo advisor)
+    private void SelectAdviser(TeacherInfo adviser)
     {
-        selectedAdvisorId = advisor.TeacherId;
-        selectedAdvisorName = advisor.FullName;
-        advisorSearchResults.Clear();
-        advisorSearchText = string.Empty;
+        selectedAdviserId = adviser.TeacherId;
+        selectedAdviserName = adviser.FullName;
+        adviserSearchResults.Clear();
+        adviserSearchText = string.Empty;
         StateHasChanged();
     }
 
-    private void ClearAdvisor()
+    private void ClearAdviser()
     {
-        selectedAdvisorId = string.Empty;
-        selectedAdvisorName = string.Empty;
-        advisorSearchResults.Clear();
-        advisorSearchText = string.Empty;
+        selectedAdviserId = string.Empty;
+        selectedAdviserName = string.Empty;
+        adviserSearchResults.Clear();
+        adviserSearchText = string.Empty;
     }
 
     private void OnParentsNumberInput(ChangeEventArgs e)
@@ -854,15 +855,15 @@
                 errorMessage = "Please complete additional information.";
             }
 
-            if (string.IsNullOrEmpty(selectedAdvisorId))
+            if (string.IsNullOrEmpty(selectedAdviserId))
             {
-                errorMessage = "Please select your advisor.";
-                invalidFields.Add("Advisor");
+                errorMessage = "Please select your adviser.";
+                invalidFields.Add("Adviser");
             }
         }
 
         // Section/Grade Validation
-        if (selectedUserType == "Advisor" || selectedUserType == "Student")
+        if (selectedUserType == "Adviser" || selectedUserType == "Student")
         {
             if (gradeLevel <= 0) { invalidFields.Add("GradeLevel"); }
             if (string.IsNullOrWhiteSpace(userSection)) { invalidFields.Add("Section"); }
@@ -919,16 +920,16 @@
                     SchoolId = selectedSchoolId,
                     ParentsNumber = parentsNumber.Trim(),
                     Gender = gender,
-                    AdvisorId = selectedAdvisorId
+                    AdviserId = selectedAdviserId
                 }, cts.Token);
             }
             else if (selectedUserType == "GuidanceCounselor" || selectedUserType == "Admin")
             {
                 response = await http.PostAsJsonAsync("api/register/guidance", BuildPayload(selectedUserType, finalStrand), cts.Token);
             }
-            else if (selectedUserType == "Advisor")
+            else if (selectedUserType == "Adviser")
             {
-                response = await http.PostAsJsonAsync("api/register/advisor", BuildPayload(selectedUserType, finalStrand), cts.Token);
+                response = await http.PostAsJsonAsync("api/register/adviser", BuildPayload(selectedUserType, finalStrand), cts.Token);
             }
             else // SubjectTeacher
             {
@@ -976,7 +977,7 @@
         GradeLevel = gradeLevel > 0 ? (int?)gradeLevel : null,
         Section = string.IsNullOrWhiteSpace(userSection) ? null : userSection.Trim().ToUpper(),
         Strand = finalStrand,
-        UserType = t switch { "Admin"=>1, "SubjectTeacher"=>2, "Student"=>3, "GuidanceCounselor"=>4, "Advisor"=>5, "Head"=>6, _ =>2 }
+        UserType = t switch { "Admin"=>1, "SubjectTeacher"=>2, "Student"=>3, "GuidanceCounselor"=>4, "Adviser"=>5, "Head"=>6, _ =>2 }
     };
 
     protected override void OnInitialized()

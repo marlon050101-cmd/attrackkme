@@ -1,5 +1,5 @@
-@page "/advisor-dashboard"
-@layout AdvisorLayout
+@page "/adviser-dashboard"
+@layout AdviserLayout
 @using NewscannerMAUI.Services
 @using AttrackSharedClass.Models
 @inject AuthService AuthService
@@ -7,8 +7,8 @@
 
 <div class="dashboard-container">
     <div class="welcome-banner">
-        <h2 class="mb-1">Hello, @advisorName!</h2>
-        <p class="text-muted small">Welcome to Sardo-TrackCare Advisor Portal</p>
+        <h2 class="mb-1">Hello, @adviserName!</h2>
+        <p class="text-muted small">Welcome to Sardo-TrackCare Adviser Portal</p>
     </div>
 
     <!-- Quick Stats -->
@@ -57,19 +57,19 @@
 </div>
 
 @code {
-    private string advisorName = "Advisor";
+    private string adviserName = "Adviser";
 
     protected override async Task OnInitializedAsync()
     {
         var user = await AuthService.GetCurrentUserAsync();
         if (user != null)
         {
-            advisorName = user.Username;
+            adviserName = user.Username;
         }
     }
 
-    private void GoToClasses() => Navigation.NavigateTo("/advisor/section-classes");
-    private void GoToMonitoring() => Navigation.NavigateTo("/advisor/attendance-monitoring");
+    private void GoToClasses() => Navigation.NavigateTo("/adviser/section-classes");
+    private void GoToMonitoring() => Navigation.NavigateTo("/adviser/attendance-monitoring");
 }
 
 <style>

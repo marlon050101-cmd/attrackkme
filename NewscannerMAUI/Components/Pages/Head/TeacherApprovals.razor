@@ -108,10 +108,10 @@
                     </div>
                 </button>
 
-                <button class="role-option-card" @onclick="() => ApproveTeacher(teacherToAssign, UserType.Advisor)">
-                    <div class="role-icon advisor"><i class="fas fa-user-tie"></i></div>
+                <button class="role-option-card" @onclick="() => ApproveTeacher(teacherToAssign, UserType.Adviser)">
+                    <div class="role-icon adviser"><i class="fas fa-user-tie"></i></div>
                     <div class="role-info">
-                        <strong>Class Advisor</strong>
+                        <strong>Class Adviser</strong>
                         <span>Manage sections and student attendance</span>
                     </div>
                 </button>
@@ -323,7 +323,7 @@
     }
 
     .role-icon.teacher { background: #e0e7ff; color: #4338ca; }
-    .role-icon.advisor { background: #fef3c7; color: #d97706; }
+    .role-icon.adviser { background: #fef3c7; color: #d97706; }
 
     .role-info {
         display: flex;

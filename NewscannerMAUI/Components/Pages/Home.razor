@@ -359,9 +359,9 @@
                             {
                                 Navigation.NavigateTo("/teacher-dashboard");
                             }
-                            else if (result.User.UserType == UserType.Advisor || result.User.UserType == UserType.GuidanceCounselor)
+                            else if (result.User.UserType == UserType.Adviser || result.User.UserType == UserType.GuidanceCounselor)
                             {
-                                Navigation.NavigateTo("/advisor-dashboard");
+                                Navigation.NavigateTo("/adviser-dashboard");
                             }
                             else if (result.User.UserType == UserType.Student)
                             {

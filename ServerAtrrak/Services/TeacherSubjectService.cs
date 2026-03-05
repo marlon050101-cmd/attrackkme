@@ -33,14 +33,14 @@ namespace ServerAtrrak.Services
                         s.GradeLevel,
                         s.Strand,
                         ts.Section,
-                        ts.AdvisorId,
-                        adv.FullName as AdvisorName,
+                        ts.AdviserId,
+                        adv.FullName as AdviserName,
                         TIME_FORMAT(ts.ScheduleStart, '%H:%i:%s') as ScheduleStart,
                         TIME_FORMAT(ts.ScheduleEnd, '%H:%i:%s') as ScheduleEnd,
                         s.SubjectCode
                     FROM teachersubject ts
                     INNER JOIN subject s ON ts.SubjectId = s.SubjectId
-                    LEFT JOIN teacher adv ON ts.AdvisorId = adv.TeacherId
+                    LEFT JOIN teacher adv ON ts.AdviserId = adv.TeacherId
                     WHERE ts.TeacherId = @TeacherId
                     ORDER BY s.GradeLevel, s.Strand, COALESCE(ts.ScheduleStart, '00:00:00')";
 
@@ -61,8 +61,8 @@ namespace ServerAtrrak.Services
                         GradeLevel = reader.GetInt32(4),
                         Strand = reader.IsDBNull(5) ? null : reader.GetString(5),
                         Section = reader.IsDBNull(6) ? null : reader.GetString(6),
-                        AdvisorId = reader.IsDBNull(7) ? null : reader.GetString(7),
-                        AdvisorName = reader.IsDBNull(8) ? null : reader.GetString(8),
+                        AdviserId = reader.IsDBNull(7) ? null : reader.GetString(7),
+                        AdviserName = reader.IsDBNull(8) ? null : reader.GetString(8),
                         ScheduleStart = reader.IsDBNull(scheduleStartIdx) ? TimeSpan.Zero : TimeSpan.Parse(reader.GetString(scheduleStartIdx)),
                         ScheduleEnd = reader.IsDBNull(scheduleEndIdx) ? TimeSpan.Zero : TimeSpan.Parse(reader.GetString(scheduleEndIdx)),
                         SubjectCode = reader.IsDBNull(11) ? null : reader.GetString(11),
@@ -193,36 +193,36 @@ namespace ServerAtrrak.Services
                 }
 
                 var teacherSubjectId = Guid.NewGuid().ToString();
-                // Insert with Section, AdvisorId, and Schedule (schedule stored in teachersubject, not subject)
+                // Insert with Section, AdviserId, and Schedule (schedule stored in teachersubject, not subject)
                 try
                 {
                     var insertQuery = @"
-                        INSERT INTO teachersubject (TeacherSubjectId, TeacherId, SubjectId, Section, AdvisorId, ScheduleStart, ScheduleEnd)
-                        VALUES (@TeacherSubjectId, @TeacherId, @SubjectId, @Section, @AdvisorId, @ScheduleStart, @ScheduleEnd)";
+                        INSERT INTO teachersubject (TeacherSubjectId, TeacherId, SubjectId, Section, AdviserId, ScheduleStart, ScheduleEnd)
+                        VALUES (@TeacherSubjectId, @TeacherId, @SubjectId, @Section, @AdviserId, @ScheduleStart, @ScheduleEnd)";
 
                     using var insertCommand = new MySqlCommand(insertQuery, connection);
                     insertCommand.Parameters.AddWithValue("@TeacherSubjectId", teacherSubjectId);
                     insertCommand.Parameters.AddWithValue("@TeacherId", request.TeacherId);
                     insertCommand.Parameters.AddWithValue("@SubjectId", request.SubjectId);
                     insertCommand.Parameters.AddWithValue("@Section", request.Section ?? "");
-                    insertCommand.Parameters.AddWithValue("@AdvisorId", string.IsNullOrEmpty(request.AdvisorId) ? (object)DBNull.Value : request.AdvisorId);
+                    insertCommand.Parameters.AddWithValue("@AdviserId", string.IsNullOrEmpty(request.AdviserId) ? (object)DBNull.Value : request.AdviserId);
                     insertCommand.Parameters.AddWithValue("@ScheduleStart", request.ScheduleStart != TimeSpan.Zero && request.ScheduleEnd != TimeSpan.Zero ? request.ScheduleStart : (object)DBNull.Value);
                     insertCommand.Parameters.AddWithValue("@ScheduleEnd", request.ScheduleStart != TimeSpan.Zero && request.ScheduleEnd != TimeSpan.Zero ? request.ScheduleEnd : (object)DBNull.Value);
 
                     await insertCommand.ExecuteNonQueryAsync();
-                    _logger.LogInformation("Successfully assigned subject with section: {Section}, advisor: {AdvisorId}", request.Section, request.AdvisorId);
+                    _logger.LogInformation("Successfully assigned subject with section: {Section}, adviser: {AdviserId}", request.Section, request.AdviserId);
                 }
                 catch (MySqlException ex) when (ex.Number == 1054) // Column doesn't exist
                 {
-                    var insertQuery = @"
-                        INSERT INTO teachersubject (TeacherSubjectId, TeacherId, SubjectId, Section, AdvisorId)
-                        VALUES (@TeacherSubjectId, @TeacherId, @SubjectId, @Section, @AdvisorId)";
-                    using var insertCommand = new MySqlCommand(insertQuery, connection);
+                    var insertQueryFallback = @"
+                        INSERT INTO teachersubject (TeacherSubjectId, TeacherId, SubjectId, Section, AdviserId)
+                        VALUES (@TeacherSubjectId, @TeacherId, @SubjectId, @Section, @AdviserId)";
+                    using var insertCommand = new MySqlCommand(insertQueryFallback, connection);
                     insertCommand.Parameters.AddWithValue("@TeacherSubjectId", teacherSubjectId);
                     insertCommand.Parameters.AddWithValue("@TeacherId", request.TeacherId);
                     insertCommand.Parameters.AddWithValue("@SubjectId", request.SubjectId);
                     insertCommand.Parameters.AddWithValue("@Section", request.Section ?? "");
-                    insertCommand.Parameters.AddWithValue("@AdvisorId", string.IsNullOrEmpty(request.AdvisorId) ? (object)DBNull.Value : request.AdvisorId);
+                    insertCommand.Parameters.AddWithValue("@AdviserId", string.IsNullOrEmpty(request.AdviserId) ? (object)DBNull.Value : request.AdviserId);
                     await insertCommand.ExecuteNonQueryAsync();
                     if (request.ScheduleStart != TimeSpan.Zero && request.ScheduleEnd != TimeSpan.Zero)
                     {

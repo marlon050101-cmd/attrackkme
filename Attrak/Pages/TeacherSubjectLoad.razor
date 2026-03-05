@@ -516,15 +516,15 @@
                 </div>
                 <div class="modal-body">
                     <div class="mb-3">
-                        <label class="form-label">Advisor (optional)</label>
-                        <InputSelect class="form-select" @bind-Value="selectedAdvisorIdForAssignment">
-                            <option value="">-- No advisor --</option>
-                            @foreach (var adv in advisorsBySchool)
+                        <label class="form-label">Adviser (optional)</label>
+                        <InputSelect class="form-select" @bind-Value="selectedAdviserIdForAssignment">
+                            <option value="">-- No adviser --</option>
+                            @foreach (var adv in advisersBySchool)
                             {
                                 <option value="@adv.TeacherId">@adv.FullName</option>
                             }
                         </InputSelect>
-                        <small class="text-muted">Select the advisor for this class (Grade level, Section, and Strand are from the subject).</small>
+                        <small class="text-muted">Select the adviser for this class (Grade level, Section, and Strand are from the subject).</small>
                     </div>
                     @if (isLoadingAvailableSections)
                     {
@@ -676,8 +676,8 @@
     private bool isLoadingAvailableSections = false;
     private TeacherSubjectAssignment? selectedSubjectForAssignment;
     private List<SubjectSectionInfo> availableSectionsForAssignment = new();
-    private List<AdvisorInfo> advisorsBySchool = new();
-    private string? selectedAdvisorIdForAssignment = null;
+    private List<AdviserInfo> advisersBySchool = new();
+    private string? selectedAdviserIdForAssignment = null;
 
     // Confirmation Modal
     private bool showConfirmationModal = false;
@@ -1286,7 +1286,7 @@
 
         try
         {
-            // Get teacher's school name and load advisors
+            // Get teacher's school name and load advisers
             var teacher = teachers.FirstOrDefault(t => t.TeacherId == selectedTeacherId);
             if (teacher == null)
             {
@@ -1296,12 +1296,12 @@
             }
             if (!string.IsNullOrEmpty(teacher.SchoolId))
             {
-                var advisorsResponse = await Http.GetFromJsonAsync<List<AdvisorInfo>>($"{ApiConfig.BaseUrl}api/guidance/advisors-by-school/{teacher.SchoolId}");
-                advisorsBySchool = advisorsResponse ?? new List<AdvisorInfo>();
+                var advisersResponse = await Http.GetFromJsonAsync<List<AdviserInfo>>($"{ApiConfig.BaseUrl}api/guidance/advisers-by-school/{teacher.SchoolId}");
+                advisersBySchool = advisersResponse ?? new List<AdviserInfo>();
             }
             else
-                advisorsBySchool = new List<AdvisorInfo>();
-            selectedAdvisorIdForAssignment = null;
+                advisersBySchool = new List<AdviserInfo>();
+            selectedAdviserIdForAssignment = null;
 
             // Load available sections for this subject's grade level and teacher's school
             var response = await Http.GetFromJsonAsync<List<SubjectSectionInfo>>($"{ApiConfig.BaseUrl}api/teachersubject/available-sections/{subject.SubjectId}/{teacher.SchoolName}");
@@ -1356,7 +1356,7 @@
                 ScheduleStart = selectedSubjectForAssignment.ScheduleStart,
                 ScheduleEnd = selectedSubjectForAssignment.ScheduleEnd,
                 Section = section.SectionName,
-                AdvisorId = selectedAdvisorIdForAssignment,
+                AdviserId = selectedAdviserIdForAssignment,
                 GradeLevel = selectedSubjectForAssignment.GradeLevel,
                 Strand = selectedSubjectForAssignment.Strand
             };

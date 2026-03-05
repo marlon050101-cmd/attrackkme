@@ -1,5 +1,5 @@
-@page "/advisor/section-classes"
-@layout AdvisorLayout
+@page "/adviser/section-classes"
+@layout AdviserLayout
 @using AttrackSharedClass.Models
 @using NewscannerMAUI.Services
 @inject HttpClient Http
@@ -445,12 +445,12 @@
 @code {
     private static readonly string[] AllDays = { "Monday", "Tuesday", "Wednesday", "Thursday", "Friday" };
 
-    private string? advisorId;
+    private string? adviserId;
     private int profileGrade;
     private string profileSection = "";
     private string? profileStrand = "";
 
-    private bool IsAddDisabled => string.IsNullOrEmpty(advisorId);
+    private bool IsAddDisabled => string.IsNullOrEmpty(adviserId);
     private List<ClassOffering> classes = new();
     private List<TeacherSubjectAssignment> subjectsForGrade = new();
     private bool isLoading = true;
@@ -493,20 +493,20 @@
     protected override async Task OnInitializedAsync()
     {
         var user = await AuthService.GetCurrentUserAsync();
-        if (user == null || (user.UserType != UserType.Advisor && user.UserType != UserType.GuidanceCounselor))
+        if (user == null || (user.UserType != UserType.Adviser && user.UserType != UserType.GuidanceCounselor))
         {
-            errorMessage = "Access denied. Advisor only.";
+            errorMessage = "Access denied. Adviser only.";
             isLoading = false;
             return;
         }
-        advisorId = user.TeacherId;
-        if (string.IsNullOrEmpty(advisorId)) { errorMessage = "Advisor profile not found."; isLoading = false; return; }
+        adviserId = user.TeacherId;
+        if (string.IsNullOrEmpty(adviserId)) { errorMessage = "Adviser profile not found."; isLoading = false; return; }
 
         TeacherInfo? profile = null;
         try { profile = await Http.GetFromJsonAsync<TeacherInfo>($"{ApiConfig.BaseUrl}api/register/teacher-by-user/{user.UserId}"); }
-        catch (Exception ex) { errorMessage = $"Failed to load advisor profile: {ex.Message}"; isLoading = false; return; }
+        catch (Exception ex) { errorMessage = $"Failed to load adviser profile: {ex.Message}"; isLoading = false; return; }
 
-        if (profile == null) { errorMessage = "Advisor profile not found in the database."; isLoading = false; return; }
+        if (profile == null) { errorMessage = "Adviser profile not found in the database."; isLoading = false; return; }
 
         profileGrade = profile.GradeLevel > 0 ? profile.GradeLevel : 7;
         profileSection = profile.Section ?? "";
@@ -520,10 +520,10 @@
 
     private async Task LoadClasses()
     {
-        if (string.IsNullOrEmpty(advisorId)) return;
+        if (string.IsNullOrEmpty(adviserId)) return;
         try
         {
-            var list = await Http.GetFromJsonAsync<List<ClassOffering>>($"{ApiConfig.BaseUrl}api/ClassOffering/advisor/{advisorId}");
+            var list = await Http.GetFromJsonAsync<List<ClassOffering>>($"{ApiConfig.BaseUrl}api/ClassOffering/adviser/{adviserId}");
             classes = list ?? new();
         }
         catch (Exception ex) { errorMessage = "Failed to load classes: " + ex.Message; }
@@ -604,7 +604,7 @@
 
     private async Task AddClass()
     {
-        if (string.IsNullOrEmpty(advisorId) || (string.IsNullOrEmpty(newSubjectId) && string.IsNullOrEmpty(subjectSearchText))) return;
+        if (string.IsNullOrEmpty(adviserId) || (string.IsNullOrEmpty(newSubjectId) && string.IsNullOrEmpty(subjectSearchText))) return;
         modalErrorMessage = ""; modalSuccessMessage = "";
         if (!TimeSpan.TryParse(newStartTime, out var start) || !TimeSpan.TryParse(newEndTime, out var end) || end <= start)
         {
@@ -625,7 +625,7 @@
         {
             var request = new CreateClassOfferingRequest
             {
-                AdvisorId = advisorId, SubjectId = newSubjectId ?? "",
+                AdviserId = adviserId, SubjectId = newSubjectId ?? "",
                 SubjectName = string.IsNullOrEmpty(newSubjectId) ? subjectSearchText : null,
                 GradeLevel = newGrade, Section = newSection,
                 Strand = string.IsNullOrEmpty(newStrand) ? null : newStrand,
@@ -678,7 +678,7 @@
 
     private async Task SaveEdit()
     {
-        if (classToEdit == null || string.IsNullOrEmpty(advisorId)) return;
+        if (classToEdit == null || string.IsNullOrEmpty(adviserId)) return;
         editErrorMessage = ""; editSuccessMessage = "";
         if (!TimeSpan.TryParse(editStartTime, out var start) || !TimeSpan.TryParse(editEndTime, out var end) || end <= start)
         {
@@ -700,7 +700,7 @@
                 SubjectId = string.IsNullOrEmpty(editSubjectId) ? null : editSubjectId,
                 SubjectName = string.IsNullOrEmpty(editSubjectId) ? editSubjectSearchText : null
             };
-            var response = await Http.PutAsJsonAsync($"{ApiConfig.BaseUrl}api/ClassOffering/{classToEdit.ClassOfferingId}?advisorId={Uri.EscapeDataString(advisorId)}", request);
+            var response = await Http.PutAsJsonAsync($"{ApiConfig.BaseUrl}api/ClassOffering/{classToEdit.ClassOfferingId}?adviserId={Uri.EscapeDataString(adviserId)}", request);
             if (response.IsSuccessStatusCode)
             {
                 await LoadClasses();
@@ -717,11 +717,11 @@
     private void DeleteClass(ClassOffering c) { classToDelete = c; showDeleteConfirm = true; }
     private async Task ConfirmDelete()
     {
-        if (classToDelete == null || string.IsNullOrEmpty(advisorId)) return;
+        if (classToDelete == null || string.IsNullOrEmpty(adviserId)) return;
         isDeleting = true;
         try
         {
-            var response = await Http.DeleteAsync($"{ApiConfig.BaseUrl}api/ClassOffering/{classToDelete.ClassOfferingId}?advisorId={Uri.EscapeDataString(advisorId)}");
+            var response = await Http.DeleteAsync($"{ApiConfig.BaseUrl}api/ClassOffering/{classToDelete.ClassOfferingId}?adviserId={Uri.EscapeDataString(adviserId)}");
             if (response.IsSuccessStatusCode) { await LoadClasses(); showDeleteConfirm = false; ShowSuccessMessage("Class removed."); }
             else errorMessage = "Failed to remove class.";
         }

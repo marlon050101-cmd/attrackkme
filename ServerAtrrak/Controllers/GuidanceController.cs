@@ -93,38 +93,38 @@ namespace ServerAtrrak.Controllers
             }
         }
 
-        [HttpGet("advisors-by-school/{schoolId}")]
-        public async Task<ActionResult<List<AdvisorInfo>>> GetAdvisorsBySchool(string schoolId)
+        [HttpGet("advisers-by-school/{schoolId}")]
+        public async Task<ActionResult<List<AdviserInfo>>> GetAdvisersBySchool(string schoolId)
         {
             try
             {
-                var advisors = new List<AdvisorInfo>();
+                var advisers = new List<AdviserInfo>();
                 using var connection = new MySqlConnection(_dbConnection.GetConnection());
                 await connection.OpenAsync();
                 var query = @"
                     SELECT t.TeacherId, t.FullName, t.Email
                     FROM teacher t
                     INNER JOIN user u ON u.TeacherId = t.TeacherId
-                    WHERE t.SchoolId = @SchoolId AND u.UserType IN ('GuidanceCounselor', 'Advisor') AND u.IsActive = 1
+                    WHERE t.SchoolId = @SchoolId AND u.UserType IN ('GuidanceCounselor', 'Adviser') AND u.IsActive = 1
                     ORDER BY t.FullName";
                 using var command = new MySqlCommand(query, connection);
                 command.Parameters.AddWithValue("@SchoolId", schoolId);
                 using var reader = await command.ExecuteReaderAsync();
                 while (await reader.ReadAsync())
                 {
-                    advisors.Add(new AdvisorInfo
+                    advisers.Add(new AdviserInfo
                     {
                         TeacherId = reader.GetString(0),
                         FullName = reader.GetString(1),
                         Email = reader.IsDBNull(2) ? null : reader.GetString(2)
                     });
                 }
-                return Ok(advisors);
+                return Ok(advisers);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting advisors for school {SchoolId}", schoolId);
-                return StatusCode(500, new List<AdvisorInfo>());
+                _logger.LogError(ex, "Error getting advisers for school {SchoolId}", schoolId);
+                return StatusCode(500, new List<AdviserInfo>());
             }
         }
 
@@ -199,7 +199,7 @@ namespace ServerAtrrak.Controllers
                     SELECT t.SchoolId 
                     FROM user u
                     INNER JOIN teacher t ON u.TeacherId = t.TeacherId
-                    WHERE u.UserId = @UserId AND u.UserType IN ('GuidanceCounselor', 'Advisor') AND u.IsActive = true";
+                    WHERE u.UserId = @UserId AND u.UserType IN ('GuidanceCounselor', 'Adviser') AND u.IsActive = true";
 
                 using var command = new MySqlCommand(query, connection);
                 command.Parameters.AddWithValue("@UserId", userId);

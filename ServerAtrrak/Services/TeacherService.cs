@@ -46,7 +46,8 @@ namespace ServerAtrrak.Services
                             "Teacher" => UserType.SubjectTeacher, // legacy fallback
                             "Student" => UserType.Student,
                             "GuidanceCounselor" => UserType.GuidanceCounselor,
-                            "Advisor" => UserType.Advisor,
+                            "Adviser" => UserType.Adviser,
+                            "Advisor" => UserType.Adviser, // legacy fallback
                             _ => UserType.Admin
                         };
                         
@@ -970,7 +971,7 @@ namespace ServerAtrrak.Services
                     LEFT JOIN teacher t ON u.TeacherId = t.TeacherId
                     LEFT JOIN school s ON t.SchoolId = s.SchoolId
                     WHERE t.SchoolId = @schoolId
-                    AND (u.UserType = 'Teacher' OR u.UserType = 'SubjectTeacher' OR u.UserType = 'Advisor')";
+                    AND (u.UserType = 'Teacher' OR u.UserType = 'SubjectTeacher' OR u.UserType = 'Adviser')";
 
                 var teachers = new List<PendingTeacherInfo>();
                 using (var command = new MySqlCommand(query, connection))

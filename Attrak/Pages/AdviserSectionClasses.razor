@@ -1,9 +1,9 @@
-@page "/advisor-section-classes"
+@page "/adviser-section-classes"
 @using AttrackSharedClass.Models
 @using Attrak.Services
 @inject HttpClient Http
 @inject IAuthService AuthService
-@layout AdvisorLayout
+@layout AdviserLayout
 <PageTitle>My Section Classes</PageTitle>
 
 <div class="container-fluid">
@@ -146,8 +146,8 @@
 }
 
 @code {
-    private string? advisorId;
-    private bool IsAddDisabled => string.IsNullOrEmpty(advisorId);
+    private string? adviserId;
+    private bool IsAddDisabled => string.IsNullOrEmpty(adviserId);
     private List<ClassOffering> classes = new();
     private List<TeacherSubjectAssignment> subjectsForGrade = new();
     private bool isLoading = true;
@@ -167,16 +167,16 @@
     protected override async Task OnInitializedAsync()
     {
         var user = await AuthService.GetCurrentUserAsync();
-        if (user?.UserType != UserType.Advisor && user?.UserType != UserType.GuidanceCounselor)
+        if (user?.UserType != UserType.Adviser && user?.UserType != UserType.GuidanceCounselor)
         {
-            errorMessage = "Access denied. Advisor only.";
+            errorMessage = "Access denied. Adviser only.";
             isLoading = false;
             return;
         }
-        advisorId = user.TeacherId;
-        if (string.IsNullOrEmpty(advisorId))
+        adviserId = user.TeacherId;
+        if (string.IsNullOrEmpty(adviserId))
         {
-            errorMessage = "Advisor profile not found.";
+            errorMessage = "Adviser profile not found.";
             isLoading = false;
             return;
         }
@@ -187,10 +187,10 @@
 
     private async Task LoadClasses()
     {
-        if (string.IsNullOrEmpty(advisorId)) return;
+        if (string.IsNullOrEmpty(adviserId)) return;
         try
         {
-            var list = await Http.GetFromJsonAsync<List<ClassOffering>>($"{ApiConfig.BaseUrl}api/ClassOffering/advisor/{advisorId}");
+            var list = await Http.GetFromJsonAsync<List<ClassOffering>>($"{ApiConfig.BaseUrl}api/ClassOffering/adviser/{adviserId}");
             classes = list ?? new List<ClassOffering>();
         }
         catch (Exception ex)
@@ -245,7 +245,7 @@
 
     private async Task AddClass()
     {
-        if (string.IsNullOrEmpty(advisorId) || string.IsNullOrEmpty(newSubjectId)) return;
+        if (string.IsNullOrEmpty(adviserId) || string.IsNullOrEmpty(newSubjectId)) return;
         if (!TimeSpan.TryParse(newStartTime, out var start) || !TimeSpan.TryParse(newEndTime, out var end) || end <= start)
         {
             errorMessage = "Invalid time. End must be after start.";
@@ -258,7 +258,7 @@
         {
             var request = new CreateClassOfferingRequest
             {
-                AdvisorId = advisorId,
+                AdviserId = adviserId,
                 SubjectId = newSubjectId,
                 GradeLevel = newGrade,
                 Section = newSection,
@@ -288,11 +288,11 @@
 
     private async Task DeleteClass(ClassOffering c)
     {
-        if (string.IsNullOrEmpty(advisorId)) return;
+        if (string.IsNullOrEmpty(adviserId)) return;
         isDeleting = true;
         try
         {
-            var response = await Http.DeleteAsync($"{ApiConfig.BaseUrl}api/ClassOffering/{c.ClassOfferingId}?advisorId={Uri.EscapeDataString(advisorId)}");
+            var response = await Http.DeleteAsync($"{ApiConfig.BaseUrl}api/ClassOffering/{c.ClassOfferingId}?adviserId={Uri.EscapeDataString(adviserId)}");
             if (response.IsSuccessStatusCode)
             {
                 successMessage = "Class removed.";

@@ -59,7 +59,7 @@ namespace ServerAtrrak.Services
                         return new LoginResponse
                         {
                             Success = false,
-                            Message = "Please consult to your advisor for approval"
+                            Message = "Please consult to your adviser for approval"
                         };
                     }
                 }
@@ -148,7 +148,8 @@ namespace ServerAtrrak.Services
                         "Teacher" => UserType.SubjectTeacher, // legacy fallback
                         "Student" => UserType.Student,
                         "GuidanceCounselor" => UserType.GuidanceCounselor,
-                        "Advisor" => UserType.Advisor,
+                        "Adviser" => UserType.Adviser,
+                        "Advisor" => UserType.Adviser, // legacy fallback
                         "Head" => UserType.Head,
                         _ => UserType.Admin
                     };

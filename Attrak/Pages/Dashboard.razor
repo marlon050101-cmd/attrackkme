@@ -85,9 +85,9 @@
                                         <button class="btn btn-outline-primary">My Schedule</button>
                                         <button class="btn btn-outline-primary">Profile</button>
                                     }
-                                    else if (currentUser.UserType == UserType.Advisor)
+                                    else if (currentUser.UserType == UserType.Adviser)
                                     {
-                                        <button class="btn btn-outline-primary" @onclick='() => Navigation.NavigateTo("/advisor-section-classes")'>My Section Classes</button>
+                                        <button class="btn btn-outline-primary" @onclick='() => Navigation.NavigateTo("/adviser-section-classes")'>My Section Classes</button>
                                     }
                                     else if (currentUser.UserType == UserType.GuidanceCounselor)
                                     {
@@ -143,7 +143,7 @@
             UserType.SubjectTeacher => "Subject Teacher",
             UserType.Student => "Student",
             UserType.GuidanceCounselor => "Guidance Counselor",
-            UserType.Advisor => "Advisor",
+            UserType.Adviser => "Adviser",
             _ => "Unknown"
         };
     }

@@ -1,5 +1,5 @@
-@page "/advisor/student-approvals"
-@layout AdvisorLayout
+@page "/adviser/student-approvals"
+@layout AdviserLayout
 @using AttrackSharedClass.Models
 @using NewscannerMAUI.Services
 @using System.Net.Http.Json
@@ -9,7 +9,7 @@
 <div class="approvals-container">
     <div class="page-header mb-3">
         <h5 class="fw-bold mb-0">Student Enrollment Approvals</h5>
-        <p class="text-muted small mb-0">Review and accept students who have selected you as their advisor.</p>
+        <p class="text-muted small mb-0">Review and accept students who have selected you as their adviser.</p>
     </div>
 
     @if (!string.IsNullOrEmpty(errorMessage))
@@ -31,7 +31,7 @@
     {
         <div class="empty-state">
             <i class="fas fa-users-slash fa-2x text-muted opacity-40 mb-2"></i>
-            <p class="text-muted small mb-0">No students found matching your advisor profile.</p>
+            <p class="text-muted small mb-0">No students found matching your adviser profile.</p>
         </div>
     }
     else
@@ -289,7 +289,7 @@
             if (currentUser != null && !string.IsNullOrEmpty(currentUser.TeacherId))
             {
                 var http = HttpClientFactory.CreateClient("AttrakAPI");
-                var response = await http.GetAsync($"api/register/advisor/{currentUser.TeacherId}/students");
+                var response = await http.GetAsync($"api/register/adviser/{currentUser.TeacherId}/students");
 
                 if (response.IsSuccessStatusCode)
                 {
@@ -303,7 +303,7 @@
             }
             else
             {
-                errorMessage = "No advisor account linked. Please contact support.";
+                errorMessage = "No adviser account linked. Please contact support.";
             }
         }
         catch (Exception ex)

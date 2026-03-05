@@ -42,7 +42,7 @@ namespace AttrackSharedClass.Models
     public enum UserType
     {
         Admin = 1,
-        /// <summary>Subject Teacher — picks class offerings created by Advisor and takes attendance.</summary>
+        /// <summary>Subject Teacher — picks class offerings created by Adviser and takes attendance.</summary>
         SubjectTeacher = 2,
         Student = 3,
         /// <summary>Guidance Counselor — monitors students, counseling records.</summary>

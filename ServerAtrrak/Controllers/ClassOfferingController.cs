@@ -24,22 +24,22 @@ namespace ServerAtrrak.Controllers
             return Ok(list);
         }
 
-        [HttpGet("advisor/{advisorId}")]
-        public async Task<ActionResult<List<ClassOffering>>> GetByAdvisor(string advisorId)
+        [HttpGet("adviser/{adviserId}")]
+        public async Task<ActionResult<List<ClassOffering>>> GetByAdviser(string adviserId)
         {
-            var list = await _service.GetByAdvisorAsync(advisorId);
+            var list = await _service.GetByAdviserAsync(adviserId);
             return Ok(list);
         }
 
         [HttpGet("section")]
         public async Task<ActionResult<List<ClassOffering>>> GetBySection(
-            [FromQuery] string advisorId,
+            [FromQuery] string adviserId,
             [FromQuery] string section,
             [FromQuery] int gradeLevel,
             [FromQuery] string? dayOfWeek = null)
         {
-            if (string.IsNullOrEmpty(advisorId) || string.IsNullOrEmpty(section)) return BadRequest();
-            var list = await _service.GetBySectionAsync(advisorId, section, gradeLevel, dayOfWeek);
+            if (string.IsNullOrEmpty(adviserId) || string.IsNullOrEmpty(section)) return BadRequest();
+            var list = await _service.GetBySectionAsync(adviserId, section, gradeLevel, dayOfWeek);
             return Ok(list);
         }
 
@@ -99,11 +99,11 @@ namespace ServerAtrrak.Controllers
         [HttpPut("{classOfferingId}")]
         public async Task<ActionResult<ClassOfferingResponse>> Update(
             string classOfferingId,
-            [FromQuery] string advisorId,
+            [FromQuery] string adviserId,
             [FromBody] UpdateClassOfferingRequest request)
         {
-            if (string.IsNullOrEmpty(advisorId)) return BadRequest("advisorId required");
-            var result = await _service.UpdateAsync(classOfferingId, advisorId, request);
+            if (string.IsNullOrEmpty(adviserId)) return BadRequest("adviserId required");
+            var result = await _service.UpdateAsync(classOfferingId, adviserId, request);
             if (!result.Success) return BadRequest(result);
             return Ok(result);
         }
@@ -120,22 +120,22 @@ namespace ServerAtrrak.Controllers
         [HttpPut("{classOfferingId}/unassign")]
         public async Task<ActionResult<ClassOfferingResponse>> UnassignTeacher(string classOfferingId, [FromBody] UnassignRequest body)
         {
-            if (string.IsNullOrEmpty(body?.AdvisorId)) return BadRequest();
-            var result = await _service.UnassignTeacherAsync(classOfferingId, body.AdvisorId);
+            if (string.IsNullOrEmpty(body?.AdviserId)) return BadRequest();
+            var result = await _service.UnassignTeacherAsync(classOfferingId, body.AdviserId);
             if (!result.Success) return BadRequest(result);
             return Ok(result);
         }
 
         [HttpDelete("{classOfferingId}")]
-        public async Task<ActionResult<ClassOfferingResponse>> Delete(string classOfferingId, [FromQuery] string advisorId)
+        public async Task<ActionResult<ClassOfferingResponse>> Delete(string classOfferingId, [FromQuery] string adviserId)
         {
-            if (string.IsNullOrEmpty(advisorId)) return BadRequest();
-            var result = await _service.DeleteAsync(classOfferingId, advisorId);
+            if (string.IsNullOrEmpty(adviserId)) return BadRequest();
+            var result = await _service.DeleteAsync(classOfferingId, adviserId);
             if (!result.Success) return BadRequest(result);
             return Ok(result);
         }
     }
 
     public class AssignTeacherRequest { public string TeacherId { get; set; } = ""; }
-    public class UnassignRequest { public string AdvisorId { get; set; } = ""; }
+    public class UnassignRequest { public string AdviserId { get; set; } = ""; }
 }

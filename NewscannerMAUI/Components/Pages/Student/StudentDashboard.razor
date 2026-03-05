@@ -82,10 +82,10 @@
                                 <h5 class="fw-bold text-muted mb-2">No Classes Today</h5>
                                 <p class="text-muted small mb-4">No scheduled subjects for you today.</p>
                                 
-                                <div class="advisor-alert p-3 rounded-4 bg-primary-soft border border-primary border-opacity-10 d-inline-block">
+                                <div class="adviser-alert p-3 rounded-4 bg-primary-soft border border-primary border-opacity-10 d-inline-block">
                                     <p class="mb-0 small fw-bold text-primary">
                                         <i class="fas fa-user-tie me-2"></i>
-                                        Please visit your Advisor to have your subjects added to your schedule.
+                                        Please visit your Adviser to have your subjects added to your schedule.
                                     </p>
                                 </div>
                             </div>
@@ -324,14 +324,14 @@
                 var http = HttpClientFactory.CreateClient("AttrakAPI");
                 student = await http.GetFromJsonAsync<StudentDisplayInfo>($"api/register/student/{currentUser.StudentId}");
                 
-                if (student != null && student.EnrollmentStatus == "Approved" && !string.IsNullOrEmpty(student.AdvisorId))
+                if (student != null && student.EnrollmentStatus == "Approved" && !string.IsNullOrEmpty(student.AdviserId))
                 {
                     // Fetch only today's subjects
                     var todayName = DateTime.Now.DayOfWeek.ToString();
                     try
                     {
                         var offerings = await http.GetFromJsonAsync<List<ClassOffering>>(
-                            $"api/ClassOffering/section?advisorId={student.AdvisorId}&section={Uri.EscapeDataString(student.Section)}&gradeLevel={student.GradeLevel}&dayOfWeek={Uri.EscapeDataString(todayName)}");
+                            $"api/ClassOffering/section?adviserId={student.AdviserId}&section={Uri.EscapeDataString(student.Section)}&gradeLevel={student.GradeLevel}&dayOfWeek={Uri.EscapeDataString(todayName)}");
                         if (offerings != null)
                         {
                             classOfferings = offerings;

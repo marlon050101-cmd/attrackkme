@@ -337,7 +337,7 @@ namespace ServerAtrrak.Services
                         UNION
                         SELECT co.Section 
                         FROM class_offering co
-                        INNER JOIN teacher t ON co.AdvisorId = t.TeacherId
+                        INNER JOIN teacher t ON co.AdviserId = t.TeacherId
                         WHERE t.SchoolId = @SchoolId AND co.GradeLevel = @GradeLevel AND co.Section IS NOT NULL AND co.Section != ''
                     ) AS combined_sections
                     ORDER BY Section";

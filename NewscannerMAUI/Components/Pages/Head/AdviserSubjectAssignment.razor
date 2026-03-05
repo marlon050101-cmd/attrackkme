@@ -413,15 +413,15 @@
         transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     }
 
-    .advisor-card:hover {
+    .adviser-card:hover {
         transform: translateY(-4px);
         border-color: #ede9fe;
         box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1);
     }
 
-    .advisor-meta { display: flex; align-items: center; gap: 1rem; flex: 1; min-width: 0; }
+    .adviser-meta { display: flex; align-items: center; gap: 1rem; flex: 1; min-width: 0; }
 
-    .advisor-avatar {
+    .adviser-avatar {
         width: 48px;
         height: 48px;
         background: #fef3c7;
@@ -1124,7 +1124,7 @@
                 startTime = "07:30";
                 endTime = "08:30";
                 await LoadCurrentClasses();
-                await LoadSubjectsForAdvisor();
+                await LoadSubjectsForAdviser();
             }
             else
             {

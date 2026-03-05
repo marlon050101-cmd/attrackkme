@@ -384,8 +384,8 @@
             var http = HttpClientFactory.CreateClient("AttrakAPI");
             var user = await AuthService.GetCurrentUserAsync();
             
-            // Backend Unassign expects AdvisorId in body (as owner check)
-            var body = new { AdvisorId = user?.UserId };
+            // Backend Unassign expects AdviserId in body (as owner check)
+            var body = new { AdviserId = user?.UserId };
             var response = await http.PutAsJsonAsync($"/api/ClassOffering/{selectedOffering.ClassOfferingId}/unassign", body);
             
             if (response.IsSuccessStatusCode)

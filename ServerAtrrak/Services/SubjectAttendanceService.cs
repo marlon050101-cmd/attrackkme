@@ -159,7 +159,7 @@ namespace ServerAtrrak.Services
             return list;
         }
 
-        /// <summary>Roster for a class offering: students under this advisor with same GradeLevel, Section, Strand.</summary>
+        /// <summary>Roster for a class offering: students under this adviser with same GradeLevel, Section, Strand.</summary>
         public async Task<List<StudentDisplayInfo>> GetClassRosterByOfferingAsync(string classOfferingId)
         {
             var list = new List<StudentDisplayInfo>();
@@ -173,7 +173,7 @@ namespace ServerAtrrak.Services
                     INNER JOIN school s ON st.SchoolId = s.SchoolId
                     INNER JOIN class_offering co ON co.ClassOfferingId = @ClassOfferingId
                     WHERE st.IsActive = 1
-                      AND st.AdvisorId = co.AdvisorId
+                      AND st.AdviserId = co.AdviserId
                       AND st.GradeLevel = co.GradeLevel
                       AND st.Section = co.Section
                       AND (co.Strand IS NULL OR st.Strand = co.Strand)

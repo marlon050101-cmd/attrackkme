@@ -54,12 +54,12 @@
                         <select @bind="selectedUserType" class="select-input">
                             <option value="0" disabled selected>-- Choose Account Type --</option>
                             <option value="@((int)UserType.SubjectTeacher)">Subject Teacher</option>
-                            <option value="@((int)UserType.Advisor)">Advisor</option>
+                            <option value="@((int)UserType.Adviser)">Adviser</option>
                         </select>
                     </div>
                 </div>
                 
-                @if (selectedUserType == (int)UserType.Advisor)
+                @if (selectedUserType == (int)UserType.Adviser)
                 {
                     <div class="form-group @(showValidation && (newTeacher.GradeLevel == null || newTeacher.GradeLevel == 0) ? "invalid" : "")">
                         <label>Grade Level</label>
@@ -215,7 +215,7 @@
                             <div class="info-text">@(selectedTeacher.UserType == "SubjectTeacher" ? "Subject Teacher" : selectedTeacher.UserType)</div>
                         </div>
 
-                        @if (selectedTeacher.UserType == "Advisor")
+                        @if (selectedTeacher.UserType == "Adviser")
                         {
                             <div class="info-item">
                                 <label>Grade Level</label>
@@ -245,7 +245,7 @@
                             <input type="email" @bind="editModel.Email" class="edit-input" />
                         </div>
                         
-                        @if (selectedTeacher.UserType == "Advisor")
+                        @if (selectedTeacher.UserType == "Adviser")
                         {
                             <div class="edit-group">
                                 <label>Grade Level</label>
@@ -688,7 +688,7 @@
     }
 
     .row-role.teacher, .row-role.subjectteacher { color: #4338ca; }
-    .row-role.advisor { color: #d97706; }
+    .row-role.adviser { color: #d97706; }
 
     .row-arrow {
         color: #cbd5e1;
@@ -1152,12 +1152,12 @@
     {
         showValidation = true;
         
-        bool isAdvisorIncomplete = selectedUserType == (int)UserType.Advisor && 
+        bool isAdviserIncomplete = selectedUserType == (int)UserType.Adviser && 
             ((newTeacher.GradeLevel == null || newTeacher.GradeLevel == 0) || 
              string.IsNullOrWhiteSpace(newTeacher.Section) || 
              (newTeacher.GradeLevel >= 11 && string.IsNullOrWhiteSpace(newTeacher.Strand)));
 
-        if (selectedUserType == 0 || string.IsNullOrWhiteSpace(newTeacher.FullName) || string.IsNullOrWhiteSpace(newTeacher.Email) || isAdvisorIncomplete)
+        if (selectedUserType == 0 || string.IsNullOrWhiteSpace(newTeacher.FullName) || string.IsNullOrWhiteSpace(newTeacher.Email) || isAdviserIncomplete)
         {
             errorMessage = "Please fill in all required fields.";
             return;
