@@ -1054,8 +1054,7 @@ namespace ServerAtrrak.Services
                         Email = @email,
                         Gradelvl = @gradeLevel, 
                         Section = @section, 
-                        Strand = @strand,
-                        UpdatedAt = @updatedAt
+                        Strand = @strand
                     WHERE TeacherId = @teacherId";
                 
                 using (var cmd = new MySqlCommand(updateTeacher, connection))
@@ -1075,7 +1074,6 @@ namespace ServerAtrrak.Services
                         cmd.Parameters.AddWithValue("@strand", (object)request.Strand ?? DBNull.Value);
                     }
 
-                    cmd.Parameters.AddWithValue("@updatedAt", DateTime.Now);
                     cmd.Parameters.AddWithValue("@teacherId", teacherId);
                     
                     int rows = await cmd.ExecuteNonQueryAsync();
