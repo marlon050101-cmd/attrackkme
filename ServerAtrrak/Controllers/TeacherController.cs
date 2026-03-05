@@ -267,15 +267,21 @@ namespace ServerAtrrak.Controllers
         {
             try
             {
+                Console.WriteLine($"DEBUG: TeacherController.UpdateTeacher - Received request for UserId: {userId}");
+                Console.WriteLine($"DEBUG: Request Body - Name: {request.FullName}, Email: {request.Email}, Grade: {request.GradeLevel}, Section: {request.Section}, Strand: {request.Strand}");
+                
                 var result = await _teacherService.UpdateTeacherAsync(userId, request);
                 if (result)
                 {
                     return Ok(new { message = "Teacher information updated successfully" });
                 }
+                
+                Console.WriteLine($"DEBUG: TeacherController.UpdateTeacher - Update failed for UserId: {userId}");
                 return NotFound(new { message = "Teacher not found" });
             }
             catch (Exception ex)
             {
+                Console.WriteLine($"DEBUG: TeacherController.UpdateTeacher - Exception: {ex.Message}");
                 return StatusCode(500, new { message = "Internal server error", error = ex.Message });
             }
         }

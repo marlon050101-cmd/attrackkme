@@ -1010,6 +1010,7 @@ namespace ServerAtrrak.Services
             try
             {
                 using var connection = await _dbConnection.GetConnectionAsync();
+                Console.WriteLine($"DEBUG: UpdateTeacherAsync - Starting for UserId: {userId}");
                 
                 // 1. Get TeacherId from user table
                 var userQuery = "SELECT TeacherId FROM user WHERE UserId = @userId";
@@ -1017,10 +1018,16 @@ namespace ServerAtrrak.Services
                 using (var cmd = new MySqlCommand(userQuery, connection))
                 {
                     cmd.Parameters.AddWithValue("@userId", userId);
-                    teacherId = (await cmd.ExecuteScalarAsync())?.ToString();
+                    var result = await cmd.ExecuteScalarAsync();
+                    teacherId = result?.ToString();
                 }
 
-                if (string.IsNullOrEmpty(teacherId)) return false;
+                Console.WriteLine($"DEBUG: UpdateTeacherAsync - Found TeacherId: {teacherId}");
+                if (string.IsNullOrEmpty(teacherId)) 
+                {
+                    Console.WriteLine($"DEBUG: UpdateTeacherAsync - TeacherId not found for UserId: {userId}");
+                    return false;
+                }
 
                 // 2. Update user table (Email)
                 var updateUser = "UPDATE user SET Email = @email WHERE UserId = @userId";
@@ -1028,7 +1035,8 @@ namespace ServerAtrrak.Services
                 {
                     cmd.Parameters.AddWithValue("@email", request.Email);
                     cmd.Parameters.AddWithValue("@userId", userId);
-                    await cmd.ExecuteNonQueryAsync();
+                    var userRows = await cmd.ExecuteNonQueryAsync();
+                    Console.WriteLine($"DEBUG: UpdateTeacherAsync - User table updated, rows affected: {userRows}");
                 }
 
                 // 3. Update teacher table (FullName, GradeLevel, Section, Strand)
@@ -1046,17 +1054,19 @@ namespace ServerAtrrak.Services
                     cmd.Parameters.AddWithValue("@fullName", request.FullName);
                     cmd.Parameters.AddWithValue("@gradeLevel", request.GradeLevel ?? 0);
                     cmd.Parameters.AddWithValue("@section", request.Section ?? "");
-                    cmd.Parameters.AddWithValue("@strand", request.Strand);
+                    cmd.Parameters.AddWithValue("@strand", (object)request.Strand ?? DBNull.Value);
                     cmd.Parameters.AddWithValue("@updatedAt", DateTime.Now);
                     cmd.Parameters.AddWithValue("@teacherId", teacherId);
                     
                     var rows = await cmd.ExecuteNonQueryAsync();
+                    Console.WriteLine($"DEBUG: UpdateTeacherAsync - Teacher table updated, rows affected: {rows}");
                     return rows > 0;
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error in UpdateTeacherAsync: {ex.Message}");
+                Console.WriteLine($"DEBUG: Error in UpdateTeacherAsync: {ex.Message}");
+                Console.WriteLine($"DEBUG: StackTrace: {ex.StackTrace}");
                 return false;
             }
         }
