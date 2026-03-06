@@ -840,7 +840,7 @@ namespace NewscannerMAUI.Services
 
                 // Get unsynced regular attendance records
                 var regularCommand = new SqliteCommand(
-                    @"SELECT a.attendance_id, a.student_id, a.timestamp, a.attendance_type, a.device_id, a.is_synced, a.created_at, a.remarks,
+                    @"SELECT a.attendance_id, a.student_id, a.subject_id, a.timestamp, a.attendance_type, a.device_id, a.is_synced, a.created_at, a.remarks,
                              COALESCE(n.student_name, '') as student_name
                       FROM offline_attendance a
                       LEFT JOIN student_names_cache n ON a.student_id = n.student_id
@@ -865,6 +865,7 @@ namespace NewscannerMAUI.Services
                         Id = regularReader.GetString("attendance_id"),
                         StudentId = studentId,
                         StudentName = studentName,
+                        SubjectId = regularReader.IsDBNull("subject_id") ? "" : regularReader.GetString("subject_id"),
                         AttendanceType = regularReader.GetString("attendance_type"),
                         ScanTime = regularReader.GetDateTime("timestamp"),
                         DeviceId = regularReader.IsDBNull("device_id") ? "" : regularReader.GetString("device_id"),
@@ -2426,6 +2427,7 @@ namespace NewscannerMAUI.Services
         public string Id { get; set; } = string.Empty; // UUID string matching attendance_id in DB
         public string StudentId { get; set; } = string.Empty;
         public string StudentName { get; set; } = string.Empty; // Resolved from student_names_cache
+        public string SubjectId { get; set; } = string.Empty; // The class offering ID for subject attendance
         public string AttendanceType { get; set; } = string.Empty;
         public DateTime ScanTime { get; set; }
         public string DeviceId { get; set; } = string.Empty;

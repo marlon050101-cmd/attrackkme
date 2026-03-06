@@ -28,7 +28,7 @@ namespace ServerAtrrak.Services
                     FROM subject_attendance sa
                     INNER JOIN student st ON sa.StudentId = st.StudentId
                     WHERE sa.TeacherSubjectId = @TeacherSubjectId AND sa.Date = @Date
-                    ORDER BY st.FullName";
+                    ORDER BY sa.UpdatedAt DESC, st.FullName";
                 using var cmd = new MySqlCommand(query, connection);
                 cmd.Parameters.AddWithValue("@TeacherSubjectId", teacherSubjectId);
                 cmd.Parameters.AddWithValue("@Date", date.Date);
@@ -80,14 +80,23 @@ namespace ServerAtrrak.Services
                         SELECT ts.TeacherSubjectId
                         FROM teachersubject ts
                         INNER JOIN class_offering co ON co.ClassOfferingId = @COId
-                            AND ts.TeacherId = co.TeacherId
-                            AND ts.SubjectId = co.SubjectId
+                        WHERE ts.SubjectId = co.SubjectId 
+                          AND ts.GradeLevel = co.GradeLevel 
+                          AND ts.Section = co.Section
                         LIMIT 1";
                     using var tsCmd = new MySqlCommand(tsLookupSql, connection);
                     tsCmd.Parameters.AddWithValue("@COId", request.ClassOfferingId);
                     var tsResult = await tsCmd.ExecuteScalarAsync();
                     resolvedTeacherSubjectId = tsResult == DBNull.Value ? null : tsResult?.ToString();
+                    
+                    if (string.IsNullOrEmpty(resolvedTeacherSubjectId))
+                    {
+                        return new SubjectAttendanceResponse { Success = false, Message = "No Teacher Subject assignment found for this class." };
+                    }
                 }
+
+                // If not using offering, just use the passed TSId
+                var finalTSId = useOffering ? resolvedTeacherSubjectId : request.TeacherSubjectId;
 
                 foreach (var item in request.Items)
                 {
@@ -140,49 +149,51 @@ namespace ServerAtrrak.Services
 
                     var status = string.IsNullOrEmpty(item.Status) ? "Present" : item.Status;
                     if (status != "Present" && status != "Absent" && status != "Late") status = "Present";
-                    if (useOffering)
+
+                    // Prevent double insert by checking for existing record first
+                    var checkExistSql = @"
+                        SELECT SubjectAttendanceId FROM subject_attendance 
+                        WHERE TeacherSubjectId = @TSId AND StudentId = @StudentId AND Date = @Date 
+                        LIMIT 1";
+                    using var checkCmd = new MySqlCommand(checkExistSql, connection);
+                    checkCmd.Parameters.AddWithValue("@TSId", finalTSId);
+                    checkCmd.Parameters.AddWithValue("@StudentId", item.StudentId);
+                    checkCmd.Parameters.AddWithValue("@Date", date);
+                    var existingId = await checkCmd.ExecuteScalarAsync();
+
+                    if (existingId != null && existingId != DBNull.Value)
                     {
-                        var sql = @"
-                            INSERT INTO subject_attendance (SubjectAttendanceId, ClassOfferingId, TeacherSubjectId, StudentId, Date, Status, Remarks, TimeIn, TimeOut)
-                            VALUES (@Id, @COId, @TSId, @StudentId, @Date, @Status, @Remarks, @TimeIn, @TimeOut)
-                            ON DUPLICATE KEY UPDATE 
-                                Status = @Status, 
+                        var updateSql = @"
+                            UPDATE subject_attendance 
+                            SET Status = @Status, 
                                 Remarks = @Remarks, 
-                                TimeIn = IF(@Type = 'TimeIn', @TimeIn, TimeIn),
-                                TimeOut = IF(@Type = 'TimeOut', @TimeOut, TimeOut),
-                                UpdatedAt = NOW()";
-                        using var cmd = new MySqlCommand(sql, connection);
-                        cmd.Parameters.AddWithValue("@Id", Guid.NewGuid().ToString());
-                        cmd.Parameters.AddWithValue("@COId", request.ClassOfferingId);
-                        cmd.Parameters.AddWithValue("@TSId", resolvedTeacherSubjectId ?? (object)DBNull.Value);
-                        cmd.Parameters.AddWithValue("@StudentId", item.StudentId);
-                        cmd.Parameters.AddWithValue("@Date", date);
+                                TimeIn = IF(@Type = 'TimeIn', @Time, TimeIn),
+                                TimeOut = IF(@Type = 'TimeOut', @Time, TimeOut),
+                                ClassOfferingId = COALESCE(@COId, ClassOfferingId),
+                                UpdatedAt = NOW()
+                            WHERE SubjectAttendanceId = @Id";
+                        using var cmd = new MySqlCommand(updateSql, connection);
+                        cmd.Parameters.AddWithValue("@Id", existingId);
+                        cmd.Parameters.AddWithValue("@COId", useOffering ? request.ClassOfferingId : (object)DBNull.Value);
                         cmd.Parameters.AddWithValue("@Status", status);
                         cmd.Parameters.AddWithValue("@Remarks", item.Remarks ?? (object)DBNull.Value);
                         cmd.Parameters.AddWithValue("@Type", item.AttendanceType ?? "TimeIn");
-                        cmd.Parameters.AddWithValue("@TimeIn", item.AttendanceType == "TimeIn" ? item.ScanTimestamp : (object)DBNull.Value);
-                        cmd.Parameters.AddWithValue("@TimeOut", item.AttendanceType == "TimeOut" ? item.ScanTimestamp : (object)DBNull.Value);
+                        cmd.Parameters.AddWithValue("@Time", item.ScanTimestamp);
                         await cmd.ExecuteNonQueryAsync();
                     }
                     else
                     {
-                        var sql = @"
-                            INSERT INTO subject_attendance (SubjectAttendanceId, TeacherSubjectId, StudentId, Date, Status, Remarks, TimeIn, TimeOut)
-                            VALUES (@Id, @TSId, @StudentId, @Date, @Status, @Remarks, @TimeIn, @TimeOut)
-                            ON DUPLICATE KEY UPDATE 
-                                Status = @Status, 
-                                Remarks = @Remarks, 
-                                TimeIn = IF(@Type = 'TimeIn', @TimeIn, TimeIn),
-                                TimeOut = IF(@Type = 'TimeOut', @TimeOut, TimeOut),
-                                UpdatedAt = NOW()";
-                        using var cmd = new MySqlCommand(sql, connection);
+                        var insertSql = @"
+                            INSERT INTO subject_attendance (SubjectAttendanceId, ClassOfferingId, TeacherSubjectId, StudentId, Date, Status, Remarks, TimeIn, TimeOut)
+                            VALUES (@Id, @COId, @TSId, @StudentId, @Date, @Status, @Remarks, @TimeIn, @TimeOut)";
+                        using var cmd = new MySqlCommand(insertSql, connection);
                         cmd.Parameters.AddWithValue("@Id", Guid.NewGuid().ToString());
-                        cmd.Parameters.AddWithValue("@TSId", request.TeacherSubjectId);
+                        cmd.Parameters.AddWithValue("@COId", useOffering ? request.ClassOfferingId : (object)DBNull.Value);
+                        cmd.Parameters.AddWithValue("@TSId", finalTSId ?? (object)DBNull.Value);
                         cmd.Parameters.AddWithValue("@StudentId", item.StudentId);
                         cmd.Parameters.AddWithValue("@Date", date);
                         cmd.Parameters.AddWithValue("@Status", status);
                         cmd.Parameters.AddWithValue("@Remarks", item.Remarks ?? (object)DBNull.Value);
-                        cmd.Parameters.AddWithValue("@Type", item.AttendanceType ?? "TimeIn");
                         cmd.Parameters.AddWithValue("@TimeIn", item.AttendanceType == "TimeIn" ? item.ScanTimestamp : (object)DBNull.Value);
                         cmd.Parameters.AddWithValue("@TimeOut", item.AttendanceType == "TimeOut" ? item.ScanTimestamp : (object)DBNull.Value);
                         await cmd.ExecuteNonQueryAsync();
@@ -294,14 +305,37 @@ namespace ServerAtrrak.Services
             {
                 using var connection = new MySqlConnection(_dbConnection.GetConnection());
                 await connection.OpenAsync();
+                
+                // First resolve TeacherSubjectId for this ClassOffering
+                var tsLookupSql = @"
+                    SELECT ts.TeacherSubjectId
+                    FROM teachersubject ts
+                    INNER JOIN class_offering co ON co.ClassOfferingId = @ClassOfferingId
+                    WHERE ts.SubjectId = co.SubjectId 
+                      AND ts.GradeLevel = co.GradeLevel 
+                      AND ts.Section = co.Section
+                    LIMIT 1";
+                using var tsCmd = new MySqlCommand(tsLookupSql, connection);
+                tsCmd.Parameters.AddWithValue("@ClassOfferingId", classOfferingId);
+                var tsResult = await tsCmd.ExecuteScalarAsync();
+                var teacherSubjectId = tsResult == DBNull.Value ? null : tsResult?.ToString();
+                
+                if (string.IsNullOrEmpty(teacherSubjectId))
+                {
+                    // If no teacher subject is found, we can still try to retrieve attendance records
+                    // that were directly associated with the ClassOfferingId (e.g., for adviser classes)
+                    // return list; // No teacher assigned yet, so no attendance possible
+                }
+
                 var query = @"
-                    SELECT sa.SubjectAttendanceId, sa.ClassOfferingId, sa.TeacherSubjectId, sa.StudentId, st.FullName as StudentName,
-                           sa.Date, sa.Status, sa.Remarks, sa.CreatedAt, sa.UpdatedAt
+                    SELECT sa.SubjectAttendanceId, sa.TeacherSubjectId, sa.StudentId, st.FullName as StudentName,
+                           sa.Date, sa.Status, sa.Remarks, sa.CreatedAt, sa.UpdatedAt, sa.TimeIn, sa.TimeOut, sa.ClassOfferingId
                     FROM subject_attendance sa
                     INNER JOIN student st ON sa.StudentId = st.StudentId
-                    WHERE sa.ClassOfferingId = @ClassOfferingId AND sa.Date = @Date
-                    ORDER BY st.FullName";
+                    WHERE (sa.TeacherSubjectId = @TeacherSubjectId OR sa.ClassOfferingId = @ClassOfferingId) AND sa.Date = @Date
+                    ORDER BY sa.UpdatedAt DESC, st.FullName";
                 using var cmd = new MySqlCommand(query, connection);
+                cmd.Parameters.AddWithValue("@TeacherSubjectId", teacherSubjectId ?? (object)DBNull.Value);
                 cmd.Parameters.AddWithValue("@ClassOfferingId", classOfferingId);
                 cmd.Parameters.AddWithValue("@Date", date.Date);
                 using var reader = await cmd.ExecuteReaderAsync();
@@ -310,15 +344,16 @@ namespace ServerAtrrak.Services
                     list.Add(new SubjectAttendanceRecord
                     {
                         SubjectAttendanceId = reader.GetString(0),
-                        ClassOfferingId = reader.IsDBNull(1) ? null : reader.GetString(1),
-                        TeacherSubjectId = reader.IsDBNull(2) ? null : reader.GetString(2),
-                        StudentId = reader.GetString(3),
-                        StudentName = reader.GetString(4),
-                        Date = reader.GetDateTime(5),
-                        Status = reader.GetString(6),
-                        Remarks = reader.IsDBNull(7) ? null : reader.GetString(7),
-                        CreatedAt = reader.GetDateTime(8),
-                        UpdatedAt = reader.GetDateTime(9)
+                        TeacherSubjectId = reader.IsDBNull(1) ? null : reader.GetString(1),
+                        StudentId = reader.GetString(2),
+                        StudentName = reader.GetString(3),
+                        Date = reader.GetDateTime(4),
+                        Status = reader.GetString(5),
+                        Remarks = reader.IsDBNull(6) ? null : reader.GetString(6),
+                        CreatedAt = reader.GetDateTime(7),
+                        UpdatedAt = reader.GetDateTime(8),
+                        TimeIn = reader.IsDBNull(9) ? null : reader.GetDateTime(9),
+                        TimeOut = reader.IsDBNull(10) ? null : reader.GetDateTime(10)
                     });
                 }
             }
@@ -339,7 +374,7 @@ namespace ServerAtrrak.Services
                 var fromDate = DateTime.Today.AddDays(-days);
                 var query = @"
                     SELECT sa.SubjectAttendanceId, sa.TeacherSubjectId, sa.StudentId, st.FullName,
-                           sa.Date, sa.Status, sa.Remarks, sa.CreatedAt, sa.UpdatedAt
+                           sa.Date, sa.Status, sa.Remarks, sa.CreatedAt, sa.UpdatedAt, sa.TimeIn, sa.TimeOut, sa.ClassOfferingId
                     FROM subject_attendance sa
                     INNER JOIN student st ON sa.StudentId = st.StudentId
                     WHERE sa.StudentId = @StudentId AND sa.Date >= @FromDate
@@ -353,14 +388,17 @@ namespace ServerAtrrak.Services
                     list.Add(new SubjectAttendanceRecord
                     {
                         SubjectAttendanceId = reader.GetString(0),
-                        TeacherSubjectId = reader.GetString(1),
+                        TeacherSubjectId = reader.IsDBNull(1) ? null : reader.GetString(1),
                         StudentId = reader.GetString(2),
                         StudentName = reader.GetString(3),
                         Date = reader.GetDateTime(4),
                         Status = reader.GetString(5),
                         Remarks = reader.IsDBNull(6) ? null : reader.GetString(6),
                         CreatedAt = reader.GetDateTime(7),
-                        UpdatedAt = reader.GetDateTime(8)
+                        UpdatedAt = reader.GetDateTime(8),
+                        TimeIn = reader.IsDBNull(9) ? null : reader.GetDateTime(9),
+                        TimeOut = reader.IsDBNull(10) ? null : reader.GetDateTime(10),
+                        ClassOfferingId = reader.IsDBNull(11) ? null : reader.GetString(11)
                     });
                 }
             }

@@ -517,81 +517,63 @@
         outline: none;
         width: 250px;
     }
-    /* Schedule Styles */
-    .schedule-header {
-        padding: 10px 15px 5px;
-        background-color: white;
+    /* ─── My Schedule Today ─── */
+    .schedule-wrapper {
+        background: white;
+        border-bottom: 1px solid #e8ecf4;
+        padding: 12px 16px;
+    }
+    .schedule-header-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
     }
     .schedule-title {
-        font-size: 13px;
-        font-weight: 700;
+        font-size: 11px;
+        font-weight: 800;
         color: #4e73df;
         text-transform: uppercase;
-        letter-spacing: 0.5px;
-        margin-bottom: 8px;
+        letter-spacing: 1px;
         display: flex;
         align-items: center;
         gap: 6px;
+        margin-bottom: 0;
     }
-    .schedule-scroll {
-        display: flex;
-        overflow-x: auto;
-        padding: 0 15px 12px;
-        gap: 12px;
-        background-color: white;
-        scrollbar-width: none; /* Firefox */
-    }
-    .schedule-scroll::-webkit-scrollbar {
-        display: none; /* Chrome/Safari */
-    }
-    .class-card {
-        flex: 0 0 140px; /* Reduced from 160px for "small but friendly" look */
-        background: #f8f9fc;
-        border: 1px solid #e3e6f0;
+    .class-selector-dropdown {
+        width: 100%;
+        padding: 10px 12px;
         border-radius: 10px;
-        padding: 8px 10px;
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-        transition: all 0.2s;
-    }
-    .class-card.active {
-        background: linear-gradient(135deg, #4e73df 0%, #224abe 100%);
-        border-color: #4e73df;
-        color: white;
-        box-shadow: 0 4px 10px rgba(78, 115, 223, 0.3);
-    }
-    .class-card.selected {
-        border: 2px solid #4e73df;
-        background: #f0f4ff;
-    }
-    .class-card.active.selected {
-        border: 2px solid #fff;
-    }
-    .class-name {
-        font-size: 12px;
-        font-weight: 700;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-    .class-info {
-        font-size: 11px;
-        opacity: 0.8;
-    }
-    .class-time {
-        font-size: 10px;
+        border: 1.5px solid #d1d3e2;
+        background-color: #f8f9fc;
+        font-size: 13px;
+        color: #4e73df;
         font-weight: 600;
-        margin-top: 4px;
+        outline: none;
+        transition: all 0.2s;
+        appearance: none;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%234e73df' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 12px center;
+        background-size: 16px;
     }
-    .active-indicator {
-        font-size: 10px;
-        background: rgba(255,255,255,0.2);
-        padding: 1px 5px;
-        border-radius: 4px;
-        width: fit-content;
-        margin-top: 2px;
+    .class-selector-dropdown:focus {
+        border-color: #4e73df;
+        box-shadow: 0 0 0 0.2rem rgba(78, 115, 223, 0.1);
     }
+    .active-option {
+        font-weight: bold;
+        color: #1cc88a;
+    }
+    .status-indicator-mini {
+        font-size: 9px;
+        padding: 2px 6px;
+        border-radius: 10px;
+        font-weight: 700;
+        margin-left: 5px;
+    }
+    .status-now { background: #1cc88a; color: white; }
+    .status-locked { background: #f8f9fc; color: #858796; border: 1px solid #d1d3e2; }
 </style>
 
 <div class="scanner-container">
@@ -626,26 +608,27 @@
     <!-- Teacher Schedule Section -->
     @if (teacherClasses != null && teacherClasses.Any())
     {
-        <div class="schedule-header">
-            <div class="schedule-title">
-                <i class="fas fa-calendar-alt"></i> My Schedule Today
-            </div>
-        </div>
-        <div class="schedule-scroll">
-            @foreach (var cls in teacherClasses)
-            {
-                var isActive = IsClassActive(cls);
-                <div class="class-card @(isActive ? "active" : "") @(selectedClass?.ClassOfferingId == cls.ClassOfferingId ? "selected" : "")" 
-                     @onclick="() => SelectClass(cls)">
-                    <div class="class-name">@cls.SubjectName</div>
-                    <div class="class-info">Section: @cls.Section</div>
-                    <div class="class-time">@FormatTimeSpan(cls.ScheduleStart) - @FormatTimeSpan(cls.ScheduleEnd)</div>
-                    @if (isActive)
-                    {
-                        <div class="active-indicator">Current Class</div>
-                    }
+        <div class="schedule-wrapper">
+            <div class="schedule-header-row">
+                <div class="schedule-title">
+                    <i class="fas fa-calendar-alt"></i> My Schedule Today
                 </div>
-            }
+                @if (selectedClass != null && IsClassActive(selectedClass))
+                {
+                    <span class="status-indicator-mini status-now">● ACTIVE NOW</span>
+                }
+            </div>
+            
+            <select class="class-selector-dropdown" @onchange="OnClassSelectionChanged">
+                <option value="">-- Select a subject to scan --</option>
+                @foreach (var cls in teacherClasses)
+                {
+                    var isActive = IsClassActive(cls);
+                    <option value="@cls.ClassOfferingId" selected="@(selectedClass?.ClassOfferingId == cls.ClassOfferingId)">
+                        @(isActive ? "🟢" : "🔒") @cls.SubjectName | @cls.Section | @FormatTimeSpan(cls.ScheduleStart) - @FormatTimeSpan(cls.ScheduleEnd)
+                    </option>
+                }
+            </select>
         </div>
     }
 
@@ -664,7 +647,7 @@
         <!-- Dashboard/List View -->
         <div class="attendance-list-container">
             <div class="list-header">
-                <span>Today's Attendance (@(attendanceList?.Count ?? 0))</span>
+                <span>Per Subject Attendance (@(attendanceList?.Count ?? 0))</span>
                 <span class="text-primary" @onclick="LoadTodayAttendance">
                     <i class="fas fa-sync-alt"></i> Refresh
                 </span>
@@ -1194,6 +1177,24 @@
         StateHasChanged();
     }
 
+    private void OnClassSelectionChanged(ChangeEventArgs e)
+    {
+        var classId = e.Value?.ToString();
+        if (string.IsNullOrEmpty(classId))
+        {
+            selectedClass = null;
+            attendanceList.Clear();
+            StateHasChanged();
+            return;
+        }
+
+        var cls = teacherClasses.FirstOrDefault(c => c.ClassOfferingId == classId);
+        if (cls != null)
+        {
+            SelectClass(cls);
+        }
+    }
+
     private bool IsClassActive(ClassOffering cls)
     {
         var now = DateTime.Now.TimeOfDay;
@@ -1253,12 +1254,13 @@
                         attendanceList = subjectRecords.Select(r => new AttendanceRecord {
                             StudentId = r.StudentId,
                             StudentName = r.StudentName,
-                            SubjectName = selectedClass.SubjectName, // Add subject name
-                            TimeIn = r.CreatedAt, // Use CreatedAt as the scan time
-                            AttendanceType = "Present",
+                            SubjectName = selectedClass.SubjectName,
+                            TimeIn = r.TimeIn,
+                            TimeOut = r.TimeOut,
+                            AttendanceType = (r.TimeIn != null && r.TimeOut == null) ? "TimeIn" : (r.TimeOut != null ? "TimeOut" : "Unknown"),
                             Status = r.Status,
                             Remarks = r.Remarks,
-                            Timestamp = r.CreatedAt
+                            Timestamp = r.TimeOut ?? r.TimeIn ?? r.CreatedAt
                         }).OrderByDescending(a => a.Timestamp).ToList();
                         
                         await InvokeAsync(StateHasChanged);
@@ -1275,18 +1277,44 @@
             }
             else
             {
-                // Load local unsynced records when offline - only for TODAY to prevent duplicate messages from old days
+                // Load local unsynced records when offline 
                 var todayStr = DateTime.Now.ToString("yyyy-MM-dd");
-                var localRecords = await OfflineDataService.GetUnsyncedDailyAttendanceAsync(currentTeacher.TeacherId, todayStr);
-                response = localRecords.Select(r => new DailyAttendanceRecord {
-                    StudentId = r.StudentId,
-                    StudentName = r.StudentName,
-                    Date = r.Date,
-                    TimeIn = r.TimeIn,
-                    TimeOut = r.TimeOut,
-                    Status = r.Status,
-                    Remarks = r.AttendanceType // Store type in remarks for internal processing if needed
-                }).Where(r => r.Date.Date == DateTime.Today.Date).ToList();
+
+                if (selectedClass != null)
+                {
+                    // LOAD OFFLINE SUBJECT ATTENDANCE
+                    // Get all regular attendance scans and filter by our subject
+                    var allOffline = await OfflineDataService.GetUnsyncedAttendanceAsync(currentTeacher.TeacherId);
+                    attendanceList = allOffline
+                        .Where(r => r.SubjectId == selectedClass.ClassOfferingId && r.CreatedAt.Date == DateTime.Today)
+                        .Select(r => new AttendanceRecord {
+                            StudentId = r.StudentId,
+                            StudentName = r.StudentName,
+                            SubjectName = selectedClass.SubjectName,
+                            TimeIn = r.ScanTime,
+                            AttendanceType = "Present",
+                            Status = "Present",
+                            Remarks = r.Remarks,
+                            Timestamp = r.CreatedAt
+                        }).OrderByDescending(a => a.Timestamp).ToList();
+                    
+                    await InvokeAsync(StateHasChanged);
+                    return; // Done
+                }
+                else
+                {
+                    // LOAD OFFLINE DAILY ATTENDANCE (School-wide)
+                    var localRecords = await OfflineDataService.GetUnsyncedDailyAttendanceAsync(currentTeacher.TeacherId, todayStr);
+                    response = localRecords.Select(r => new DailyAttendanceRecord {
+                        StudentId = r.StudentId,
+                        StudentName = r.StudentName,
+                        Date = r.Date,
+                        TimeIn = r.TimeIn,
+                        TimeOut = r.TimeOut,
+                        Status = r.Status,
+                        Remarks = r.AttendanceType // Store type in remarks for internal processing if needed
+                    }).Where(r => r.Date.Date == DateTime.Today.Date).ToList();
+                }
             }
             
             if (response != null && response.Any())
