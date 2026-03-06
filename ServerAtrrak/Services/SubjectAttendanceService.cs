@@ -80,8 +80,9 @@ namespace ServerAtrrak.Services
                         SELECT ts.TeacherSubjectId
                         FROM teachersubject ts
                         INNER JOIN class_offering co ON co.ClassOfferingId = @COId
+                        INNER JOIN subject sub ON ts.SubjectId = sub.SubjectId
                         WHERE ts.SubjectId = co.SubjectId 
-                          AND ts.GradeLevel = co.GradeLevel 
+                          AND sub.GradeLevel = co.GradeLevel 
                           AND ts.Section = co.Section
                         LIMIT 1";
                     using var tsCmd = new MySqlCommand(tsLookupSql, connection);
@@ -311,8 +312,9 @@ namespace ServerAtrrak.Services
                     SELECT ts.TeacherSubjectId
                     FROM teachersubject ts
                     INNER JOIN class_offering co ON co.ClassOfferingId = @ClassOfferingId
+                    INNER JOIN subject sub ON ts.SubjectId = sub.SubjectId
                     WHERE ts.SubjectId = co.SubjectId 
-                      AND ts.GradeLevel = co.GradeLevel 
+                      AND sub.GradeLevel = co.GradeLevel 
                       AND ts.Section = co.Section
                     LIMIT 1";
                 using var tsCmd = new MySqlCommand(tsLookupSql, connection);
