@@ -10,6 +10,8 @@ namespace AttrackSharedClass.Models
         [Required]
         [MaxLength(50)]
         public string Username { get; set; } = string.Empty;
+
+        public string? FullName { get; set; }
         
         [Required]
         [MaxLength(100)]

@@ -90,6 +90,7 @@ namespace ServerAtrrak.Services
                     {
                         UserId = user.UserId,
                         Username = user.Username,
+                        FullName = user.FullName,
                         Email = user.Email,
                         UserType = user.UserType,
                         TeacherId = user.TeacherId,
@@ -124,7 +125,8 @@ namespace ServerAtrrak.Services
                 var query = @"
                     SELECT u.UserId, u.Username, u.Email, u.Password, u.UserType, 
                            u.IsActive, u.IsApproved, u.CreatedAt, u.UpdatedAt, u.LastLoginAt, 
-                           u.TeacherId, u.StudentId, COALESCE(t.SchoolId, s.SchoolId) as SchoolId
+                           u.TeacherId, u.StudentId, COALESCE(t.SchoolId, s.SchoolId) as SchoolId,
+                           COALESCE(t.FullName, s.FullName) as FullName
                     FROM user u
                     LEFT JOIN teacher t ON u.TeacherId = t.TeacherId
                     LEFT JOIN student s ON u.StudentId = s.StudentId
@@ -172,7 +174,8 @@ namespace ServerAtrrak.Services
                         LastLoginAt = reader.IsDBNull(9) ? null : reader.GetDateTime(9),
                         TeacherId = reader.IsDBNull(10) ? null : reader.GetString(10),
                         StudentId = reader.IsDBNull(11) ? null : reader.GetString(11),
-                        SchoolId = schoolId
+                        SchoolId = schoolId,
+                        FullName = reader.IsDBNull(13) ? null : reader.GetString(13)
                     };
                     _logger.LogInformation("User object created successfully");
                     return user;
@@ -229,6 +232,7 @@ namespace ServerAtrrak.Services
                     UPDATE user 
                     SET Username = @Username, 
                         Password = @Password, 
+                        Email = @Email,
                         IsActive = @IsActive, 
                         UpdatedAt = @UpdatedAt 
                     WHERE UserId = @UserId";
@@ -236,6 +240,7 @@ namespace ServerAtrrak.Services
                 using var updateCommand = new MySqlCommand(updateQuery, connection);
                 updateCommand.Parameters.AddWithValue("@Username", request.Username);
                 updateCommand.Parameters.AddWithValue("@Password", request.Password);
+                updateCommand.Parameters.AddWithValue("@Email", request.Email);
                 updateCommand.Parameters.AddWithValue("@IsActive", request.IsActive);
                 updateCommand.Parameters.AddWithValue("@UpdatedAt", DateTime.Now);
                 updateCommand.Parameters.AddWithValue("@UserId", request.UserId);
@@ -244,6 +249,39 @@ namespace ServerAtrrak.Services
                 
                 if (rowsAffected > 0)
                 {
+                    // Update FullName in Teacher/Student tables
+                    var getUserIdsQuery = "SELECT TeacherId, StudentId FROM user WHERE UserId = @UserId";
+                    string? teacherId = null;
+                    string? studentId = null;
+                    
+                    using (var idCommand = new MySqlCommand(getUserIdsQuery, connection))
+                    {
+                        idCommand.Parameters.AddWithValue("@UserId", request.UserId);
+                        using var reader = await idCommand.ExecuteReaderAsync();
+                        if (await reader.ReadAsync())
+                        {
+                            teacherId = reader.IsDBNull(0) ? null : reader.GetString(0);
+                            studentId = reader.IsDBNull(1) ? null : reader.GetString(1);
+                        }
+                    }
+
+                    if (!string.IsNullOrEmpty(teacherId))
+                    {
+                        var updateTeacherQuery = "UPDATE teacher SET FullName = @FullName WHERE TeacherId = @TeacherId";
+                        using var teacherCommand = new MySqlCommand(updateTeacherQuery, connection);
+                        teacherCommand.Parameters.AddWithValue("@FullName", request.FullName);
+                        teacherCommand.Parameters.AddWithValue("@TeacherId", teacherId);
+                        await teacherCommand.ExecuteNonQueryAsync();
+                    }
+                    else if (!string.IsNullOrEmpty(studentId))
+                    {
+                        var updateStudentQuery = "UPDATE student SET FullName = @FullName WHERE StudentId = @StudentId";
+                        using var studentCommand = new MySqlCommand(updateStudentQuery, connection);
+                        studentCommand.Parameters.AddWithValue("@FullName", request.FullName);
+                        studentCommand.Parameters.AddWithValue("@StudentId", studentId);
+                        await studentCommand.ExecuteNonQueryAsync();
+                    }
+
                     _logger.LogInformation("Profile updated successfully for {UserId}", request.UserId);
                     return (true, "Profile updated successfully.");
                 }

@@ -12,6 +12,7 @@ namespace AttrackSharedClass.Models
     {
         public string UserId { get; set; } = string.Empty;
         public string Username { get; set; } = string.Empty;
+        public string? FullName { get; set; }
         public string Email { get; set; } = string.Empty;
         public UserType UserType { get; set; }
         public string? TeacherId { get; set; }

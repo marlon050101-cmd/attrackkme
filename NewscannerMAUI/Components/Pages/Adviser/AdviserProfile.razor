@@ -41,12 +41,28 @@
                         <i class="fas fa-user-tie"></i>
                     </div>
                     <div class="avatar-info">
-                        <h2>@currentUser?.Email</h2>
-                        <span>@currentUser?.UserType</span>
+                        <h2>@(currentUser?.FullName ?? currentUser?.Username)</h2>
+                        <span>@currentUser?.Email</span>
                     </div>
                 </div>
 
                 <div class="form-body">
+                    <div class="premium-field">
+                        <label>FULL NAME</label>
+                        <div class="input-with-icon">
+                            <i class="fas fa-id-card"></i>
+                            <input type="text" class="premium-input" @bind="editModel.FullName" placeholder="Enter full name" />
+                        </div>
+                    </div>
+
+                    <div class="premium-field">
+                        <label>EMAIL ADDRESS</label>
+                        <div class="input-with-icon">
+                            <i class="fas fa-envelope"></i>
+                            <input type="email" class="premium-input" @bind="editModel.Email" placeholder="Enter email address" />
+                        </div>
+                    </div>
+
                     <div class="premium-field">
                         <label>USERNAME</label>
                         <div class="input-with-icon">
@@ -262,6 +278,8 @@
             {
                 UserId = currentUser.UserId,
                 Username = currentUser.Username,
+                FullName = currentUser.FullName ?? "",
+                Email = currentUser.Email,
                 Password = "", // leave blank instead of showing hash
                 IsActive = true // assumed true because they are logged in
             };
@@ -278,6 +296,16 @@
 
     private async Task UpdateProfile()
     {
+        if (string.IsNullOrWhiteSpace(editModel.FullName))
+        {
+            await ShowSnackbar("Full name cannot be empty.", "error");
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(editModel.Email) || !editModel.Email.Contains("@"))
+        {
+            await ShowSnackbar("Please enter a valid email address.", "error");
+            return;
+        }
         if (string.IsNullOrWhiteSpace(editModel.Username))
         {
             await ShowSnackbar("Username cannot be empty.", "error");
