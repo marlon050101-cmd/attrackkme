@@ -89,11 +89,6 @@ namespace ServerAtrrak.Services
                     tsCmd.Parameters.AddWithValue("@COId", request.ClassOfferingId);
                     var tsResult = await tsCmd.ExecuteScalarAsync();
                     resolvedTeacherSubjectId = tsResult == DBNull.Value ? null : tsResult?.ToString();
-                    
-                    if (string.IsNullOrEmpty(resolvedTeacherSubjectId))
-                    {
-                        return new SubjectAttendanceResponse { Success = false, Message = "No Teacher Subject assignment found for this class." };
-                    }
                 }
 
                 // If not using offering, just use the passed TSId
@@ -154,10 +149,12 @@ namespace ServerAtrrak.Services
                     // Prevent double insert by checking for existing record first
                     var checkExistSql = @"
                         SELECT SubjectAttendanceId FROM subject_attendance 
-                        WHERE TeacherSubjectId = @TSId AND StudentId = @StudentId AND Date = @Date 
+                        WHERE (TeacherSubjectId = @TSId OR (@TSId IS NULL AND ClassOfferingId = @COId)) 
+                          AND StudentId = @StudentId AND Date = @Date 
                         LIMIT 1";
                     using var checkCmd = new MySqlCommand(checkExistSql, connection);
-                    checkCmd.Parameters.AddWithValue("@TSId", finalTSId);
+                    checkCmd.Parameters.AddWithValue("@TSId", finalTSId ?? (object)DBNull.Value);
+                    checkCmd.Parameters.AddWithValue("@COId", useOffering ? request.ClassOfferingId : (object)DBNull.Value);
                     checkCmd.Parameters.AddWithValue("@StudentId", item.StudentId);
                     checkCmd.Parameters.AddWithValue("@Date", date);
                     var existingId = await checkCmd.ExecuteScalarAsync();
