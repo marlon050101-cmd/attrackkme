@@ -1,7 +1,11 @@
 @inherits LayoutComponentBase
+@implements IDisposable
 @using NewscannerMAUI.Services
 @using AttrackSharedClass.Models
+@using System.Net.Http.Json
+@inject IHttpClientFactory HttpClientFactory
 @inject AuthService AuthService
+@inject AdviserStateService AdviserState
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
 
@@ -53,7 +57,11 @@
                 </NavLink>
                 <NavLink class="nav-item" href="/adviser/student-approvals" @onclick="CloseSidebar">
                     <i class="fas fa-user-plus"></i>
-                    <span>Student Approvals</span>
+                    <span class="nav-label">Student Approvals</span>
+                    @if (AdviserState.PendingStudentsCount > 0)
+                    {
+                        <span class="pending-badge">@AdviserState.PendingStudentsCount</span>
+                    }
                 </NavLink>
             </div>
 
@@ -80,13 +88,50 @@
 @code {
     private bool isSidebarOpen = false;
     private string adviserName = "Adviser";
+    private int pendingStudentsCount = 0;
 
     protected override async Task OnInitializedAsync()
     {
+        AdviserState.OnStateChanged += HandleStateChanged;
         var user = await AuthService.GetCurrentUserAsync();
         if (user != null)
         {
             adviserName = user.Username;
+
+            if (!string.IsNullOrEmpty(user.TeacherId))
+            {
+                await LoadPendingStudentsCount(user.TeacherId);
+            }
+        }
+    }
+
+    private void HandleStateChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        AdviserState.OnStateChanged -= HandleStateChanged;
+    }
+
+    private async Task LoadPendingStudentsCount(string teacherId)
+    {
+        try
+        {
+            var http = HttpClientFactory.CreateClient("AttrakAPI");
+            var response = await http.GetAsync($"api/register/adviser/{teacherId}/students");
+            if (response.IsSuccessStatusCode)
+            {
+                var students = await response.Content.ReadFromJsonAsync<List<StudentDisplayInfo>>();
+                if (students != null)
+                {
+                    var count = students.Count(s => 
+                        string.Equals(s.EnrollmentStatus, "Pending", StringComparison.OrdinalIgnoreCase));
+                    AdviserState.SetPendingCount(count);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading pending students count: {ex.Message}");
         }
     }
 
@@ -316,6 +361,23 @@
     .nav-item:hover {
         background: #f8f9fc;
         color: var(--adviser-primary);
+    }
+
+    .nav-label {
+        flex: 1;
+    }
+
+    .pending-badge {
+        background: #e74a3b;
+        color: white;
+        font-size: 0.65rem;
+        font-weight: 700;
+        padding: 2px 6px;
+        border-radius: 10px;
+        line-height: 1;
+        min-width: 18px;
+        text-align: center;
+        margin-left: auto;
     }
 
     .nav-item.active {

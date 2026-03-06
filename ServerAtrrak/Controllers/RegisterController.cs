@@ -354,6 +354,49 @@ namespace ServerAtrrak.Controllers
             }
         }
 
+        [HttpGet("advisers/all")]
+        public async Task<ActionResult<List<TeacherInfo>>> GetAllAdvisersForSchool([FromQuery] string schoolId)
+        {
+            try
+            {
+                using var connection = new MySqlConnection(_dbConnection.GetConnection());
+                await connection.OpenAsync();
+
+                var query = @"
+                    SELECT t.TeacherId, t.FullName, t.Email, s.SchoolName, s.SchoolId, t.Gradelvl, t.Section, t.Strand
+                    FROM teacher t
+                    INNER JOIN school s ON t.SchoolId = s.SchoolId
+                    INNER JOIN user u ON t.TeacherId = u.TeacherId
+                    WHERE t.SchoolId = @SchoolId AND (u.UserType = 'Adviser' OR u.UserType = 'Advisor')";
+
+                using var command = new MySqlCommand(query, connection);
+                command.Parameters.AddWithValue("@SchoolId", schoolId);
+
+                var list = new List<TeacherInfo>();
+                using var reader = await command.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    list.Add(new TeacherInfo
+                    {
+                        TeacherId = reader.GetString("TeacherId"),
+                        FullName = reader.GetString("FullName"),
+                        Email = reader.GetString("Email"),
+                        SchoolName = reader.GetString("SchoolName"),
+                        SchoolId = reader.GetString("SchoolId"),
+                        GradeLevel = reader.IsDBNull("Gradelvl") ? 0 : reader.GetInt32("Gradelvl"),
+                        Section = reader.IsDBNull("Section") ? "" : reader.GetString("Section"),
+                        Strand = reader.IsDBNull("Strand") ? null : reader.GetString("Strand")
+                    });
+                }
+                return Ok(list);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error fetching all advisers for school {SchoolId}", schoolId);
+                return StatusCode(500, new List<TeacherInfo>());
+            }
+        }
+
         [HttpGet("advisers/search")]
         public async Task<ActionResult<List<TeacherInfo>>> SearchAdvisers([FromQuery] string schoolId, [FromQuery] string name)
         {

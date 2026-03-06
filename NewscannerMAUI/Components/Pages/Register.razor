@@ -236,7 +236,7 @@
 
             <div class="mb-2">
                 <label class="form-label">Full Name</label>
-                <input class="form-control text-uppercase-input @(IsInvalid("FullName") ? "is-invalid" : "")" type="text" placeholder="E.G. JUAN DELA CRUZ"
+                <input class="form-control text-uppercase-input @(IsInvalid("FullName") ? "is-invalid" : "")" type="text" placeholder="E.G. DELA CRUZ, JUAN"
                        value="@fullName" @oninput="(e) => fullName = e.Value?.ToString()?.ToUpper() ?? string.Empty" />
             </div>
 
@@ -523,6 +523,7 @@
     private string strand = string.Empty;
 
     // --- Section State ---
+    private List<string> allSectionsInGrade = new();
     private List<string> sectionSearchResults = new();
     private bool isLoadingSections = false;
     private System.Threading.CancellationTokenSource? sectionSearchCts;
@@ -531,6 +532,8 @@
     private string parentsNumber = string.Empty;
 
     // --- Adviser Search ---
+    private List<TeacherInfo> allAdvisersInSchool = new();
+    private bool isAdvisersPreloaded = false;
     private List<TeacherInfo> adviserSearchResults = new();
     private string adviserSearchText = string.Empty;
     private string selectedAdviserId = string.Empty;
@@ -627,7 +630,35 @@
         
         schoolSearchResults.Clear();
         schoolSearchText = string.Empty;
+        
+        // Pre-load advisers for the selected school
+        _ = LoadAdvisersForSchool(selectedSchoolId);
+        
         StateHasChanged();
+    }
+
+    private async Task LoadAdvisersForSchool(string schoolId)
+    {
+        if (string.IsNullOrEmpty(schoolId)) return;
+        
+        isAdvisersPreloaded = false;
+        allAdvisersInSchool.Clear();
+        
+        try
+        {
+            var http = HttpClientFactory.CreateClient("AttrakAPI");
+            var result = await http.GetFromJsonAsync<List<TeacherInfo>>($"api/register/advisers/all?schoolId={schoolId}");
+            if (result != null)
+            {
+                allAdvisersInSchool = result;
+                isAdvisersPreloaded = true;
+                System.Diagnostics.Debug.WriteLine($"Pre-loaded {allAdvisersInSchool.Count} advisers for school {schoolId}");
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Error pre-loading advisers: {ex.Message}");
+        }
     }
 
     private void ClearSchool()
@@ -640,12 +671,17 @@
         selectedSchoolAddress = string.Empty;
         schoolSearchResults.Clear();
         schoolSearchText = string.Empty;
+        allAdvisersInSchool.Clear();
+        isAdvisersPreloaded = false;
         ClearSection();
+        ClearAdviser();
     }
 
     private async Task OnGradeLevelChanged()
     {
         userSection = string.Empty;
+        allSectionsInGrade.Clear();
+        sectionSearchResults.Clear();
         if (gradeLevel > 0 && (!string.IsNullOrEmpty(selectedSchoolId) || !string.IsNullOrEmpty(selectedSchoolName)))
         {
             await FetchSections();
@@ -660,21 +696,24 @@
         }
     }
 
-    private async Task OnSectionSearchInput(ChangeEventArgs e)
+    private void OnSectionSearchInput(ChangeEventArgs e)
     {
         userSection = e.Value?.ToString() ?? string.Empty;
+        
         if (string.IsNullOrEmpty(userSection))
         {
-            await FetchSections();
+            sectionSearchResults = allSectionsInGrade.Take(10).ToList();
             return;
         }
 
-        // Fetch sections on every few chars? Or just wait for focus?
-        // For now, let's keep it simple: if empty or certain length, fetch.
-         if (userSection.Length >= 2)
-         {
-             await FetchSections();
-         }
+        if (allSectionsInGrade.Any())
+        {
+            sectionSearchResults = allSectionsInGrade
+                .Where(s => s.Contains(userSection, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(s => s.StartsWith(userSection, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+                .Take(10)
+                .ToList();
+        }
     }
 
     private async Task FetchSections()
@@ -694,7 +733,8 @@
             var result = await http.GetFromJsonAsync<List<string>>(url);
             if (result != null)
             {
-                sectionSearchResults = result;
+                allSectionsInGrade = result;
+                sectionSearchResults = allSectionsInGrade.Take(10).ToList();
             }
         }
         catch (Exception ex)
@@ -728,6 +768,24 @@
 
         if (adviserSearchText.Length < 2 || string.IsNullOrEmpty(selectedSchoolId)) return;
 
+        // Use preloaded list if available
+        if (isAdvisersPreloaded && allAdvisersInSchool.Any())
+        {
+            adviserSearchResults = allAdvisersInSchool
+                .Where(a => a.FullName != null && a.FullName.Contains(adviserSearchText, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(a => a.FullName.StartsWith(adviserSearchText, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+                .ThenBy(a => a.FullName)
+                .Take(10)
+                .ToList();
+            
+            if (adviserSearchResults.Any())
+            {
+                StateHasChanged();
+                return;
+            }
+        }
+
+        // Fallback to API search
         adviserSearchCts?.Cancel();
         adviserSearchCts = new System.Threading.CancellationTokenSource();
         var token = adviserSearchCts.Token;

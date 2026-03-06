@@ -57,6 +57,7 @@ namespace NewscannerMAUI
             builder.Services.AddSingleton<QRScannerService>();
             builder.Services.AddSingleton<GsmSmsService>();
             builder.Services.AddSingleton<SmsHubService>();
+            builder.Services.AddSingleton<AdviserStateService>();
 
 #if DEBUG
     		builder.Services.AddBlazorWebViewDeveloperTools();

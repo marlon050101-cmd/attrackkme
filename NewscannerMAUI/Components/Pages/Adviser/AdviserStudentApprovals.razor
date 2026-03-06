@@ -5,6 +5,7 @@
 @using System.Net.Http.Json
 @inject IHttpClientFactory HttpClientFactory
 @inject AuthService AuthService
+@inject AdviserStateService AdviserState
 
 <div class="approvals-container">
     <div class="page-header mb-3">
@@ -327,6 +328,9 @@
             if (response.IsSuccessStatusCode)
             {
                 student.EnrollmentStatus = newStatus;
+                var newCount = students?.Count(s => 
+                    string.Equals(s.EnrollmentStatus, "Pending", StringComparison.OrdinalIgnoreCase)) ?? 0;
+                AdviserState.SetPendingCount(newCount);
                 StateHasChanged();
             }
         }
