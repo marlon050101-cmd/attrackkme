@@ -37,7 +37,7 @@ namespace NewscannerMAUI.Services
             return await _offlineDataService.GetStudentNameForDisplayAsync(studentId, teacherId);
         }
 
-        public async Task<QRValidationResult> ValidateQRCodeAsync(string qrCode, string? attendanceType = null, string? teacherId = null)
+        public async Task<QRValidationResult> ValidateQRCodeAsync(string qrCode, string? attendanceType = null, string? teacherId = null, string? classOfferingId = null, string? remarks = null)
         {
             try
             {
@@ -161,33 +161,64 @@ namespace NewscannerMAUI.Services
                             }
                         }
 
-                        if (resolvedAttendanceType == "TimeIn")
+                        if (!string.IsNullOrEmpty(classOfferingId))
                         {
-                            var request = new DailyTimeInRequest
-                            {
-                                StudentId = studentId,
-                                Date = DateTime.SpecifyKind(currentTime.Date, DateTimeKind.Unspecified),
-                                TimeIn = currentTime.TimeOfDay,
-                                TeacherId = resolvedTeacherId
-                            };
+                            // === SUBJECT ATTENDANCE MODE ===
+                            System.Diagnostics.Debug.WriteLine($"Subject Attendance Mode: ClassOfferingId={classOfferingId}");
                             
-                            response = await _httpClient.PostAsJsonAsync($"{_serverBaseUrl}/api/dailyattendance/daily-timein", request);
+                            var batchRequest = new SubjectAttendanceBatchRequest
+                            {
+                                ClassOfferingId = classOfferingId,
+                                Date = currentTime.Date,
+                                Items = new List<SubjectAttendanceItem>
+                                {
+                                    new SubjectAttendanceItem
+                                    {
+                                        StudentId = studentId,
+                                        Status = status,
+                                        AttendanceType = resolvedAttendanceType,
+                                        ScanTimestamp = currentTime,
+                                        Remarks = remarks // null if not provided
+                                    }
+                                }
+                            };
+
+                            response = await _httpClient.PostAsJsonAsync($"{_serverBaseUrl}/api/SubjectAttendance/batch", batchRequest);
+                            
+                            // For subject attendance, we don't have TimeIn/TimeOut types in the same way
+                            attendanceType = "Subject Attendance"; 
                         }
                         else
                         {
-                            var request = new DailyTimeOutRequest
+                            // === DAILY ATTENDANCE MODE (Existing) ===
+                            if (resolvedAttendanceType == "TimeIn")
                             {
-                                StudentId = studentId,
-                                Date = DateTime.SpecifyKind(currentTime.Date, DateTimeKind.Unspecified),
-                                TimeOut = currentTime.TimeOfDay,
-                                TeacherId = resolvedTeacherId
-                            };
+                                var request = new DailyTimeInRequest
+                                {
+                                    StudentId = studentId,
+                                    Date = DateTime.SpecifyKind(currentTime.Date, DateTimeKind.Unspecified),
+                                    TimeIn = currentTime.TimeOfDay,
+                                    TeacherId = resolvedTeacherId
+                                };
+                                
+                                response = await _httpClient.PostAsJsonAsync($"{_serverBaseUrl}/api/dailyattendance/daily-timein", request);
+                            }
+                            else
+                            {
+                                var request = new DailyTimeOutRequest
+                                {
+                                    StudentId = studentId,
+                                    Date = DateTime.SpecifyKind(currentTime.Date, DateTimeKind.Unspecified),
+                                    TimeOut = currentTime.TimeOfDay,
+                                    TeacherId = resolvedTeacherId
+                                };
+                                
+                                response = await _httpClient.PostAsJsonAsync($"{_serverBaseUrl}/api/dailyattendance/daily-timeout", request);
+                            }
                             
-                            response = await _httpClient.PostAsJsonAsync($"{_serverBaseUrl}/api/dailyattendance/daily-timeout", request);
+                            // Update attendanceType for messages/logging below
+                            attendanceType = resolvedAttendanceType;
                         }
-                        
-                        // Update attendanceType for messages/logging below
-                        attendanceType = resolvedAttendanceType;
                         
                         if (response.IsSuccessStatusCode)
                         {
@@ -232,7 +263,8 @@ namespace NewscannerMAUI.Services
                                 DateTime.Now, 
                                 isSynced: true, // Mark as already synced
                                 studentName: studentName,
-                                teacherId: resolvedTeacherId
+                                teacherId: resolvedTeacherId,
+                                subjectId: classOfferingId
                             );
 
                             return new QRValidationResult
@@ -362,7 +394,7 @@ namespace NewscannerMAUI.Services
                 // 3. Offline Validation (Fallback or Default)
                 if (!isOnline)
                 {
-                    return await ValidateOfflineAsync(studentId, attendanceType ?? "Auto", resolvedTeacherId);
+                    return await ValidateOfflineAsync(studentId, attendanceType ?? "Auto", resolvedTeacherId, classOfferingId, remarks);
                 }
 
                 return new QRValidationResult
@@ -384,7 +416,7 @@ namespace NewscannerMAUI.Services
             }
         }
         
-        private async Task<QRValidationResult> ValidateOfflineAsync(string studentId, string attendanceType, string? teacherId = null)
+        private async Task<QRValidationResult> ValidateOfflineAsync(string studentId, string attendanceType, string? teacherId = null, string? classOfferingId = null, string? remarks = null)
         {
             try
             {
@@ -467,7 +499,9 @@ namespace NewscannerMAUI.Services
                     DateTime.Now,
                     isSynced: false,
                     studentName: studentName,
-                    teacherId: teacherId ?? "Offline"
+                    teacherId: teacherId ?? "Offline",
+                    subjectId: classOfferingId,
+                    remarks: remarks
                 );
                 
                 if (saved)

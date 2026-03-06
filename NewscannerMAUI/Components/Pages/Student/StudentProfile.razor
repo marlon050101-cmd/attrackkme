@@ -54,7 +54,7 @@
                             <h5 class="fw-bold mb-0">My Attendance QR</h5>
                         </div>
 
-                        <div class="qr-container p-3 bg-white rounded-4 shadow-sm mb-4 d-inline-block">
+                        <div class="profile-qr-wrapper p-3 bg-white rounded-4 shadow-sm mb-4 d-inline-block">
                             @if (!string.IsNullOrEmpty(studentData.QRImage))
                             {
                                 <img src="data:image/png;base64,@studentData.QRImage" alt="QR Code" class="img-fluid" style="max-width: 250px;" />
@@ -228,11 +228,74 @@
         try
         {
             var fileName = $"{studentData.FullName.Replace(" ", "_")}_QR.png";
-            await JSRuntime.InvokeVoidAsync("downloadBase64Item", studentData.QRImage, fileName);
+            var bytes = Convert.FromBase64String(studentData.QRImage);
+            
+            bool savedDirectly = false;
+            string targetPath = "";
+
+#if WINDOWS
+            try 
+            {
+                var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+                var downloadsPath = Path.Combine(userProfile, "Downloads");
+                if (Directory.Exists(downloadsPath))
+                {
+                    targetPath = Path.Combine(downloadsPath, fileName);
+                    await File.WriteAllBytesAsync(targetPath, bytes);
+                    savedDirectly = true;
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Windows Download Error: {ex.Message}");
+            }
+#elif ANDROID
+            try 
+            {
+                // On Android, we try the standard public Download path
+                var downloadsPath = "/storage/emulated/0/Download";
+                if (Directory.Exists(downloadsPath))
+                {
+                    targetPath = Path.Combine(downloadsPath, fileName);
+                    await File.WriteAllBytesAsync(targetPath, bytes);
+                    savedDirectly = true;
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Android Download Error: {ex.Message}");
+            }
+#endif
+
+            if (savedDirectly)
+            {
+                if (Application.Current?.MainPage != null)
+                {
+                    await Application.Current.MainPage.DisplayAlert("Download Complete", $"QR Code saved to Downloads folder: {fileName}", "OK");
+                }
+            }
+            else
+            {
+                // Fallback to Share API for other platforms or if direct save failed
+                // This is the most reliable way on iOS and newer Android versions
+                var cacheFile = Path.Combine(FileSystem.CacheDirectory, fileName);
+                await File.WriteAllBytesAsync(cacheFile, bytes);
+
+                await Share.RequestAsync(new ShareFileRequest
+                {
+                    Title = "My Attendance QR",
+                    File = new ShareFile(cacheFile)
+                });
+            }
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Error downloading QR: {ex.Message}");
+            System.Diagnostics.Debug.WriteLine($"Error downloading/sharing QR: {ex.Message}");
+            // Fallback to JS if native fails
+            try {
+                var fileName = $"{studentData.FullName.Replace(" ", "_")}_QR.png";
+                await JSRuntime.InvokeVoidAsync("downloadBase64Item", studentData.QRImage, fileName);
+            } catch { }
         }
     }
 }
@@ -307,9 +370,14 @@
         box-shadow: 0 4px 10px rgba(13, 110, 253, 0.2);
     }
 
-    .qr-container {
+    .profile-qr-wrapper {
         border: 2px solid #f1f5f9;
         transition: all 0.3s ease;
+        display: flex !important;
+        align-items: center;
+        justify-content: center;
+        background: white;
+        overflow: visible !important; /* Fix for "putol" issue caused by global .qr-container */
     }
 
     .info-group {

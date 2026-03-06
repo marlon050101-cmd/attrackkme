@@ -47,6 +47,15 @@ namespace NewscannerMAUI.Pages
             _qrValidationService = qrValidationService;
         }
 
+        private string _classOfferingId = string.Empty;
+
+        public void SetClassOfferingId(string classOfferingId)
+        {
+            _classOfferingId = classOfferingId;
+            System.Diagnostics.Debug.WriteLine($"Scanner class offering set to: {_classOfferingId}");
+            UpdateModeDisplay();
+        }
+
         private void OnBarcodesDetected(object? sender, BarcodeDetectionEventArgs e)
         {
             try
@@ -181,7 +190,7 @@ namespace NewscannerMAUI.Pages
                                     }
 
                                     // 2. Full Validation (Hybrid)
-                                    var validationResult = await _qrValidationService.ValidateQRCodeAsync(result.Value, _currentAttendanceType, _teacherId);
+                                    var validationResult = await _qrValidationService.ValidateQRCodeAsync(result.Value, _currentAttendanceType, _teacherId, _classOfferingId);
                                     
                                     MainThread.BeginInvokeOnMainThread(() =>
                                     {
@@ -223,13 +232,29 @@ namespace NewscannerMAUI.Pages
                                                 bool isAlreadyRecorded = validationResult.Message.Contains("Already") || 
                                                                          validationResult.Message.Contains("already");
                                                 
+                                                bool isWrongSubject = validationResult.Message.Contains("Wrong Subject") || 
+                                                                     validationResult.Message.Contains("Class list");
+
                                                 resultLabel.Text = isAlreadyRecorded ? validationResult.Message : $"✗ {validationResult.Message}";
-                                                resultLabel.TextColor = isAlreadyRecorded ? Colors.Orange : Colors.Red;
+                                                resultLabel.TextColor = (isAlreadyRecorded || isWrongSubject) ? Colors.Orange : Colors.Red;
                                                 resultLabel.IsVisible = true;
                                                 
                                                  string statusAction = _currentAttendanceType == "TimeIn" ? "Timed In" : "Timed Out";
-                                                 statusLabel.Text = isAlreadyRecorded ? $"Already {statusAction}" : "Invalid QR code - Please try again";
-                                                 statusLabel.TextColor = isAlreadyRecorded ? Colors.Orange : Colors.Red;
+                                                 if (isAlreadyRecorded)
+                                                 {
+                                                     statusLabel.Text = $"Already {statusAction}";
+                                                     statusLabel.TextColor = Colors.Orange;
+                                                 }
+                                                 else if (isWrongSubject)
+                                                 {
+                                                     statusLabel.Text = "Wrong Subject / Not in Class";
+                                                     statusLabel.TextColor = Colors.Red;
+                                                 }
+                                                 else
+                                                 {
+                                                     statusLabel.Text = "Invalid QR code - Please try again";
+                                                     statusLabel.TextColor = Colors.Red;
+                                                 }
                                                 
                                                 _isProcessing = false; // Allow next scan immediately
                                                 

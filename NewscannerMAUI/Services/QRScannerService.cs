@@ -20,7 +20,7 @@ namespace NewscannerMAUI.Services
         }
 
 
-        public async Task OpenNativeQRScanner(string attendanceType = "")
+        public async Task OpenNativeQRScanner(string attendanceType = "", string? classOfferingId = null)
         {
             if (!await _navLock.WaitAsync(500)) 
             {
@@ -50,10 +50,15 @@ namespace NewscannerMAUI.Services
 
                 var scannerPage = new NativeQRScannerPage(_qrValidationService);
                 
-                // Set the attendance type if provided
+                // Set the attendance type and class offering if provided
                 if (!string.IsNullOrEmpty(attendanceType))
                 {
                     scannerPage.SetAttendanceType(attendanceType);
+                }
+
+                if (!string.IsNullOrEmpty(classOfferingId))
+                {
+                    scannerPage.SetClassOfferingId(classOfferingId);
                 }
                 
                 // Subscribe to QR code detection

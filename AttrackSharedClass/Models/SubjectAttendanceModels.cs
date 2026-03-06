@@ -11,6 +11,8 @@ namespace AttrackSharedClass.Models
         public string StudentId { get; set; } = "";
         public string StudentName { get; set; } = "";
         public DateTime Date { get; set; }
+        public DateTime? TimeIn { get; set; }
+        public DateTime? TimeOut { get; set; }
         public string Status { get; set; } = "Present"; // Present, Absent, Late
         public string? Remarks { get; set; }
         public DateTime CreatedAt { get; set; }
@@ -27,6 +29,7 @@ namespace AttrackSharedClass.Models
         public DateTime Date { get; set; }
         [Required]
         public string Status { get; set; } = "Present"; // Present, Absent, Late
+        public string? AttendanceType { get; set; } // TimeIn, TimeOut, Auto
         public string? Remarks { get; set; }
     }
 
@@ -46,6 +49,8 @@ namespace AttrackSharedClass.Models
     {
         public string StudentId { get; set; } = "";
         public string Status { get; set; } = "Present";
+        public string? AttendanceType { get; set; } // TimeIn, TimeOut
+        public DateTime ScanTimestamp { get; set; } = DateTime.Now;
         public string? Remarks { get; set; }
     }
 

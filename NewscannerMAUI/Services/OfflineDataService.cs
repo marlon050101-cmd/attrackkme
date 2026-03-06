@@ -106,6 +106,7 @@ namespace NewscannerMAUI.Services
                         attendance_type TEXT NOT NULL,
                         device_id TEXT,
                         is_synced INTEGER DEFAULT 0,
+                        remarks TEXT,
                         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
                     )";
@@ -183,6 +184,11 @@ namespace NewscannerMAUI.Services
                 TryAddColumn("offline_daily_attendance", "attendance_type", "TEXT");
                 TryAddColumn("offline_daily_attendance", "teacher_id", "TEXT");
                 TryAddColumn("offline_daily_attendance", "remarks", "TEXT");
+                
+                // Migration for offline_attendance (subject-based)
+                TryAddColumn("offline_attendance", "subject_id", "TEXT");
+                TryAddColumn("offline_attendance", "teacher_id", "TEXT");
+                TryAddColumn("offline_attendance", "remarks", "TEXT");
                 TryAddColumn("student_names_cache", "grade_level", "INTEGER");
                 TryAddColumn("student_names_cache", "section", "TEXT");
                 TryAddColumn("student_names_cache", "strand", "TEXT");
@@ -326,7 +332,7 @@ namespace NewscannerMAUI.Services
         }
 
         // Offline Attendance Methods
-        public async Task<bool> SaveOfflineAttendanceAsync(string studentId, string attendanceType, string? deviceId = null, DateTime? scanTime = null, bool isSynced = false, string? studentName = null, string? teacherId = null)
+        public async Task<bool> SaveOfflineAttendanceAsync(string studentId, string attendanceType, string? deviceId = null, DateTime? scanTime = null, bool isSynced = false, string? studentName = null, string? teacherId = null, string? subjectId = null, string? remarks = null)
         {
             try
             {
@@ -395,7 +401,7 @@ namespace NewscannerMAUI.Services
                     System.Diagnostics.Debug.WriteLine($"Creating new {attendanceType} record for student {studentId} on {today}. Status: {status}. Record ID: {attendanceId}");
                         
                     var insertCommand = new SqliteCommand(
-                        "INSERT INTO offline_daily_attendance (attendance_id, student_id, date, time_in, time_out, status, device_id, is_synced, attendance_type, teacher_id) VALUES (@attendanceId, @studentId, @date, @timeIn, @timeOut, @status, @deviceId, @isSynced, @attendanceType, @teacherId)",
+                        "INSERT INTO offline_daily_attendance (attendance_id, student_id, date, time_in, time_out, status, device_id, is_synced, attendance_type, teacher_id, remarks) VALUES (@attendanceId, @studentId, @date, @timeIn, @timeOut, @status, @deviceId, @isSynced, @attendanceType, @teacherId, @remarks)",
                         connection);
                     
                     insertCommand.Parameters.AddWithValue("@attendanceId", attendanceId);
@@ -408,25 +414,29 @@ namespace NewscannerMAUI.Services
                     insertCommand.Parameters.AddWithValue("@isSynced", isSynced ? 1 : 0);
                     insertCommand.Parameters.AddWithValue("@attendanceType", attendanceType);
                     insertCommand.Parameters.AddWithValue("@teacherId", teacherId ?? "Unknown");
+                    insertCommand.Parameters.AddWithValue("@remarks", remarks ?? (object)DBNull.Value);
                         
                     var insertResult = await insertCommand.ExecuteNonQueryAsync();
                     System.Diagnostics.Debug.WriteLine($"Created new {attendanceType} record. Rows affected: {insertResult}");
                 }
                 else
                 {
-                    // Use regular attendance table for other types
+                    // Use regular attendance table for other types, including subject-specific scans
                     var command = new SqliteCommand(
-                        "INSERT INTO offline_attendance (attendance_id, student_id, timestamp, attendance_type, device_id, is_synced) VALUES (@attendanceId, @studentId, @timestamp, @attendanceType, @deviceId, @isSynced)",
+                        "INSERT INTO offline_attendance (attendance_id, student_id, subject_id, teacher_id, timestamp, attendance_type, device_id, is_synced, remarks) VALUES (@attendanceId, @studentId, @subjectId, @teacherId, @timestamp, @attendanceType, @deviceId, @isSynced, @remarks)",
                         connection);
                     command.Parameters.AddWithValue("@attendanceId", Guid.NewGuid().ToString());
                     command.Parameters.AddWithValue("@studentId", studentId);
-                    command.Parameters.AddWithValue("@timestamp", DateTime.Now);
+                    command.Parameters.AddWithValue("@subjectId", subjectId ?? (object)DBNull.Value);
+                    command.Parameters.AddWithValue("@teacherId", teacherId ?? "Offline");
+                    command.Parameters.AddWithValue("@timestamp", scanTime ?? DateTime.Now);
                     command.Parameters.AddWithValue("@attendanceType", attendanceType);
                     command.Parameters.AddWithValue("@deviceId", deviceId ?? GetDeviceId());
                     command.Parameters.AddWithValue("@isSynced", isSynced ? 1 : 0);
+                    command.Parameters.AddWithValue("@remarks", remarks ?? (object)DBNull.Value);
 
                     var result = await command.ExecuteNonQueryAsync();
-                    System.Diagnostics.Debug.WriteLine($"Offline attendance saved successfully. Rows affected: {result}");
+                    System.Diagnostics.Debug.WriteLine($"Offline attendance saved successfully (Subject: {subjectId}). Rows affected: {result}");
                 }
                 
                 // Cache the student name if provided, otherwise try to fetch/find it
@@ -466,7 +476,7 @@ namespace NewscannerMAUI.Services
                         System.Diagnostics.Debug.WriteLine("Database reinitialized successfully");
                         
                         // Try the save operation again
-                        return await SaveOfflineAttendanceAsync(studentId, attendanceType, deviceId, scanTime, isSynced, studentName, teacherId);
+                        return await SaveOfflineAttendanceAsync(studentId, attendanceType, deviceId, scanTime, isSynced, studentName, teacherId, subjectId, remarks);
                     }
                     catch (Exception fixEx)
                     {
