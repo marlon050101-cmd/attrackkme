@@ -70,6 +70,7 @@ namespace ServerAtrrak.Services
                     return new SubjectAttendanceResponse { Success = false, Message = "ClassOfferingId or TeacherSubjectId required." };
                 using var connection = new MySqlConnection(_dbConnection.GetConnection());
                 await connection.OpenAsync();
+                var date = request.Date.Date;
                 foreach (var item in request.Items)
                 {
                     if (string.IsNullOrEmpty(item.StudentId)) continue;
