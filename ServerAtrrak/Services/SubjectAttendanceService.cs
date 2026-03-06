@@ -71,6 +71,24 @@ namespace ServerAtrrak.Services
                 using var connection = new MySqlConnection(_dbConnection.GetConnection());
                 await connection.OpenAsync();
                 var date = request.Date.Date;
+
+                // Resolve TeacherSubjectId from class_offering when using ClassOfferingId
+                string? resolvedTeacherSubjectId = request.TeacherSubjectId;
+                if (useOffering && string.IsNullOrEmpty(resolvedTeacherSubjectId))
+                {
+                    var tsLookupSql = @"
+                        SELECT ts.TeacherSubjectId
+                        FROM teachersubject ts
+                        INNER JOIN class_offering co ON co.ClassOfferingId = @COId
+                            AND ts.TeacherId = co.TeacherId
+                            AND ts.SubjectId = co.SubjectId
+                        LIMIT 1";
+                    using var tsCmd = new MySqlCommand(tsLookupSql, connection);
+                    tsCmd.Parameters.AddWithValue("@COId", request.ClassOfferingId);
+                    var tsResult = await tsCmd.ExecuteScalarAsync();
+                    resolvedTeacherSubjectId = tsResult == DBNull.Value ? null : tsResult?.ToString();
+                }
+
                 foreach (var item in request.Items)
                 {
                     if (string.IsNullOrEmpty(item.StudentId)) continue;
@@ -126,7 +144,7 @@ namespace ServerAtrrak.Services
                     {
                         var sql = @"
                             INSERT INTO subject_attendance (SubjectAttendanceId, ClassOfferingId, TeacherSubjectId, StudentId, Date, Status, Remarks, TimeIn, TimeOut)
-                            VALUES (@Id, @COId, NULL, @StudentId, @Date, @Status, @Remarks, @TimeIn, @TimeOut)
+                            VALUES (@Id, @COId, @TSId, @StudentId, @Date, @Status, @Remarks, @TimeIn, @TimeOut)
                             ON DUPLICATE KEY UPDATE 
                                 Status = @Status, 
                                 Remarks = @Remarks, 
@@ -136,6 +154,7 @@ namespace ServerAtrrak.Services
                         using var cmd = new MySqlCommand(sql, connection);
                         cmd.Parameters.AddWithValue("@Id", Guid.NewGuid().ToString());
                         cmd.Parameters.AddWithValue("@COId", request.ClassOfferingId);
+                        cmd.Parameters.AddWithValue("@TSId", resolvedTeacherSubjectId ?? (object)DBNull.Value);
                         cmd.Parameters.AddWithValue("@StudentId", item.StudentId);
                         cmd.Parameters.AddWithValue("@Date", date);
                         cmd.Parameters.AddWithValue("@Status", status);
