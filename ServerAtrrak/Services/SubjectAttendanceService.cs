@@ -80,10 +80,8 @@ namespace ServerAtrrak.Services
                         SELECT ts.TeacherSubjectId
                         FROM teachersubject ts
                         INNER JOIN class_offering co ON co.ClassOfferingId = @COId
-                        INNER JOIN subject sub ON ts.SubjectId = sub.SubjectId
-                        WHERE ts.SubjectId = co.SubjectId 
-                          AND sub.GradeLevel = co.GradeLevel 
-                          AND ts.Section = co.Section
+                        WHERE ts.TeacherId = co.TeacherId 
+                          AND ts.SubjectId = co.SubjectId 
                         LIMIT 1";
                     using var tsCmd = new MySqlCommand(tsLookupSql, connection);
                     tsCmd.Parameters.AddWithValue("@COId", request.ClassOfferingId);
@@ -309,10 +307,8 @@ namespace ServerAtrrak.Services
                     SELECT ts.TeacherSubjectId
                     FROM teachersubject ts
                     INNER JOIN class_offering co ON co.ClassOfferingId = @ClassOfferingId
-                    INNER JOIN subject sub ON ts.SubjectId = sub.SubjectId
-                    WHERE ts.SubjectId = co.SubjectId 
-                      AND sub.GradeLevel = co.GradeLevel 
-                      AND ts.Section = co.Section
+                    WHERE ts.TeacherId = co.TeacherId 
+                      AND ts.SubjectId = co.SubjectId 
                     LIMIT 1";
                 using var tsCmd = new MySqlCommand(tsLookupSql, connection);
                 tsCmd.Parameters.AddWithValue("@ClassOfferingId", classOfferingId);
@@ -352,7 +348,8 @@ namespace ServerAtrrak.Services
                         CreatedAt = reader.GetDateTime(7),
                         UpdatedAt = reader.GetDateTime(8),
                         TimeIn = reader.IsDBNull(9) ? null : reader.GetDateTime(9),
-                        TimeOut = reader.IsDBNull(10) ? null : reader.GetDateTime(10)
+                        TimeOut = reader.IsDBNull(10) ? null : reader.GetDateTime(10),
+                        ClassOfferingId = reader.IsDBNull(11) ? null : reader.GetString(11)
                     });
                 }
             }
