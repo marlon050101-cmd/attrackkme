@@ -1,0 +1,340 @@
+@page "/adviser-profile"
+@using AttrackSharedClass.Models
+@using NewscannerMAUI.Services
+@layout AdviserLayout
+@inject IHttpClientFactory HttpClientFactory
+@inject AuthService AuthService
+@inject NavigationManager Navigation
+
+<div class="profile-container">
+    <div class="page-header">
+        <div class="header-text">
+            <h1>My Profile</h1>
+            <p>Account Settings</p>
+        </div>
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="loading-state">
+            <div class="spinner-xl"></div>
+            <p>Loading profile...</p>
+        </div>
+    }
+    else if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="error-panel">
+            <div class="error-icon"><i class="fas fa-circle-exclamation"></i></div>
+            <div class="error-content">
+                <strong>Error</strong>
+                <p>@errorMessage</p>
+            </div>
+            <button class="btn-retry" @onclick="LoadProfile">Try Again</button>
+        </div>
+    }
+    else
+    {
+        <div class="profile-content fade-in">
+            <div class="form-card">
+                <div class="form-header">
+                    <div class="avatar-circle">
+                        <i class="fas fa-user-tie"></i>
+                    </div>
+                    <div class="avatar-info">
+                        <h2>@currentUser?.Email</h2>
+                        <span>@currentUser?.UserType</span>
+                    </div>
+                </div>
+
+                <div class="form-body">
+                    <div class="premium-field">
+                        <label>USERNAME</label>
+                        <div class="input-with-icon">
+                            <i class="fas fa-user"></i>
+                            <input type="text" class="premium-input" @bind="editModel.Username" placeholder="Enter username" />
+                        </div>
+                    </div>
+
+                    <div class="premium-field">
+                        <label>PASSWORD</label>
+                        <div class="input-with-icon">
+                            <i class="fas fa-lock"></i>
+                            <input type="text" class="premium-input" @bind="editModel.Password" placeholder="Enter new password" />
+                        </div>
+                        <span class="field-hint">Minimum 6 characters</span>
+                    </div>
+
+                    <div class="premium-field inline-toggle">
+                        <div class="toggle-text">
+                            <label>ACCOUNT STATUS</label>
+                            <span class="field-hint">Toggle to deactivate your account</span>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" @bind="editModel.IsActive" />
+                            <span class="slider round"></span>
+                        </label>
+                    </div>
+
+                    <button class="btn-premium-action mt-4" @onclick="UpdateProfile" disabled="@isSaving">
+                        @if (isSaving)
+                        {
+                            <div class="loader-sm white"></div>
+                        }
+                        else
+                        {
+                            <i class="fas fa-save"></i>
+                            <span>Save Changes</span>
+                        }
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@* ─── Modern Snackbar ─── *@
+<div class="snackbar-host @(showSnackbar ? "active" : "") @snackbarType">
+    <div class="snackbar-box">
+        <div class="snackbar-icon"><i class="@snackbarIcon"></i></div>
+        <div class="snackbar-message">@snackbarMessage</div>
+        <div class="snackbar-progress"></div>
+    </div>
+</div>
+
+<style>
+    :root {
+        --primary-indigo: #312e81;
+        --secondary-indigo: #4338ca;
+        --soft-bg: #f8fafc;
+        --text-main: #1e293b;
+        --text-sub: #64748b;
+        --radius-lg: 24px;
+        --radius-md: 16px;
+        --shadow-card: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.025);
+    }
+
+    .profile-container { padding: 0; max-width: 800px; margin: 0 auto; font-family: 'Inter', 'Roboto', sans-serif; min-height: 100vh; background: var(--soft-bg); }
+    
+    /* Header */
+    .page-header { 
+        background: var(--primary-indigo); 
+        padding: 2rem 1.5rem 1.5rem; 
+        border-radius: 0 0 24px 24px; 
+        color: white; 
+        box-shadow: 0 4px 12px rgba(49, 46, 129, 0.15);
+        margin-bottom: 1.5rem;
+    }
+    .page-header h1 {
+        font-size: 1.5rem; font-weight: 800; color: white; margin: 0; letter-spacing: -0.5px; line-height: 1.2;
+    }
+    .page-header p {
+        color: #cbd5e1; margin: 0.25rem 0 0; font-weight: 500; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px;
+    }
+
+    /* Content */
+    .profile-content { padding: 0 1.25rem 2rem; }
+
+    .form-card {
+        background: white; border-radius: 20px; border: 1px solid #e2e8f0;
+        box-shadow: var(--shadow-card); overflow: hidden;
+    }
+
+    .form-header {
+        padding: 2rem 1.5rem; background: #f1f5f9; display: flex; align-items: center; gap: 1rem;
+        border-bottom: 1px solid #e2e8f0;
+    }
+
+    .avatar-circle {
+        width: 60px; height: 60px; border-radius: 18px; background: white; color: var(--primary-indigo);
+        display: flex; align-items: center; justify-content: center; font-size: 1.5rem; box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+
+    .avatar-info h2 { font-size: 1.15rem; font-weight: 800; color: var(--text-main); margin: 0 0 4px; }
+    .avatar-info span { font-size: 0.8rem; font-weight: 600; color: var(--secondary-indigo); text-transform: uppercase; letter-spacing: 0.5px; }
+
+    .form-body { padding: 1.5rem; display: flex; flex-direction: column; gap: 1.5rem; }
+
+    .premium-field { display: flex; flex-direction: column; gap: 0.5rem; }
+    .premium-field label { font-size: 0.75rem; font-weight: 800; color: var(--text-sub); text-transform: uppercase; letter-spacing: 1px; margin-left: 4px; }
+    .field-hint { font-size: 0.75rem; color: #94a3b8; margin-left: 4px; font-weight: 500; }
+    
+    .input-with-icon { position: relative; }
+    .input-with-icon i { position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); color: #94a3b8; font-size: 1rem; }
+    
+    .premium-input {
+        width: 100%; border: 1.5px solid #e2e8f0; background: #f8fafc; border-radius: 12px; padding: 1rem 1rem 1rem 2.8rem;
+        font-size: 1rem; font-weight: 600; color: var(--text-main); transition: all 0.2s;
+    }
+    .premium-input:focus { border-color: var(--secondary-indigo); background: white; outline: none; box-shadow: 0 0 0 4px rgba(67, 56, 202, 0.1); }
+
+    .inline-toggle { flex-direction: row; align-items: center; justify-content: space-between; padding: 0.5rem 0; border-top: 1px solid #f1f5f9; margin-top: 0.5rem; }
+    .toggle-text { display: flex; flex-direction: column; gap: 0.25rem; }
+    .toggle-text label { margin: 0; }
+
+    /* Switch Component */
+    .switch { position: relative; display: inline-block; width: 50px; height: 28px; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #cbd5e1; transition: .3s; }
+    .slider:before { position: absolute; content: ""; height: 20px; width: 20px; left: 4px; bottom: 4px; background-color: white; transition: .3s; }
+    input:checked + .slider { background-color: #10b981; }
+    input:checked + .slider:before { transform: translateX(22px); }
+    .slider.round { border-radius: 34px; }
+    .slider.round:before { border-radius: 50%; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+
+    .btn-premium-action {
+        background: var(--primary-indigo); color: white; border: none; padding: 1rem; border-radius: 14px;
+        font-size: 0.95rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 0.5rem; transition: 0.2s;
+    }
+    .btn-premium-action:hover { background: var(--secondary-indigo); transform: translateY(-2px); box-shadow: 0 6px 12px rgba(67, 56, 202, 0.2); }
+    .btn-premium-action:disabled { opacity: 0.7; cursor: not-allowed; transform: none; box-shadow: none; }
+
+    .mt-4 { margin-top: 1rem; }
+
+    /* States */
+    .loading-state, .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 4rem 2rem; text-align: center; color: var(--text-muted); }
+    .loading-state p { font-weight: 600; margin-top: 1rem; }
+    
+    .error-panel { background: #fef2f2; border: 1px solid #fecaca; padding: 1.5rem; margin: 0 1.25rem; border-radius: 16px; display: flex; align-items: flex-start; gap: 1rem; }
+    .error-icon { color: #dc2626; font-size: 1.25rem; margin-top: 2px; }
+    .error-content { flex: 1; }
+    .error-content strong { color: #991b1b; display: block; margin-bottom: 0.25rem; }
+    .error-content p { color: #b91c1c; font-size: 0.9rem; margin: 0; }
+    .btn-retry { background: #dc2626; color: white; border: none; padding: 0.5rem 1rem; border-radius: 8px; font-weight: 600; font-size: 0.85rem; cursor: pointer; align-self: center; }
+
+    /* Snackbar */
+    .snackbar-host { position: fixed; top: 20px; left: 50%; transform: translateX(-50%) translateY(-50px); z-index: 5000; opacity: 0; visibility: hidden; transition: 0.35s; width: 90%; max-width: 340px; }
+    .snackbar-host.active { opacity: 1; visibility: visible; transform: translateX(-50%) translateY(0); }
+    .snackbar-box { background: white; border-radius: 12px; padding: 0.85rem 1rem; display: flex; align-items: center; gap: 0.75rem; box-shadow: 0 8px 24px rgba(0,0,0,0.12); overflow: hidden; position: relative; }
+    .snackbar-icon { font-size: 1rem; }
+    .snackbar-message { font-size: 0.85rem; font-weight: 700; color: #1e293b; flex: 1; }
+    .snackbar-progress { position: absolute; bottom: 0; left: 0; height: 3px; background: #e2e8f0; width: 0%; }
+    .snackbar-host.active .snackbar-progress { animation: progress 3s linear forwards; }
+    @@keyframes progress { from { width: 0; } to { width: 100%; } }
+    .success .snackbar-icon { color: #10b981; }
+    .error .snackbar-icon { color: #ef4444; }
+
+    /* Loaders */
+    .fade-in { animation: fadeIn 0.3s ease-out; }
+    @@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    .loader-sm { width: 18px; height: 18px; border: 2px solid rgba(255,255,255,0.3); border-radius: 50%; border-top-color: white; animation: spin 0.8s linear infinite; }
+    .spinner-xl { width: 40px; height: 40px; border: 3px solid rgba(76, 29, 149, 0.1); border-radius: 50%; border-top-color: var(--primary-indigo); animation: spin 0.8s linear infinite; }
+    @@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+
+@code {
+    private UserInfo? currentUser;
+    private UpdateProfileRequest editModel = new();
+    private bool isLoading = true;
+    private bool isSaving = false;
+    private string? errorMessage;
+
+    // Snackbar state
+    private bool showSnackbar = false;
+    private string snackbarMessage = "";
+    private string snackbarType = "success";
+    private string snackbarIcon = "fas fa-check-circle";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadProfile();
+    }
+
+    private async Task LoadProfile()
+    {
+        try
+        {
+            isLoading = true;
+            errorMessage = null;
+
+            currentUser = await AuthService.GetCurrentUserAsync();
+            if (currentUser == null)
+            {
+                errorMessage = "Could not load profile. Please login again.";
+                return;
+            }
+
+            // Fetch the most up-to-date user details from the backend to guarantee we have the right active status
+            var http = HttpClientFactory.CreateClient("AttrakAPI");
+            
+            // We can just query the authservice for the valid password & status info if we had an endpoint.
+            // But right now we can just populate the model with the local storage user info and assume active.
+            editModel = new UpdateProfileRequest
+            {
+                UserId = currentUser.UserId,
+                Username = currentUser.Username,
+                Password = "", // leave blank instead of showing hash
+                IsActive = true // assumed true because they are logged in
+            };
+        }
+        catch (Exception ex)
+        {
+            errorMessage = "Failed to load profile details: " + ex.Message;
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task UpdateProfile()
+    {
+        if (string.IsNullOrWhiteSpace(editModel.Username))
+        {
+            await ShowSnackbar("Username cannot be empty.", "error");
+            return;
+        }
+        if (editModel.Password.Length > 0 && editModel.Password.Length < 6)
+        {
+            await ShowSnackbar("Password must be at least 6 characters.", "error");
+            return;
+        }
+
+        try
+        {
+            isSaving = true;
+            var http = HttpClientFactory.CreateClient("AttrakAPI");
+            var response = await http.PutAsJsonAsync($"api/auth/profile/{currentUser!.UserId}", editModel);
+
+            if (response.IsSuccessStatusCode)
+            {
+                await ShowSnackbar("Profile updated successfully! You may need to log in again.", "success");
+                
+                // If they changed their username, we should log them out or update local storage.
+                // Safest to log them out to verify new password/username combo.
+                if (editModel.Username != currentUser.Username || !string.IsNullOrEmpty(editModel.Password))
+                {
+                    await Task.Delay(2000);
+                    AuthService.Logout();
+                    Navigation.NavigateTo("/");
+                    return;
+                }
+            }
+            else
+            {
+                var error = await response.Content.ReadFromJsonAsync<dynamic>();
+                string msg = error?.GetProperty("message").GetString() ?? "Failed to update profile";
+                await ShowSnackbar(msg, "error");
+            }
+        }
+        catch (Exception ex)
+        {
+            await ShowSnackbar("An error occurred connecting to the server.", "error");
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private async Task ShowSnackbar(string message, string type)
+    {
+        snackbarMessage = message;
+        snackbarType = type;
+        snackbarIcon = type == "success" ? "fas fa-check-circle" : "fas fa-times-circle";
+        showSnackbar = true;
+        StateHasChanged();
+        await Task.Delay(3000);
+        showSnackbar = false;
+        StateHasChanged();
+    }
+}

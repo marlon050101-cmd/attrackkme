@@ -11,14 +11,14 @@
     <div class="page-header">
         <div class="header-text">
             <h1>Class Schedule</h1>
-            <p>Adviser Class management</p>
+            <p>Adviser Class Management</p>
         </div>
     </div>
 
     @* Grade Filter Dropdown *@
     <div class="grade-filter-container">
         <div class="filter-group">
-            <label>FILTER BY GRADE</label>
+            <label>Grade Level</label>
             <div class="select-wrapper">
                 <select class="premium-select" value="@(selectedGrade?.ToString() ?? "")" @onchange="OnGradeFilterChange">
                     <option value="">All Grades</option>
@@ -69,27 +69,26 @@
             <div class="adviser-list">
                 @foreach (var adviser in filteredAdvisers)
                 {
-                    var teacherTypeLabel = adviser.UserType == "Adviser" ? "Adviser" : "Subject Teacher";
+                    var isAdviser = (adviser.UserType ?? "").Contains("Adviser", StringComparison.OrdinalIgnoreCase);
+                    var teacherTypeLabel = isAdviser ? "Adviser" : "Subject Teacher";
                     <div class="adviser-card fade-in">
                         <div class="adviser-meta">
+                            <div class="adviser-avatar-box @(isAdviser ? "bg-adviser" : "bg-subject")">
+                                @(adviser.FullName.FirstOrDefault())
+                            </div>
                             <div class="adviser-info">
                                 <h3 class="adviser-name">@adviser.FullName</h3>
                                 <div class="adviser-badge">
-                                    @if (adviser.GradeLevel.HasValue)
+                                    <span class="role-badge @(isAdviser ? "adviser" : "subjectteacher")">@teacherTypeLabel</span>
+                                    @if (adviser.GradeLevel.HasValue || !string.IsNullOrEmpty(adviser.Section))
                                     {
-                                        <span>Grade @adviser.GradeLevel</span>
-                                    }
-                                    @if (!string.IsNullOrEmpty(adviser.Section))
-                                    {
-                                        <span> • @adviser.Section</span>
-                                    }
-                                    @if (!string.IsNullOrEmpty(adviser.Strand))
-                                    {
-                                        var displayStrand = adviser.Strand.Contains("Academic") ? "Academic" : (adviser.Strand.Contains("Tech") ? "TechPro" : adviser.Strand);
-                                        <span> • @displayStrand</span>
+                                        <span class="dot">·</span>
+                                        <span class="adviser-assignment-text">
+                                            @(adviser.GradeLevel.HasValue ? $"Gr. {adviser.GradeLevel}" : "")
+                                            @(!string.IsNullOrEmpty(adviser.Section) ? $" {adviser.Section}" : "")
+                                        </span>
                                     }
                                 </div>
-                                <span class="role-badge @((adviser.UserType ?? "adviser").Replace(" ", "").ToLower())">@teacherTypeLabel</span>
                             </div>
                         </div>
                         <button class="btn-manage" @onclick="() => OpenManageModal(adviser)">
@@ -302,176 +301,128 @@
 
 <style>
     :root {
-        --primary-purple: #7c3aed;
-        --secondary-purple: #4c1d95;
-        --soft-purple-bg: #f5f3ff;
-        --text-dark: #1e293b;
-        --text-muted: #64748b;
-        --radius-lg: 28px;
+        --primary-indigo: #312e81; /* Deep Indigo Header */
+        --secondary-indigo: #4338ca;
+        --accent-gold: #fbbf24;
+        --accent-blue: #3b82f6;
+        --soft-bg: #f8fafc;
+        --text-main: #1e293b;
+        --text-sub: #64748b;
+        --radius-lg: 24px;
         --radius-md: 16px;
-        --shadow-soft: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+        --shadow-card: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.025);
     }
 
-    .asgn-container { padding: 0; max-width: 800px; margin: 0 auto; font-family: 'Outfit', sans-serif; min-height: 100vh; background: #fcfcfc; }
-    .page-header { background: #1e1b4b; padding: 2.5rem 1.5rem; margin-bottom: 2rem; border-radius: 0 0 32px 32px; color: white; border-bottom: 2px solid #4c1d95; }
-    .page-header h1 { font-family: 'Lora', serif; font-size: 2rem; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
-    .page-header p { opacity: 0.7; font-size: 0.85rem; margin-top: 8px; font-weight: 600; text-transform: uppercase; letter-spacing: 1.2px; }
-
+    .asgn-container { padding: 0; max-width: 800px; margin: 0 auto; font-family: 'Inter', 'Roboto', sans-serif; min-height: 100vh; background: var(--soft-bg); }
+    
+    /* Header */
+    .page-header { 
+        background: var(--primary-indigo); 
+        padding: 2rem 1.5rem 1.5rem; 
+        border-radius: 0 0 24px 24px; 
+        color: white; 
+        box-shadow: 0 4px 12px rgba(49, 46, 129, 0.15);
+        margin-bottom: 1.5rem;
+    }
     .page-header h1 {
-        font-size: 1.75rem;
-        font-weight: 900;
+        font-size: 1.5rem;
+        font-weight: 800;
         color: white;
         margin: 0;
         letter-spacing: -0.5px;
-        line-height: 1;
-    }
-
-    .page-header p {
-        color: rgba(255, 255, 255, 0.8);
-        margin: 0.4rem 0 0;
-        font-weight: 500;
-        font-size: 0.95rem;
         line-height: 1.2;
     }
+    .page-header p {
+        color: #cbd5e1;
+        margin: 0.25rem 0 0;
+        font-weight: 500;
+        font-size: 0.85rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
 
-    /* Grade Filter */
+    /* Filters */
     .grade-filter-container {
         padding: 0 1.25rem 1rem;
-        overflow-x: auto;
-        -webkit-overflow-scrolling: touch;
     }
-    .grade-filter-container::-webkit-scrollbar { display: none; }
-    
-    .grade-filter-pills {
-        display: flex;
-        gap: 0.5rem;
-        width: max-content;
+    .filter-group { display: flex; flex-direction: column; gap: 0.4rem; }
+    .filter-group label {
+        font-size: 0.7rem; font-weight: 800; color: #94a3b8;
+        text-transform: uppercase; letter-spacing: 1px; margin-left: 4px;
     }
-
-    .filter-pill {
-        background: white;
-        border: 1px solid #e2e8f0;
-        padding: 0.5rem 1rem;
-        border-radius: 20px;
-        font-size: 0.85rem;
-        font-weight: 700;
-        color: var(--text-muted);
-        cursor: pointer;
-        transition: all 0.2s;
-        white-space: nowrap;
+    .select-wrapper { position: relative; }
+    .premium-select {
+        width: 100%; appearance: none;
+        background: white; border: 1.5px solid #e2e8f0;
+        border-radius: 12px; padding: 0.85rem 2.5rem 0.85rem 1.25rem;
+        font-size: 0.95rem; font-weight: 600; color: var(--text-main);
+        transition: all 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.02);
     }
-    .filter-pill.active {
-        background: var(--primary-purple);
-        border-color: var(--primary-purple);
-        color: white;
-        box-shadow: 0 4px 10px rgba(124, 58, 237, 0.2);
+    .premium-select:focus { border-color: var(--secondary-indigo); outline: none; box-shadow: 0 0 0 3px rgba(67, 56, 202, 0.1); }
+    .select-icon {
+        position: absolute; right: 1.25rem; top: 50%; transform: translateY(-50%);
+        color: #94a3b8; font-size: 0.85rem; pointer-events: none;
     }
 
     /* List Design */
     .list-wrapper { padding: 0 1.25rem 2rem; }
 
     .list-meta {
-        margin-bottom: 1rem;
-        font-size: 0.85rem;
-        font-weight: 800;
-        color: var(--text-muted);
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
+        margin-bottom: 1rem; font-size: 0.8rem; font-weight: 800;
+        color: #94a3b8; text-transform: uppercase; letter-spacing: 0.8px;
+        display: flex; align-items: center; justify-content: flex-end;
     }
     
-    .list-meta::before {
-        content: "";
-        display: block;
-        width: 4px;
-        height: 16px;
-        background: var(--primary-purple);
-        border-radius: 2px;
-    }
-    
-    .adviser-list { display: flex; flex-direction: column; gap: 1rem; }
+    .adviser-list { display: flex; flex-direction: column; gap: 0.85rem; }
     
     .adviser-card {
-        background: white;
-        border-radius: 20px;
-        padding: 1.25rem;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        border: 1px solid #e2e8f0;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.02);
-        transition: 0.2s;
+        background: white; border-radius: 16px; padding: 1rem 1.15rem;
+        display: flex; align-items: center; justify-content: space-between;
+        border: 1px solid #e8edf2; box-shadow: var(--shadow-card);
+        transition: border-color 0.15s, box-shadow 0.15s;
     }
 
-    .adviser-card:hover { border-color: #4c1d95; transform: translateY(-2px); box-shadow: 0 8px 16px rgba(0,0,0,0.04); }
+    .adviser-card:hover { border-color: #a5b4fc; box-shadow: 0 6px 12px rgba(0,0,0,0.05); }
 
     .adviser-meta { display: flex; align-items: center; gap: 1rem; flex: 1; min-width: 0; }
-
-    .adviser-avatar {
-        width: 48px;
-        height: 48px;
-        background: #f1f5f9;
-        color: #1e1b4b;
-        border-radius: 14px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-weight: 900;
-        font-size: 1.2rem;
-        flex-shrink: 0;
-        border: 1.5px solid #e2e8f0;
+    
+    .adviser-avatar-box {
+        width: 44px; height: 44px; border-radius: 12px;
+        display: flex; align-items: center; justify-content: center;
+        font-weight: 800; font-size: 1.2rem; flex-shrink: 0;
     }
+    .bg-adviser { background: #eef2ff; color: #4f46e5; border: 1.5px solid #e0e7ff; }
+    .bg-subject { background: #fdf4ff; color: #c026d3; border: 1.5px solid #fae8ff; }
 
-    .adviser-info { min-width: 0; }
-    .adviser-name { font-size: 1.1rem; font-weight: 700; color: #1e1b4b; margin: 0 0 4px; }
-    .adviser-badge { font-size: 0.75rem; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
-
-    .btn-manage {
-        background: white;
-        color: #4c1d95;
-        border: 2px solid #4c1d95;
-        padding: 10px 22px;
-        border-radius: 12px;
-        font-weight: 800;
-        font-size: 0.75rem;
-        cursor: pointer;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        transition: 0.2s;
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-    }
-
-    .btn-manage:hover { background: #4c1d95; color: white; }
+    .adviser-info { min-width: 0; display: flex; flex-direction: column; gap: 0.25rem; }
+    .adviser-name { font-size: 1.05rem; font-weight: 700; color: var(--text-main); margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    
+    .adviser-badge { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+    .adviser-assignment-text { font-size: 0.75rem; color: var(--text-sub); font-weight: 600; white-space: nowrap; }
+    .dot { color: #cbd5e1; font-weight: 800; }
 
     /* Role Badges */
     .role-badge {
-        font-size: 0.6rem;
-        font-weight: 900;
-        padding: 2px 8px;
-        border-radius: 6px;
-        text-transform: uppercase;
-        display: inline-block;
-        margin-top: 4px;
-        letter-spacing: 0.5px;
+        font-size: 0.65rem; font-weight: 800; padding: 2px 8px;
+        border-radius: 6px; text-transform: uppercase; letter-spacing: 0.5px;
     }
-    .role-badge.adviser { background: #e0e7ff; color: #4338ca; }
-    .role-badge.subjectteacher { background: #fef3c7; color: #92400e; }
+    .role-badge.adviser { background: #1e1b4b; color: white; }
+    .role-badge.subjectteacher { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
+
+    .btn-manage {
+        background: white; color: var(--primary-indigo); border: 1.5px solid #e2e8f0;
+        padding: 0.55rem 1rem; border-radius: 10px; font-weight: 700;
+        font-size: 0.8rem; cursor: pointer; transition: 0.15s;
+        display: flex; align-items: center; justify-content: center;
+    }
+    .btn-manage:hover { background: #eef2ff; border-color: var(--secondary-indigo); color: var(--secondary-indigo); }
 
     /* Modal Context - Overlay & Premium Modal */
     .modal-overlay {
-        position: fixed;
-        inset: 0;
-        background: rgba(15, 23, 42, 0.4);
-        backdrop-filter: blur(8px);
-        display: flex;
-        align-items: flex-end; /* Mobile feel: slides from bottom */
-        justify-content: center;
-        z-index: 2000;
-        padding: 0;
+        position: fixed; inset: 0;
+        background: rgba(15, 23, 42, 0.45); backdrop-filter: blur(6px);
+        display: flex; align-items: flex-end; justify-content: center;
+        z-index: 2000; padding: 0;
     }
 
     /* Desktop adjust for overlay */
@@ -480,18 +431,12 @@
     }
 
     .premium-modal {
-        position: relative;
-        background: white;
+        position: relative; background: white;
         border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-        width: 100%;
-        max-width: 440px;
-        max-height: 92vh;
-        overflow: hidden;
-        display: flex;
-        flex-direction: column;
-        box-shadow: 0 -10px 40px rgba(0,0,0,0.2);
-        z-index: 2001;
-        animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        width: 100%; max-width: 480px; max-height: 90vh;
+        overflow: hidden; display: flex; flex-direction: column;
+        box-shadow: 0 -10px 40px rgba(0,0,0,0.15);
+        z-index: 2001; animation: slideUp 0.35s cubic-bezier(0.16, 1, 0.3, 1);
     }
 
     @@media (min-width: 768px) {

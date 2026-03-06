@@ -81,5 +81,38 @@ namespace ServerAtrrak.Controllers
                 return StatusCode(500, false);
             }
         }
+
+        [HttpPut("profile/{userId}")]
+        public async Task<ActionResult> UpdateProfile(string userId, [FromBody] UpdateProfileRequest request)
+        {
+            try
+            {
+                if (userId != request.UserId)
+                {
+                    return BadRequest(new { message = "UserId mismatch" });
+                }
+
+                if (!ModelState.IsValid)
+                {
+                    return BadRequest(new { message = "Invalid request data" });
+                }
+
+                var (success, message) = await _authService.UpdateUserProfileAsync(request);
+                
+                if (success)
+                {
+                    return Ok(new { message });
+                }
+                else
+                {
+                    return BadRequest(new { message });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating profile for user: {UserId}", userId);
+                return StatusCode(500, new { message = "An internal server error occurred", error = ex.Message });
+            }
+        }
     }
 }

@@ -206,5 +206,56 @@ namespace ServerAtrrak.Services
             await command.ExecuteNonQueryAsync();
         }
 
+        public async Task<(bool success, string message)> UpdateUserProfileAsync(UpdateProfileRequest request)
+        {
+            try
+            {
+                using var connection = new MySqlConnection(_dbConnection.GetConnection());
+                await connection.OpenAsync();
+
+                // Check if username is taken by another user
+                var checkQuery = "SELECT COUNT(*) FROM user WHERE Username = @Username AND UserId != @UserId";
+                using var checkCommand = new MySqlCommand(checkQuery, connection);
+                checkCommand.Parameters.AddWithValue("@Username", request.Username);
+                checkCommand.Parameters.AddWithValue("@UserId", request.UserId);
+                
+                var count = Convert.ToInt32(await checkCommand.ExecuteScalarAsync());
+                if (count > 0)
+                {
+                    return (false, "Username is already taken.");
+                }
+
+                var updateQuery = @"
+                    UPDATE user 
+                    SET Username = @Username, 
+                        Password = @Password, 
+                        IsActive = @IsActive, 
+                        UpdatedAt = @UpdatedAt 
+                    WHERE UserId = @UserId";
+
+                using var updateCommand = new MySqlCommand(updateQuery, connection);
+                updateCommand.Parameters.AddWithValue("@Username", request.Username);
+                updateCommand.Parameters.AddWithValue("@Password", request.Password);
+                updateCommand.Parameters.AddWithValue("@IsActive", request.IsActive);
+                updateCommand.Parameters.AddWithValue("@UpdatedAt", DateTime.Now);
+                updateCommand.Parameters.AddWithValue("@UserId", request.UserId);
+
+                var rowsAffected = await updateCommand.ExecuteNonQueryAsync();
+                
+                if (rowsAffected > 0)
+                {
+                    _logger.LogInformation("Profile updated successfully for {UserId}", request.UserId);
+                    return (true, "Profile updated successfully.");
+                }
+                
+                return (false, "User not found.");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating user profile: {UserId}", request.UserId);
+                return (false, $"An error occurred updating profile: {ex.Message}");
+            }
+        }
+
     }
 }

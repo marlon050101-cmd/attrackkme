@@ -333,7 +333,7 @@ namespace ServerAtrrak.Services
                 cmd.Parameters.AddWithValue("@Id", classOfferingId);
                 var rows = await cmd.ExecuteNonQueryAsync();
                 
-                if (rows == 0) return new ClassOfferingResponse { Success = false, Message = "Class not found or already assigned." };
+                if (rows == 0) return new ClassOfferingResponse { Success = false, Message = "Class not found." };
 
                 // Auto-approve Teacher account if not already approved
                 try

@@ -8,5 +8,6 @@ namespace ServerAtrrak.Services
         Task<User?> GetUserByUsernameAsync(string username);
         Task<bool> ValidatePasswordAsync(string password, string storedPassword);
         Task UpdateLastLoginAsync(string userId);
+        Task<(bool success, string message)> UpdateUserProfileAsync(UpdateProfileRequest request);
     }
 }

@@ -6,210 +6,221 @@
 @inject AuthService AuthService
 @inject NavigationManager Navigation
 
+<div class="sp-page">
 
-<div class="planner-container">
-    <div class="page-header">
-        <div class="header-text">
-            <h1>Subject Planner</h1>
-            <p>Master teacher assignment & scheduling</p>
+    @* ── Page Title ── *@
+    <div class="sp-header">
+        <div class="sp-header-inner">
+            <div class="sp-title-block">
+                <h1>Subject Planner</h1>
+                <span class="sp-subtitle">Teacher assignment &amp; scheduling</span>
+            </div>
         </div>
     </div>
 
-    @* Filter Section *@
-    <div class="planner-filters-row">
-        <div class="filter-group">
-            <label>GRADE LEVEL</label>
-            <div class="select-wrapper">
-                <select class="premium-select" value="@selectedGrade" @onchange="OnGradeChange">
+    @* ── Filters ── *@
+    <div class="sp-filters">
+        <div class="sp-filter-group">
+            <label class="sp-label">Grade</label>
+            <div class="sp-select-wrap">
+                <select value="@(selectedGrade?.ToString() ?? "")" @onchange="OnGradeChange">
+                    <option value="">All Grades</option>
                     @foreach (var g in new[] { 7, 8, 9, 10, 11, 12 })
                     {
                         <option value="@g">Grade @g</option>
                     }
                 </select>
-                <i class="fas fa-chevron-down select-icon"></i>
+                <i class="fas fa-chevron-down"></i>
             </div>
         </div>
-
-        <div class="filter-group">
-            <label>SECTION</label>
-            <div class="select-wrapper">
-                <select class="premium-select" value="@selectedSection" @onchange="OnSectionChange">
+        <div class="sp-filter-group">
+            <label class="sp-label">Section</label>
+            <div class="sp-select-wrap">
+                <select value="@(selectedSection ?? "")" @onchange="OnSectionChange">
                     @if (!availableSections.Any())
                     {
-                        <option value="">No Sections</option>
+                        <option value="">— None —</option>
                     }
                     else
                     {
+                        <option value="">All Sections</option>
                         @foreach (var sec in availableSections)
                         {
                             <option value="@sec">@sec</option>
                         }
                     }
                 </select>
-                <i class="fas fa-chevron-down select-icon"></i>
+                <i class="fas fa-chevron-down"></i>
             </div>
         </div>
     </div>
 
+    @* ── Body ── *@
     @if (isLoading)
     {
-        <div class="planner-loading">
-            <div class="shimmer-row"></div>
-            <div class="shimmer-row"></div>
-            <div class="shimmer-row"></div>
+        <div class="sp-body">
+            <div class="sp-shimmer"></div>
+            <div class="sp-shimmer" style="width:80%"></div>
+            <div class="sp-shimmer" style="width:90%"></div>
         </div>
     }
     else
     {
-        <div class="schedule-view">
+        <div class="sp-body">
             @if (!availableSections.Any())
             {
-                <div class="empty-state">
+                <div class="sp-empty">
                     <i class="fas fa-folder-open"></i>
-                    <p>No sections found for Grade @selectedGrade</p>
+                    <p>No sections for Grade @selectedGrade</p>
                 </div>
             }
             else if (string.IsNullOrEmpty(selectedSection))
             {
-                <div class="empty-state">
-                    <i class="fas fa-mouse-pointer"></i>
+                <div class="sp-empty">
+                    <i class="fas fa-hand-pointer"></i>
                     <p>Select a section to view schedule</p>
                 </div>
             }
             else
             {
                 var currentAdviser = GetAdviser();
-                <div class="section-schedule-container fade-in">
-                    <div class="adviser-header">
-                        <div class="adviser-main">
-                            <div class="adv-avatar">
-                                @if (currentAdviser != null)
-                                {
-                                    @currentAdviser.FullName.Substring(0, 1).ToUpper()
-                                }
-                                else
-                                {
-                                    <i class="fas fa-user-tie"></i>
-                                }
-                            </div>
-                            <div class="adv-info">
-                                <span class="adv-label">Class Adviser</span>
-                                <h2 class="adv-name">@(currentAdviser?.FullName ?? "No Adviser Assigned")</h2>
-                            </div>
-                        </div>
-                        <div class="section-tag">@selectedSection</div>
-                    </div>
 
-                    <div class="slots-list">
-                        @foreach (var offering in GetFilteredOfferings())
-                        {
-                            <div class="slot-card @(string.IsNullOrEmpty(offering.TeacherId) ? "unassigned" : "")">
-                                <div class="slot-info">
-                                    <h4 class="subject-name">@offering.SubjectName</h4>
-                                    <div class="slot-time">
-                                        <i class="far fa-clock"></i>
-                                        <span>@offering.ScheduleStart.ToString(@"hh\:mm") – @offering.ScheduleEnd.ToString(@"hh\:mm")</span>
+                @* ── Adviser Card ── *@
+                <div class="sp-adviser-card fade-in">
+                    <div class="sp-adv-avatar">
+                        @if (currentAdviser != null)
+                        { @currentAdviser.FullName.Substring(0, 1).ToUpper() }
+                        else
+                        { <i class="fas fa-user-tie"></i> }
+                    </div>
+                    <div class="sp-adv-info">
+                        <span class="sp-adv-role">Class Adviser</span>
+                        <span class="sp-adv-name">@(currentAdviser?.FullName ?? "No Adviser Assigned")</span>
+                    </div>
+                    <span class="sp-section-badge">@selectedSection</span>
+                </div>
+
+                @* ── Schedule List ── *@
+                <div class="sp-divider-label">
+                    <span>Schedule</span>
+                    <span class="sp-count">@GetFilteredOfferings().Count subjects</span>
+                </div>
+
+                <div class="sp-slots fade-in">
+                    @foreach (var offering in GetFilteredOfferings())
+                    {
+                        var hasTeacher = !string.IsNullOrEmpty(offering.TeacherId);
+                        <div class="sp-slot @(hasTeacher ? "" : "sp-slot-tba")">
+                            <div class="sp-slot-left">
+                                <span class="sp-slot-name">@offering.SubjectName</span>
+                                <div class="sp-slot-meta">
+                                    <div class="sp-slot-datetime">
+                                        <span class="sp-slot-time" title="Schedule Time">
+                                            <i class="far fa-clock"></i>
+                                            @offering.ScheduleStart.ToString(@"hh\:mm") – @offering.ScheduleEnd.ToString(@"hh\:mm")
+                                        </span>
+                                        <span class="sp-slot-days" title="Days">
+                                            <i class="far fa-calendar-alt"></i>
+                                            @FormatDays(offering.DayOfWeek)
+                                        </span>
                                     </div>
-                                    <div class="slot-days">@FormatDays(offering.DayOfWeek)</div>
-                                </div>
-
-                                <div class="teacher-assignment">
-                                    @if (!string.IsNullOrEmpty(offering.TeacherId))
-                                    {
-                                        <div class="assigned-teacher">
-                                            <div class="teacher-info">
-                                                <span class="t-label">Assigned Teacher</span>
-                                                <span class="t-name">@offering.TeacherName</span>
-                                            </div>
-                                            <button class="btn-change-t" @onclick="() => OpenAssignModal(offering)">
-                                                <i class="fas fa-exchange-alt"></i>
-                                            </button>
-                                        </div>
-                                    }
-                                    else
-                                    {
-                                        <button class="btn-assign-compact" @onclick="() => OpenAssignModal(offering)">
-                                            <i class="fas fa-user-plus"></i>
-                                            <span>Assign</span>
-                                        </button>
-                                    }
+                                    <span class="sp-slot-teacher @(hasTeacher ? "" : "tba")">
+                                        @(hasTeacher ? offering.TeacherName : "TBA")
+                                    </span>
                                 </div>
                             </div>
-                        }
-                    </div>
+                            <button class="sp-btn-action @(hasTeacher ? "change" : "assign")"
+                                    @onclick="() => OpenAssignModal(offering)">
+                                <i class="fas @(hasTeacher ? "fa-pen" : "fa-user-plus")"></i>
+                            </button>
+                        </div>
+                    }
                 </div>
             }
         </div>
     }
 </div>
 
-@* ─── Assign Teacher Modal ─── *@
+@* ── Assign Teacher Modal ── *@
 @if (showAssignModal && selectedOffering != null)
 {
-    <div class="modal-overlay" @onclick="CloseAssignModal">
-        <div class="premium-modal fade-in" @onclick:stopPropagation="true">
-            <div class="modal-header">
-                <div class="subject-tag">@selectedOffering.SubjectCode</div>
-                <h3>Assign Teacher</h3>
-                <p>@selectedOffering.SubjectName • Section @selectedOffering.Section</p>
-                <button class="btn-close-x" @onclick="CloseAssignModal"><i class="fas fa-times"></i></button>
+    <div class="sp-modal-overlay" @onclick="CloseAssignModal">
+        <div class="sp-modal fade-in" @onclick:stopPropagation="true">
+            <div class="sp-modal-head">
+                <div class="sp-modal-title-block">
+                    <span class="sp-modal-code">@selectedOffering.SubjectCode</span>
+                    <h3 class="sp-modal-title">@selectedOffering.SubjectName</h3>
+                    <p class="sp-modal-sub">Sec. @selectedOffering.Section</p>
+                </div>
+                <button class="sp-modal-close" @onclick="CloseAssignModal"><i class="fas fa-times"></i></button>
             </div>
 
-            <div class="modal-body">
-                <div class="search-box">
+            <div class="sp-modal-body">
+                <div class="sp-search">
                     <i class="fas fa-search"></i>
-                    <input type="text" placeholder="Search teacher name..." @oninput="OnTeacherSearch" />
+                    <input type="text" placeholder="Search teacher…" @oninput="OnTeacherSearch" />
                 </div>
 
-                <div class="teacher-list-scroll">
+                @* Notice when slot is already taken *@
+                @if (!string.IsNullOrEmpty(selectedOffering.TeacherId))
+                {
+                    <div class="sp-notice-banner">
+                        <i class="fas fa-info-circle"></i>
+                        <span>Remove the current teacher first before choosing another.</span>
+                    </div>
+                    <button class="sp-btn-unassign" @onclick="UnassignTeacher">
+                        <i class="fas fa-user-minus"></i> Remove Teacher
+                    </button>
+                    <div class="sp-list-separator">Current Assignment</div>
+                }
+
+                <div class="sp-teacher-list">
                     @foreach (var teacher in filteredTeachers)
                     {
                         var conflict = CheckConflict(teacher);
-                        <button class="teacher-row @(conflict != null ? "has-conflict" : "") @(selectedOffering.TeacherId == teacher.TeacherId ? "already-assigned" : "")" 
+                        var isCurrent = selectedOffering.TeacherId == teacher.TeacherId;
+                        var hasAssigned = !string.IsNullOrEmpty(selectedOffering.TeacherId);
+                        var isLocked = hasAssigned && !isCurrent;
+                        <button class="sp-teacher-row @(isCurrent ? "current" : "") @(conflict != null ? "conflict" : "") @(isLocked ? "locked" : "")"
                                 @onclick="() => AssignTeacher(teacher)"
-                                disabled="@(conflict != null || selectedOffering.TeacherId == teacher.TeacherId)">
-                            <div class="t-avatar">@teacher.FullName.Substring(0, 1).ToUpper()</div>
-                            <div class="t-details">
-                                <span class="t-fullname">@teacher.FullName</span>
-                                <div class="t-role-row">
-                                    <span class="role-badge @((teacher.UserType ?? "teacher").Replace(" ", "").ToLower())">@teacher.UserType</span>
-                                    @if (selectedOffering.TeacherId == teacher.TeacherId)
+                                disabled="@(conflict != null || isCurrent || isLocked)">
+                            <div class="sp-t-avatar">@teacher.FullName.Substring(0, 1).ToUpper()</div>
+                            <div class="sp-t-info">
+                                <span class="sp-t-name">@teacher.FullName</span>
+                                <div class="sp-t-sub">
+                                    <span class="sp-role-chip @((teacher.UserType ?? "teacher").Replace(" ", "").ToLower())">@teacher.UserType</span>
+                                    @if (isCurrent)
                                     {
-                                        <span class="t-meta assigned">Currently Assigned</span>
+                                        <span class="sp-t-status current"><i class="fas fa-check-circle"></i> Currently Assigned</span>
+                                    }
+                                    else if (isLocked)
+                                    {
+                                        <span class="sp-t-status locked">Remove current first</span>
                                     }
                                     else if (conflict != null)
                                     {
-                                        <span class="conflict-msg">
-                                            <i class="fas fa-exclamation-triangle"></i> Conflict: @conflict
-                                        </span>
+                                        <span class="sp-t-status conflict"><i class="fas fa-exclamation-circle"></i> @conflict</span>
                                     }
                                     else
                                     {
-                                        <span class="t-meta">Ready to assign</span>
+                                        <span class="sp-t-status avail">Available</span>
                                     }
                                 </div>
                             </div>
-                            @if (conflict == null && selectedOffering.TeacherId != teacher.TeacherId)
+                            @if (!isCurrent && !isLocked && conflict == null)
                             {
-                                <i class="fas fa-chevron-right arrow-go"></i>
+                                <i class="fas fa-chevron-right sp-t-arrow"></i>
                             }
                         </button>
                     }
                 </div>
-
-                @if (!string.IsNullOrEmpty(selectedOffering.TeacherId))
-                {
-                    <button class="btn-unassign-global" @onclick="UnassignTeacher">
-                        <i class="fas fa-user-minus"></i>
-                        <span>Unassign Current Teacher</span>
-                    </button>
-                }
             </div>
+
         </div>
     </div>
 }
 
-@* ─── Snackbar ─── *@
+@* ── Snackbar ── *@
 <div class="snackbar-host @(showSnackbar ? "active" : "") @snackbarType">
     <div class="snackbar-box">
         <div class="snackbar-icon"><i class="@snackbarIcon"></i></div>
@@ -218,319 +229,246 @@
     </div>
 </div>
 
+
 <style>
-    .planner-container { padding: 0; max-width: 800px; margin: 0 auto; min-height: 100vh; background: #fcfcfc; }
-    .page-header { background: #1e1b4b; padding: 2rem 1.5rem; margin-bottom: 2rem; border-radius: 0 0 32px 32px; color: white; border-bottom: 2px solid #4c1d95; }
-    .page-header h1 { font-size: 2rem; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
-    .page-header p { opacity: 0.7; font-size: 0.9rem; margin-top: 8px; font-weight: 500; text-transform: uppercase; letter-spacing: 1px; }
+    /* ── Page shell ── */
+    .sp-page {
+        max-width: 800px;
+        margin: 0 auto;
+        min-height: 100vh;
+        background: #f4f6f9;
+    }
 
-    .stat-pill { background: white; padding: 10px 16px; border-radius: 16px; display: flex; align-items: center; gap: 10px; font-size: 0.85rem; font-weight: 800; color: #475569; border: 1px solid #e2e8f0; }
-    .stat-pill i { color: #7c3aed; }
-    .stat-pill.warning { border-color: #fee2e2; }
-    .stat-pill.warning i { color: #ef4444; }
+    /* ── Header ── */
+    .sp-header {
+        background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%);
+        padding: 1.4rem 1.25rem 1.6rem;
+        border-radius: 0 0 24px 24px;
+        margin-bottom: 1.25rem;
+    }
+    .sp-header-inner { display: flex; align-items: center; justify-content: space-between; }
+    .sp-title-block h1 { font-size: 1.5rem; font-weight: 800; color: #fff; margin: 0; letter-spacing: -0.02em; }
+    .sp-subtitle { font-size: 0.72rem; color: rgba(255,255,255,0.55); font-weight: 500; text-transform: uppercase; letter-spacing: 1px; margin-top: 2px; display: block; }
 
-    .slots-list { display: grid; gap: 16px; }
-
-    .slot-card { background: white; border-radius: 20px; padding: 1.25rem; border: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; gap: 1rem; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
-    .slot-card.unassigned { border-left: 6px solid #4c1d95; background: #fafafa; }
-    .subject-name { font-size: 1.05rem; font-weight: 600; margin: 0 0 6px; color: #1e1b4b; }
-    .slot-time, .slot-days { font-size: 0.75rem; color: #64748b; font-weight: 600; display: flex; align-items: center; gap: 6px; }
-    .slot-time i { color: #94a3b8; }
-
-    .btn-assign-compact {
-        background: white;
-        border: 2px solid #4c1d95;
-        color: #4c1d95;
-        padding: 8px 16px;
-        border-radius: 12px;
-        font-weight: 800;
-        cursor: pointer;
+    /* ── Filters ── */
+    .sp-filters {
         display: flex;
-        align-items: center;
-        gap: 8px;
-        font-size: 0.75rem;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        transition: 0.2s;
+        gap: 0.75rem;
+        padding: 0 1rem;
+        margin-bottom: 1.25rem;
     }
-
-    .btn-assign-compact:hover {
-        background: #4c1d95;
-        color: white;
+    .sp-filter-group { flex: 1; display: flex; flex-direction: column; gap: 0.35rem; }
+    .sp-label { font-size: 0.62rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; padding-left: 4px; }
+    .sp-select-wrap { position: relative; display: flex; align-items: center; }
+    .sp-select-wrap select {
+        width: 100%; appearance: none; background: #fff;
+        border: 1px solid #e2e8f0; border-radius: 10px;
+        padding: 0.65rem 2rem 0.65rem 0.85rem;
+        font-size: 0.875rem; font-weight: 700; color: #1e293b;
+        cursor: pointer; transition: border-color 0.15s; outline: none;
     }
-    
-    .assigned-teacher { display: flex; align-items: center; gap: 12px; }
-    .t-label { font-size: 0.65rem; color: #94a3b8; font-weight: 700; text-transform: uppercase; display: block; margin-bottom: 2px; }
-    .t-name { font-size: 0.9rem; font-weight: 700; color: #1e1b4b; }
-    .btn-change-t { width: 36px; height: 36px; border-radius: 10px; border: 1.5px solid #e2e8f0; background: white; color: #4c1d95; cursor: pointer; transition: 0.2s; }
-    .btn-change-t:hover { border-color: #4c1d95; background: #fafafa; }
+    .sp-select-wrap select:focus { border-color: #6366f1; }
+    .sp-select-wrap i { position: absolute; right: 0.75rem; font-size: 0.65rem; color: #94a3b8; pointer-events: none; }
 
-    /* Modal Styling */
-    .modal-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.4); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; z-index: 2000; padding: 1rem; }
-    .premium-modal { background: white; border-radius: 28px; width: 100%; max-width: 440px; max-height: 90vh; overflow: hidden; display: flex; flex-direction: column; animation: scaleIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); }
-    .modal-header { padding: 2rem; border-bottom: 1px solid #f1f5f9; text-align: center; position: relative; }
-    .subject-tag { display: inline-block; background: #ede9fe; color: #7c3aed; padding: 2px 10px; border-radius: 6px; font-size: 0.7rem; font-weight: 900; margin-bottom: 10px; }
-    .modal-header h3 { font-size: 1.4rem; font-weight: 900; margin: 0; color: #1e293b; }
-    .btn-close-x { position: absolute; top: 20px; right: 20px; background: #f8fafc; border: none; width: 32px; height: 32px; border-radius: 50%; color: #94a3b8; cursor: pointer; }
+    /* ── Body ── */
+    .sp-body { padding: 0 1rem 3rem; }
 
-    .modal-body { padding: 1.5rem; flex: 1; overflow-y: auto; }
-    .search-box { position: relative; margin-bottom: 1.5rem; }
-    .search-box i { position: absolute; left: 14px; top: 14px; color: #94a3b8; }
-    .search-box input { width: 100%; padding: 12px 12px 12px 40px; background: #f8fafc; border: 2px solid transparent; border-radius: 14px; font-size: 0.9rem; outline: none; transition: 0.2s; }
-    .search-box input:focus { border-color: #7c3aed; background: white; box-shadow: 0 8px 16px rgba(124, 58, 237, 0.08); }
+    /* ── Shimmer ── */
+    .sp-shimmer { height: 52px; background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%); background-size: 200% 100%; border-radius: 10px; margin-bottom: 0.75rem; animation: shimmer 1.4s infinite; }
+    @@keyframes shimmer { to { background-position: -200% 0; } }
 
-    .teacher-list-scroll { display: flex; flex-direction: column; gap: 8px; }
-    .teacher-row { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 16px; border: 1px solid #f1f5f9; background: white; cursor: pointer; transition: 0.2s; text-align: left; }
-    .teacher-row.has-conflict { opacity: 0.6; grayscale: 1; pointer-events: none; }
-    .teacher-row.already-assigned { border-color: #7c3aed; background: #f5f3ff; cursor: default; }
-    .t-avatar { width: 40px; height: 40px; border-radius: 12px; background: #f1f5f9; color: #4c1d95; display: flex; align-items: center; justify-content: center; font-weight: 900; }
-    .t-details { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-    .t-fullname { font-size: 0.95rem; font-weight: 800; color: #1e293b; }
-    .t-meta { font-size: 0.72rem; color: #64748b; font-weight: 600; }
-    .t-meta.assigned { color: #7c3aed; font-weight: 800; }
-    .conflict-msg { font-size: 0.7rem; color: #ef4444; font-weight: 700; }
-    .arrow-go { color: #cbd5e1; font-size: 0.8rem; }
-    .teacher-row:hover:not(.has-conflict):not(.already-assigned) { border-color: #7c3aed; background: #f5f3ff; transform: translateX(4px); }
+    /* ── Empty state ── */
+    .sp-empty { text-align: center; padding: 3rem 1.5rem; color: #94a3b8; }
+    .sp-empty i { font-size: 2rem; opacity: 0.4; margin-bottom: 1rem; display: block; }
+    .sp-empty p { font-size: 0.9rem; font-weight: 600; margin: 0; }
 
-    .btn-unassign-global { width: 100%; margin-top: 1.5rem; padding: 14px; border-radius: 16px; border: 2px solid #fee2e2; background: #fff1f2; color: #ef4444; font-weight: 800; display: flex; align-items: center; justify-content: center; gap: 10px; cursor: pointer; transition: 0.2s; }
-    .btn-unassign-global:hover { background: #fee2e2; transform: translateY(-2px); }
-
-    /* New UI Elements */
-    .planner-filters { padding: 0 1.5rem; margin-bottom: 1.5rem; }
-    
-    .section-tabs {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 10px;
-        margin-top: 1.25rem;
-    }
-
-    .section-pill {
-        background: #f1f5f9;
-        color: #475569;
-        border: none;
-        padding: 8px 16px;
-        border-radius: 12px;
-        font-size: 0.85rem;
-        font-weight: 800;
-        cursor: pointer;
-        transition: all 0.2s;
-        text-transform: uppercase;
-    }
-
-    .section-pill.active {
-        background: #1e293b;
-        color: white;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-    }
-
-    .schedule-view { padding: 0 1.5rem 3rem; }
-
-    .adviser-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 1.5rem;
-        border-radius: 24px;
-        margin-bottom: 2rem;
-        background: white;
-        border: 1px solid #e2e8f0;
-        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
-    }
-
-    .adviser-main {
-        display: flex;
-        align-items: center;
-        gap: 1.5rem;
-    }
-
-    .adv-avatar {
-        width: 56px;
-        height: 56px;
-        background: #f1f5f9;
-        color: #1e1b4b;
-        border-radius: 18px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-weight: 900;
-        font-size: 1.4rem;
-        border: 1.5px solid #e2e8f0;
-    }
-
-    .adv-info {
-        display: flex;
-        flex-direction: column;
-    }
-
-    .adv-label {
-        font-size: 0.75rem;
-        color: #94a3b8;
-        font-weight: 800;
-        text-transform: uppercase;
-        letter-spacing: 0.8px;
-    }
-
-    .adv-name {
-        font-size: 1.2rem;
-        font-weight: 700;
-        color: #1e1b4b;
-        margin: 2px 0 0;
-    }
-
-    .section-tag {
-        background: #1e1b4b;
-        color: white;
-        padding: 6px 16px;
-        border-radius: 10px;
-        font-size: 0.8rem;
-        font-weight: 800;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-    }
-
-    .empty-state {
-        text-align: center;
-        padding: 3rem 1.5rem;
-        border-radius: 24px;
-        color: #94a3b8;
-    }
-
-    .empty-state i {
-        font-size: 2.5rem;
+    /* ── Adviser card ── */
+    .sp-adviser-card {
+        display: flex; align-items: center; gap: 0.85rem;
+        background: #fff; border: 1px solid #e8edf2;
+        border-radius: 14px; padding: 0.9rem 1rem;
         margin-bottom: 1rem;
-        opacity: 0.5;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+    }
+    .sp-adv-avatar {
+        width: 42px; height: 42px; flex-shrink: 0;
+        background: #eef2ff; color: #4338ca;
+        border-radius: 10px; display: flex; align-items: center; justify-content: center;
+        font-weight: 900; font-size: 1.1rem;
+        border: 1px solid #c7d2fe;
+    }
+    .sp-adv-info { flex: 1; }
+    .sp-adv-role { font-size: 0.62rem; color: #94a3b8; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; display: block; }
+    .sp-adv-name { font-size: 0.95rem; font-weight: 800; color: #1e293b; display: block; margin-top: 1px; }
+    .sp-section-badge {
+        background: #1e1b4b; color: #fff;
+        padding: 4px 12px; border-radius: 8px;
+        font-size: 0.72rem; font-weight: 800;
+        letter-spacing: 0.5px; text-transform: uppercase;
+        flex-shrink: 0;
     }
 
-    .empty-state p {
-        font-size: 1rem;
-        font-weight: 700;
+    /* ── Section divider ── */
+    .sp-divider-label {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 0 2px; margin-bottom: 0.6rem;
+    }
+    .sp-divider-label span:first-child { font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.8px; }
+    .sp-count { font-size: 0.68rem; font-weight: 700; color: #c7d2fe; background: #eef2ff; padding: 2px 8px; border-radius: 20px; }
+
+    /* ── Slots ── */
+    .sp-slots { display: flex; flex-direction: column; gap: 0.5rem; }
+    .sp-slot {
+        display: flex; align-items: center;
+        background: #fff; border: 1px solid #e8edf2;
+        border-radius: 12px; padding: 0.75rem 0.85rem;
+        gap: 0.75rem; transition: border-color 0.15s;
+    }
+    .sp-slot-tba { border-left: 3px solid #e2e8f0; background: #fdfdfd; }
+    .sp-slot:hover { border-color: #a5b4fc; }
+    .sp-slot-left { flex: 1; min-width: 0; }
+    .sp-slot-name { font-size: 0.875rem; font-weight: 700; color: #1e293b; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sp-slot-meta { display: flex; align-items: center; gap: 0.75rem; margin-top: 6px; }
+    .sp-slot-datetime { display: flex; flex-direction: column; gap: 4px; border-right: 1.5px dashed #e2e8f0; padding-right: 0.75rem; }
+    .sp-slot-time { font-size: 0.68rem; color: #64748b; font-weight: 600; display: flex; align-items: center; gap: 4px; }
+    .sp-slot-days { font-size: 0.68rem; color: #6366f1; font-weight: 800; display: flex; align-items: center; gap: 5px; }
+    .sp-slot-time i, .sp-slot-days i { font-size: 0.65rem; color: #94a3b8; }
+    .sp-slot-teacher { font-size: 0.7rem; font-weight: 700; color: #374151; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 120px; }
+    .sp-slot-teacher.tba { color: #94a3b8; font-style: italic; font-weight: 600; }
+    .sp-btn-action {
+        width: 34px; height: 34px; border-radius: 10px;
+        border: 1.5px solid; cursor: pointer; flex-shrink: 0;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 0.75rem; transition: 0.15s; background: white;
+    }
+    .sp-btn-action.assign { border-color: #6366f1; color: #6366f1; background: #eef2ff; }
+    .sp-btn-action.change { border-color: #e2e8f0; color: #94a3b8; }
+    .sp-btn-action:hover { background: #eef2ff; border-color: #6366f1; color: #4338ca; }
+
+    /* ── Modal ── */
+    .sp-modal-overlay {
+        position: fixed; inset: 0;
+        background: rgba(15,23,42,0.45); backdrop-filter: blur(6px);
+        display: flex; align-items: flex-end; justify-content: center;
+        z-index: 2000; padding: 0;
+    }
+    .sp-modal {
+        background: white; border-radius: 24px 24px 0 0;
+        width: 100%; max-width: 480px; max-height: 88vh;
+        overflow: hidden; display: flex; flex-direction: column;
+        animation: slideUp 0.3s cubic-bezier(0.25,0.46,0.45,0.94);
+    }
+    @@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+
+    .sp-modal-head {
+        display: flex; align-items: flex-start; justify-content: space-between;
+        padding: 1.5rem 1.25rem 1.1rem; border-bottom: 1px solid #f1f5f9;
+    }
+    .sp-modal-code { display: inline-block; font-size: 0.62rem; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; color: #6366f1; background: #eef2ff; padding: 2px 8px; border-radius: 5px; margin-bottom: 4px; }
+    .sp-modal-title { font-size: 1.1rem; font-weight: 800; color: #1e293b; margin: 0; }
+    .sp-modal-sub { font-size: 0.75rem; color: #94a3b8; font-weight: 600; margin: 3px 0 0; }
+    .sp-modal-close {
+        background: #f8fafc; border: none; width: 32px; height: 32px;
+        border-radius: 50%; color: #94a3b8; cursor: pointer;
+        display: flex; align-items: center; justify-content: center; flex-shrink: 0;
     }
 
-    .fade-in {
-        animation: fadeIn 0.3s ease-out;
+    .sp-modal-body { padding: 1rem 1.25rem 1.5rem; flex: 1; overflow-y: auto; }
+    .sp-search { position: relative; margin-bottom: 1rem; }
+    .sp-search i { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #94a3b8; font-size: 0.8rem; }
+    .sp-search input { width: 100%; padding: 0.65rem 0.75rem 0.65rem 36px; background: #f8fafc; border: 1.5px solid transparent; border-radius: 10px; font-size: 0.875rem; outline: none; transition: 0.15s; color: #1e293b; }
+    .sp-search input:focus { border-color: #6366f1; background: white; }
+
+    .sp-teacher-list { display: flex; flex-direction: column; gap: 0.45rem; }
+    .sp-teacher-row {
+        display: flex; align-items: center; gap: 0.75rem;
+        padding: 0.75rem 0.85rem; border-radius: 12px;
+        border: 1px solid #f1f5f9; background: white;
+        cursor: pointer; transition: 0.15s; text-align: left; width: 100%;
+    }
+    .sp-teacher-row:hover:not(:disabled) { border-color: #a5b4fc; background: #f5f5ff; }
+    .sp-teacher-row.current { border-color: #6366f1; background: #eef2ff; cursor: default; }
+    .sp-teacher-row.conflict { opacity: 0.5; pointer-events: none; }
+    .sp-t-avatar {
+        width: 38px; height: 38px; flex-shrink: 0;
+        border-radius: 10px; background: #f1f5f9; color: #4338ca;
+        display: flex; align-items: center; justify-content: center; font-weight: 800;
+    }
+    .sp-t-info { flex: 1; min-width: 0; }
+    .sp-t-name { font-size: 0.875rem; font-weight: 700; color: #1e293b; display: block; }
+    .sp-t-sub { display: flex; align-items: center; gap: 0.4rem; margin-top: 2px; flex-wrap: wrap; }
+    .sp-role-chip { font-size: 0.58rem; font-weight: 800; padding: 1px 5px; border-radius: 4px; text-transform: uppercase; background: #f1f5f9; color: #64748b; }
+    .sp-role-chip.adviser { background: #e0e7ff; color: #4338ca; }
+    .sp-role-chip.subjectteacher { background: #fef3c7; color: #92400e; }
+    .sp-role-chip.teacher { background: #dcfce7; color: #166534; }
+    .sp-t-status { font-size: 0.65rem; font-weight: 700; }
+    .sp-t-status.avail { color: #64748b; }
+    .sp-t-status.current { color: #6366f1; }
+    .sp-t-status.conflict { color: #ef4444; }
+    .sp-t-status.locked { color: #94a3b8; font-style: italic; }
+    .sp-t-arrow { color: #cbd5e1; font-size: 0.75rem; flex-shrink: 0; }
+
+    /* Notice banner */
+    .sp-notice-banner {
+        display: flex; align-items: center; gap: 0.5rem;
+        background: #fffbeb; border: 1px solid #fef08a;
+        border-radius: 10px; padding: 0.65rem 0.85rem;
+        font-size: 0.78rem; font-weight: 600; color: #92400e;
+        margin-bottom: 0.75rem;
+    }
+    .sp-notice-banner i { color: #f59e0b; flex-shrink: 0; }
+
+    /* List section label */
+    .sp-list-separator {
+        font-size: 0.62rem; font-weight: 800; color: #94a3b8;
+        text-transform: uppercase; letter-spacing: 0.8px;
+        margin: 0.85rem 0 0.45rem 2px;
     }
 
-    /* Dropdown UI */
-    .planner-filters-row {
-        display: flex;
-        gap: 1rem;
-        padding: 0 1.5rem;
-        margin-bottom: 1.5rem;
+    /* Locked (blocked) teacher row */
+    .sp-teacher-row.locked { opacity: 0.35; pointer-events: none; }
+
+
+    .sp-btn-unassign {
+        width: 100%; margin-top: 1rem; padding: 0.8rem;
+        border-radius: 10px; border: 1.5px solid #fee2e2;
+        background: #fff5f5; color: #dc2626;
+        font-weight: 700; font-size: 0.85rem;
+        display: flex; align-items: center; justify-content: center;
+        gap: 0.5rem; cursor: pointer; transition: 0.15s;
     }
+    .sp-btn-unassign:hover { background: #fee2e2; }
 
-    .filter-group {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        gap: 0.4rem;
-    }
+    /* ── Animations ── */
+    .fade-in { animation: fadeIn 0.25s ease-out; }
+    @@keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 
-    .filter-group label {
-        font-size: 0.65rem;
-        font-weight: 800;
-        color: #94a3b8;
-        letter-spacing: 0.5px;
-        text-indent: 4px;
-    }
-
-    .select-wrapper {
-        position: relative;
-        display: flex;
-        align-items: center;
-    }
-
-    .premium-select {
-        width: 100%;
-        appearance: none;
-        background: white;
-        border: 1px solid #e2e8f0;
-        border-radius: 14px;
-        padding: 0.75rem 1rem;
-        font-size: 0.9rem;
-        font-weight: 800;
-        color: #1e293b;
-        cursor: pointer;
-        transition: all 0.2s;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.02);
-    }
-
-    .premium-select:focus {
-        border-color: #7c3aed;
-        box-shadow: 0 4px 12px rgba(124, 58, 237, 0.1);
-        outline: none;
-    }
-
-    .select-icon {
-        position: absolute;
-        right: 1rem;
-        font-size: 0.75rem;
-        color: #94a3b8;
-        pointer-events: none;
-    }
-
-    /* Compact Assign Button */
-    .btn-assign-compact {
-        background: white;
-        border: 2px dashed #e2e8f0;
-        color: #7c3aed;
-        padding: 6px 12px;
-        border-radius: 10px;
-        font-weight: 800;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        font-size: 0.72rem;
-        white-space: nowrap;
-        transition: 0.2s;
-    }
-
-    .btn-assign-compact:hover {
-        border-color: #7c3aed;
-        background: #f5f3ff;
-    }
-
-    /* Role Badges */
-    .t-role-row { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
-    .role-badge {
-        font-size: 0.6rem;
-        font-weight: 900;
-        padding: 1px 6px;
-        border-radius: 4px;
-        text-transform: uppercase;
-        background: #f1f5f9;
-        color: #64748b;
-    }
-    .role-badge.adviser { background: #e0e7ff; color: #4338ca; }
-    .role-badge.subjectteacher { background: #fef3c7; color: #92400e; }
-    .role-badge.teacher { background: #dcfce7; color: #166534; }
-
-    @@keyframes scaleIn { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-
-    /* Snackbar - Top position */
-    .snackbar-host { position: fixed; top: 20px; left: 50%; transform: translateX(-50%) translateY(-50px); z-index: 5000; opacity: 0; visibility: hidden; transition: 0.4s; width: 90%; max-width: 360px; }
+    /* ── Snackbar ── */
+    .snackbar-host { position: fixed; top: 20px; left: 50%; transform: translateX(-50%) translateY(-50px); z-index: 5000; opacity: 0; visibility: hidden; transition: 0.35s; width: 90%; max-width: 340px; }
     .snackbar-host.active { opacity: 1; visibility: visible; transform: translateX(-50%) translateY(0); }
-    .snackbar-box { background: white; border-radius: 16px; padding: 1rem; display: flex; align-items: center; gap: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.15); position: relative; overflow: hidden; }
-    .snackbar-icon { font-size: 1.1rem; }
-    .snackbar-message { font-size: 0.9rem; font-weight: 700; color: #1e293b; }
-    .snackbar-progress { position: absolute; bottom: 0; left: 0; height: 3px; background: rgba(0,0,0,0.1); width: 0%; }
+    .snackbar-box { background: white; border-radius: 12px; padding: 0.85rem 1rem; display: flex; align-items: center; gap: 0.75rem; box-shadow: 0 8px 24px rgba(0,0,0,0.12); overflow: hidden; position: relative; }
+    .snackbar-icon { font-size: 1rem; }
+    .snackbar-message { font-size: 0.85rem; font-weight: 700; color: #1e293b; flex: 1; }
+    .snackbar-progress { position: absolute; bottom: 0; left: 0; height: 3px; background: #e2e8f0; width: 0%; }
     .snackbar-host.active .snackbar-progress { animation: progress 3s linear forwards; }
     @@keyframes progress { from { width: 0; } to { width: 100%; } }
-
     .success .snackbar-icon { color: #10b981; }
     .error .snackbar-icon { color: #ef4444; }
+    .warning .snackbar-icon { color: #f59e0b; }
 </style>
+
+
+
 
 @code {
     private List<ClassOffering> allOfferings = new();
     private List<PendingTeacherInfo> teachers = new();
     private bool isLoading = true;
-    private int selectedGrade = 7;
+    private int? selectedGrade;
     private string? selectedSection;
 
     private List<string> availableSections => allOfferings
-        .Where(o => o.GradeLevel == selectedGrade && !string.IsNullOrEmpty(o.Section))
+        .Where(o => (!selectedGrade.HasValue || o.GradeLevel == selectedGrade.Value) && !string.IsNullOrEmpty(o.Section))
         .Select(o => o.Section)
         .Distinct()
         .OrderBy(s => s)
@@ -592,22 +530,29 @@
 
     private void OnGradeChange(ChangeEventArgs e)
     {
-        if (int.TryParse(e.Value?.ToString(), out int grade))
+        var val = e.Value?.ToString();
+        if (string.IsNullOrEmpty(val))
+        {
+            selectedGrade = null;
+        }
+        else if (int.TryParse(val, out int grade))
         {
             selectedGrade = grade;
-            selectedSection = availableSections.FirstOrDefault();
         }
+        selectedSection = ""; // Reset section when grade changes
     }
 
     private void OnSectionChange(ChangeEventArgs e)
     {
-        selectedSection = e.Value?.ToString();
+        var val = e.Value?.ToString();
+        selectedSection = string.IsNullOrEmpty(val) ? null : val;
     }
 
     private List<ClassOffering> GetFilteredOfferings()
     {
         return allOfferings
-            .Where(o => o.GradeLevel == selectedGrade && o.Section == selectedSection)
+            .Where(o => (!selectedGrade.HasValue || o.GradeLevel == selectedGrade.Value) && 
+                        (string.IsNullOrEmpty(selectedSection) || o.Section == selectedSection))
             .OrderBy(o => o.ScheduleStart)
             .ToList();
     }
@@ -655,7 +600,7 @@
                 // Overlapping time?
                 if (selectedOffering.ScheduleStart < cls.ScheduleEnd && selectedOffering.ScheduleEnd > cls.ScheduleStart)
                 {
-                    return $"{cls.SubjectName} ({cls.Section})";
+                    return $"Gr.{cls.GradeLevel} {cls.SubjectName} ({cls.Section})";
                 }
             }
         }
@@ -682,9 +627,16 @@
             }
             else
             {
-                var err = await response.Content.ReadAsStringAsync();
-                ShowSnackbar($"Failed: {err}", "error");
+                var errText = await response.Content.ReadAsStringAsync();
+                string errMsg = "Assignment failed.";
+                try {
+                    var errJson = System.Text.Json.JsonDocument.Parse(errText);
+                    if (errJson.RootElement.TryGetProperty("message", out var msgProp))
+                        errMsg = msgProp.GetString() ?? errMsg;
+                } catch { errMsg = errText.Length > 80 ? errText[..80] : errText; }
+                ShowSnackbar(errMsg, "error");
             }
+
         }
         catch (Exception ex)
         {
@@ -699,10 +651,9 @@
         try
         {
             var http = HttpClientFactory.CreateClient("AttrakAPI");
-            var user = await AuthService.GetCurrentUserAsync();
-            
-            // Backend Unassign expects AdviserId in body (as owner check)
-            var body = new { AdviserId = user?.UserId };
+
+            // Backend checks WHERE AdviserId = @AdviserId — use the class's own AdviserId
+            var body = new { AdviserId = selectedOffering.AdviserId };
             var response = await http.PutAsJsonAsync($"/api/ClassOffering/{selectedOffering.ClassOfferingId}/unassign", body);
             
             if (response.IsSuccessStatusCode)
@@ -752,7 +703,18 @@
     private static string FormatDays(string dayOfWeek)
     {
         if (string.IsNullOrWhiteSpace(dayOfWeek)) return "";
-        var days = dayOfWeek.Split(',').Select(d => d.Trim());
-        return string.Join(", ", days.Select(d => d.Length >= 3 ? d.Substring(0, 3) : d));
+        var days = dayOfWeek.Split(',').Select(d => d.Trim().ToLower());
+        var shortDays = new List<string>();
+        foreach (var d in days)
+        {
+            if (d.StartsWith("m")) shortDays.Add("M");
+            else if (d.StartsWith("tu")) shortDays.Add("T");
+            else if (d.StartsWith("w")) shortDays.Add("W");
+            else if (d.StartsWith("th")) shortDays.Add("Th");
+            else if (d.StartsWith("f")) shortDays.Add("F");
+            else if (d.StartsWith("sa")) shortDays.Add("S");
+            else if (d.StartsWith("su")) shortDays.Add("Su");
+        }
+        return string.Join(" ", shortDays);
     }
 }
