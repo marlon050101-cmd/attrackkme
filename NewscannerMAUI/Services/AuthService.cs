@@ -29,17 +29,17 @@ namespace NewscannerMAUI.Services
         public async Task<TeacherInfo?> GetCurrentTeacherAsync()
         {
             var user = await GetCurrentUserAsync();
-            if (user?.UserType == UserType.SubjectTeacher && !string.IsNullOrEmpty(user.TeacherId))
+            // Support both SubjectTeacher and Adviser accounts — both have TeacherId and can use the scanner
+            if ((user?.UserType == UserType.SubjectTeacher || user?.UserType == UserType.Adviser)
+                && !string.IsNullOrEmpty(user.TeacherId))
             {
-                // For now, return basic info from user
-                // In a real app, you would make an API call to get full teacher details
                 return new TeacherInfo
                 {
                     TeacherId = user.TeacherId,
-                    FullName = user.Username,
+                    FullName = user.FullName ?? user.Username,
                     Email = user.Email,
                     SchoolId = user.SchoolId ?? "",
-                    SchoolName = user.SchoolId ?? "School", // Fallback
+                    SchoolName = user.SchoolId ?? "School",
                     GradeLevel = user.GradeLevel ?? 0,
                     Section = user.Section ?? "",
                     Strand = user.Strand
@@ -150,30 +150,39 @@ namespace NewscannerMAUI.Services
                         SaveUserToStorage();
                         AuthenticationStateChanged.Invoke(true);
                         
-                        // Download all students for this teacher if they are a teacher or adviser
+                        // Download all students and class offerings for offline use
                         if ((userInfo.UserType == UserType.SubjectTeacher || userInfo.UserType == UserType.Adviser) && !string.IsNullOrEmpty(userInfo.TeacherId))
                         {
-                            System.Diagnostics.Debug.WriteLine($"Downloading students for teacher: {userInfo.TeacherId}");
+                            System.Diagnostics.Debug.WriteLine($"Downloading data for teacher/adviser: {userInfo.TeacherId}");
                             _ = Task.Run(async () => 
                             {
                                 try
                                 {
-                                    var success = await _offlineDataService.DownloadAllStudentsForTeacherAsync(userInfo.TeacherId, serverUrl);
-                                    System.Diagnostics.Debug.WriteLine($"Student download {(success ? "successful" : "failed")} for teacher {userInfo.TeacherId}");
+                                    bool isAdviser = userInfo.UserType == UserType.Adviser;
                                     
-                                    // Also store teacher credentials for offline login
+                                    // 1. Download students for offline scanning
+                                    var success = await _offlineDataService.DownloadAllStudentsForTeacherAsync(userInfo.TeacherId, serverUrl);
+                                    System.Diagnostics.Debug.WriteLine($"Student download {(success ? "successful" : "failed")} for {userInfo.TeacherId}");
+                                    
+                                    // 2. Download class offerings for offline subject selection
+                                    await _offlineDataService.DownloadAndCacheClassOfferingsAsync(userInfo.TeacherId, serverUrl, isAdviser);
+                                    System.Diagnostics.Debug.WriteLine($"Class offerings cached for {(isAdviser ? "adviser" : "teacher")} {userInfo.TeacherId}");
+                                    
+                                    // 3. Store credentials for offline login
                                     if (success)
                                     {
-                                        await _offlineDataService.AddOfflineUserAsync(username, password, "SubjectTeacher", userInfo.Username);
-                                        System.Diagnostics.Debug.WriteLine($"Teacher credentials stored for offline login: {username}");
+                                        var userTypeStr = isAdviser ? "Adviser" : "SubjectTeacher";
+                                        await _offlineDataService.AddOfflineUserAsync(username, password, userTypeStr, userInfo.FullName ?? userInfo.Username);
+                                        System.Diagnostics.Debug.WriteLine($"Credentials stored for offline login: {username}");
                                     }
                                 }
                                 catch (Exception ex)
                                 {
-                                    System.Diagnostics.Debug.WriteLine($"Error downloading students: {ex.Message}");
+                                    System.Diagnostics.Debug.WriteLine($"Error pre-loading offline data: {ex.Message}");
                                 }
                             });
                         }
+
                         
                         System.Diagnostics.Debug.WriteLine($"Online login successful for user: {username}");
                         return true;

@@ -1574,7 +1574,42 @@ namespace NewscannerMAUI.Services
             }
         }
 
+        /// <summary>Download class offerings from server and cache locally for offline use.</summary>
+        public async Task<bool> DownloadAndCacheClassOfferingsAsync(string teacherId, string serverUrl, bool isAdviser = false)
+        {
+            try
+            {
+                using var httpClient = new HttpClient();
+                httpClient.BaseAddress = new Uri(serverUrl.TrimEnd('/') + "/");
+                httpClient.Timeout = TimeSpan.FromSeconds(30);
+
+                // Advisers have their class offerings under /adviser/{adviserId}
+                // Subject teachers have their class offerings under /teacher/{teacherId}
+                var endpoint = isAdviser
+                    ? $"api/ClassOffering/adviser/{teacherId}"
+                    : $"api/ClassOffering/teacher/{teacherId}";
+
+                System.Diagnostics.Debug.WriteLine($"Fetching class offerings from {endpoint}");
+                var classes = await httpClient.GetFromJsonAsync<List<ClassOffering>>(endpoint);
+                if (classes == null || classes.Count == 0)
+                {
+                    System.Diagnostics.Debug.WriteLine("No class offerings found to cache");
+                    return true; // Not an error — teacher may just have none assigned
+                }
+
+                var cached = await CacheClassOfferingsAsync(teacherId, classes);
+                System.Diagnostics.Debug.WriteLine($"Cached {classes.Count} class offerings for {(isAdviser ? "adviser" : "teacher")} {teacherId}");
+                return cached;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error downloading class offerings: {ex.Message}");
+                return false;
+            }
+        }
+
         public async Task<bool> CacheClassOfferingsAsync(string teacherId, List<ClassOffering> classes)
+
         {
             try
             {
