@@ -169,7 +169,7 @@ namespace NewscannerMAUI.Services
                             var batchRequest = new SubjectAttendanceBatchRequest
                             {
                                 ClassOfferingId = classOfferingId,
-                                Date = currentTime.Date,
+                                Date = DateTime.SpecifyKind(currentTime.Date, DateTimeKind.Unspecified),
                                 Items = new List<SubjectAttendanceItem>
                                 {
                                     new SubjectAttendanceItem
@@ -177,7 +177,7 @@ namespace NewscannerMAUI.Services
                                         StudentId = studentId,
                                         Status = status,
                                         AttendanceType = resolvedAttendanceType,
-                                        ScanTimestamp = currentTime,
+                                        ScanTimestamp = DateTime.SpecifyKind(currentTime, DateTimeKind.Unspecified),
                                         Remarks = remarks // null if not provided
                                     }
                                 }
@@ -431,39 +431,29 @@ namespace NewscannerMAUI.Services
                     System.Diagnostics.Debug.WriteLine($"Offline Auto resolved to: {attendanceType}");
                 }
                 
-                // 1. Lax Validation for Offline Mode (Allow anyone, validate during sync)
+                // 1. Strict Validation for Offline Mode (ONLY allow students in teacher's cached list)
                 var studentProfile = await _offlineDataService.GetStudentProfileAsync(studentId);
-                var studentName = studentProfile?.FullName;
                 
-                // If profile is missing, it's an "Unknown" student. Generate a "Student X" name.
-                if (string.IsNullOrEmpty(studentName))
-                {
-                    studentName = await _offlineDataService.GetStudentNameForDisplayAsync(studentId, teacherId);
-                }
-
-                // Removed strict teacher-student profile matching here. 
-                // It will now be performed during the Sync process.
-                System.Diagnostics.Debug.WriteLine($"OFFLINE VALIDATION (LAX): Allowing scan for {studentName} ({studentId})");
-
-                // Check if already scanned today offline
-                var offlineStatus = await CheckOfflineAttendanceStatusAsync(studentId, attendanceType, teacherId);
-                
-                // NEW RULE: If it's an "Unknown" student (Student X), they can only scan ONCE per day offline.
-                // We don't allow TimeOuts for unknown students offline to prevent duplicates in the pending list.
-                bool isUnknownStudent = studentProfile == null;
-                
-                if (isUnknownStudent && (offlineStatus.HasTimeIn || offlineStatus.HasTimeOut))
+                if (studentProfile == null)
                 {
                     return new QRValidationResult
                     {
                         IsValid = false,
-                        Message = $"{studentName} has already been scanned!",
+                        Message = "This student is not in your assigned class list",
                         ErrorType = QRValidationErrorType.ValidationError
                     };
                 }
+
+                var studentName = studentProfile.FullName;
+                System.Diagnostics.Debug.WriteLine($"OFFLINE VALIDATION (STRICT): Allowing scan for {studentName} ({studentId})");
+
+                // Check if already scanned today offline
+                var offlineStatus = await CheckOfflineAttendanceStatusAsync(studentId, attendanceType, teacherId, classOfferingId);
+                
+                // Removed lax "Student X" logic as per user request for strict teacher-based subjects
                 
                 // Standard duplicate checks for known students
-                if (!isUnknownStudent && attendanceType == "TimeIn" && offlineStatus.HasTimeIn)
+                if (attendanceType == "TimeIn" && offlineStatus.HasTimeIn)
                 {
                     return new QRValidationResult
                     {
@@ -473,7 +463,7 @@ namespace NewscannerMAUI.Services
                     };
                 }
                 
-                if (!isUnknownStudent && attendanceType == "TimeOut" && offlineStatus.HasTimeOut)
+                if (attendanceType == "TimeOut" && offlineStatus.HasTimeOut)
                 {
                     return new QRValidationResult
                     {
@@ -541,36 +531,56 @@ namespace NewscannerMAUI.Services
             }
         }
         
-        public async Task<OfflineAttendanceStatus> CheckOfflineAttendanceStatusAsync(string studentId, string attendanceType, string? teacherId = null)
+        public async Task<OfflineAttendanceStatus> CheckOfflineAttendanceStatusAsync(string studentId, string attendanceType, string? teacherId = null, string? subjectId = null)
         {
-            var status = new OfflineAttendanceStatus { HasTimeIn = false, HasTimeOut = false, TimeIn = "", TimeOut = "" };
-            
+            var status = new OfflineAttendanceStatus();
             try
             {
                 var today = DateTime.Today;
                 
-                // Get existing records from offline database for THIS specific student
-                // This ensures we prevent duplicates without loading the entire class data (which causes lag)
+                // 1. Check Subject Attendance Table if subjectId is specified
+                if (!string.IsNullOrEmpty(subjectId))
+                {
+                    var subjectRecords = await _offlineDataService.GetSubjectAttendanceForStudentAsync(studentId, subjectId, today);
+                    
+                    foreach (var r in subjectRecords)
+                    {
+                        if (r.AttendanceType == "TimeIn")
+                        {
+                            status.HasTimeIn = true;
+                            status.TimeIn = r.ScanTime.ToString("HH:mm");
+                        }
+                        else if (r.AttendanceType == "TimeOut")
+                        {
+                            status.HasTimeOut = true;
+                            status.TimeOut = r.ScanTime.ToString("HH:mm");
+                        }
+                    }
+                }
+
+                // 2. Check Daily Attendance Table (Fallback or for School-wide)
                 var dailyRecords = await _offlineDataService.GetDailyAttendanceForStudentAsync(studentId, today, teacherId);
                 
-                // Check for TimeIn record
-                var timeInRecord = dailyRecords
-                    .FirstOrDefault(r => r.AttendanceType == "TimeIn");
-                if (timeInRecord != null)
+                if (!status.HasTimeIn)
                 {
-                    status.HasTimeIn = true;
-                    status.TimeIn = timeInRecord.TimeIn ?? "";
+                    var timeInRecord = dailyRecords.FirstOrDefault(r => r.AttendanceType == "TimeIn");
+                    if (timeInRecord != null)
+                    {
+                        status.HasTimeIn = true;
+                        status.TimeIn = timeInRecord.TimeIn ?? "";
+                    }
                 }
-                
-                // Check for TimeOut record
-                var timeOutRecord = dailyRecords
-                    .FirstOrDefault(r => r.AttendanceType == "TimeOut");
-                if (timeOutRecord != null)
+
+                if (!status.HasTimeOut)
                 {
-                    status.HasTimeOut = true;
-                    status.TimeOut = timeOutRecord.TimeOut ?? "";
+                    var timeOutRecord = dailyRecords.FirstOrDefault(r => r.AttendanceType == "TimeOut");
+                    if (timeOutRecord != null)
+                    {
+                        status.HasTimeOut = true;
+                        status.TimeOut = timeOutRecord.TimeOut ?? "";
+                    }
                 }
-                
+
                 System.Diagnostics.Debug.WriteLine($"Offline attendance status for {studentId}: TimeIn={status.HasTimeIn} ({status.TimeIn}), TimeOut={status.HasTimeOut} ({status.TimeOut})");
             }
             catch (Exception ex)

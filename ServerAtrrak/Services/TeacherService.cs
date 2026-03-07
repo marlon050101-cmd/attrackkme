@@ -27,7 +27,7 @@ namespace ServerAtrrak.Services
                     SELECT u.UserId, u.Username, u.Email, u.UserType, u.TeacherId, t.FullName 
                     FROM user u
                     LEFT JOIN teacher t ON u.TeacherId = t.TeacherId
-                    WHERE u.UserId = @teacherId AND u.UserType = 'SubjectTeacher'";
+                    WHERE u.UserId = @teacherId AND u.UserType IN ('SubjectTeacher', 'Adviser', 'Teacher', 'Advisor')";
                 
                 UserInfo? teacherInfo = null;
                 string? actualTeacherId = null;
@@ -359,7 +359,7 @@ namespace ServerAtrrak.Services
                 var userQuery = @"
                         SELECT TeacherId 
                         FROM user 
-                        WHERE UserId = @userId AND UserType = 'SubjectTeacher'";
+                        WHERE UserId = @userId AND u.UserType IN ('SubjectTeacher', 'Adviser', 'Teacher', 'Advisor')";
                 
                 string? actualTeacherId = null;
                 using (var userCommand = new MySqlCommand(userQuery, connection))
@@ -494,7 +494,7 @@ namespace ServerAtrrak.Services
                     SELECT u.UserId, u.TeacherId, t.FullName 
                     FROM user u
                     LEFT JOIN teacher t ON u.TeacherId = t.TeacherId
-                    WHERE u.UserId = @teacherId AND u.UserType = 'SubjectTeacher'";
+                    WHERE u.UserId = @teacherId AND u.UserType IN ('SubjectTeacher', 'Adviser', 'Teacher', 'Advisor')";
                 
                 string? fullName = null;
                 string? actualTeacherId = null;
@@ -585,7 +585,7 @@ namespace ServerAtrrak.Services
                 var userQuery = @"
                     SELECT TeacherId 
                     FROM user 
-                    WHERE UserId = @userId AND UserType = 'SubjectTeacher'";
+                    WHERE UserId = @userId AND UserType IN ('SubjectTeacher', 'Adviser', 'Teacher', 'Advisor')";
                 
                 string? actualTeacherId = null;
                 using (var userCommand = new MySqlCommand(userQuery, connection))
@@ -639,7 +639,7 @@ namespace ServerAtrrak.Services
                 var userQuery = @"
                     SELECT TeacherId 
                     FROM user 
-                    WHERE UserId = @userId AND UserType = 'SubjectTeacher'";
+                    WHERE UserId = @userId AND UserType IN ('SubjectTeacher', 'Adviser', 'Teacher', 'Advisor')";
                 
                 string? actualTeacherId = null;
                 using (var userCommand = new MySqlCommand(userQuery, connection))

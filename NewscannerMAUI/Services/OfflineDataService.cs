@@ -147,6 +147,22 @@ namespace NewscannerMAUI.Services
                         cached_at DATETIME DEFAULT CURRENT_TIMESTAMP
                     )";
 
+                // Create class offerings cache table
+                var createClassOfferingsTable = @"
+                    CREATE TABLE IF NOT EXISTS class_offerings_cache (
+                        class_offering_id TEXT PRIMARY KEY,
+                        subject_id TEXT,
+                        subject_name TEXT,
+                        teacher_id TEXT,
+                        day_of_week TEXT,
+                        schedule_start TEXT,
+                        schedule_end TEXT,
+                        room TEXT,
+                        section TEXT,
+                        grade_level INTEGER,
+                        cached_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                    )";
+
                 System.Diagnostics.Debug.WriteLine("Creating offline_daily_attendance table...");
                 var command1 = new SqliteCommand(createDailyAttendanceTable, connection);
                 command1.ExecuteNonQuery();
@@ -171,6 +187,11 @@ namespace NewscannerMAUI.Services
                 var command5 = new SqliteCommand(createStudentNamesCacheTable, connection);
                 command5.ExecuteNonQuery();
                 System.Diagnostics.Debug.WriteLine("student_names_cache table created successfully");
+
+                System.Diagnostics.Debug.WriteLine("Creating class_offerings_cache table...");
+                var command6 = new SqliteCommand(createClassOfferingsTable, connection);
+                command6.ExecuteNonQuery();
+                System.Diagnostics.Debug.WriteLine("class_offerings_cache table created successfully");
 
                 // === MIGRATIONS: Safely add any new columns to existing tables ===
 
@@ -350,8 +371,9 @@ namespace NewscannerMAUI.Services
                 await connection.OpenAsync();
                 System.Diagnostics.Debug.WriteLine("Database connection opened successfully");
 
-                // Use daily attendance table for TimeIn/TimeOut
-                if (attendanceType == "TimeIn" || attendanceType == "TimeOut")
+                // Use daily attendance table for TimeIn/TimeOut (SCHOOL-WIDE)
+                // BUT: If a subjectId is provided, it's a PER-SUBJECT scan, so it must go to offline_attendance
+                if ((attendanceType == "TimeIn" || attendanceType == "TimeOut") && string.IsNullOrEmpty(subjectId))
                 {
                     var today = DateTime.Today.ToString("yyyy-MM-dd");
                     var timeValue = DateTime.Now.ToString("HH:mm");
@@ -546,15 +568,17 @@ namespace NewscannerMAUI.Services
                         oda.is_synced, 
                         oda.attendance_type, 
                         oda.created_at,
+                        oda.teacher_id,
                         snc.student_name
                     FROM offline_daily_attendance oda
                     LEFT JOIN student_names_cache snc ON oda.student_id = snc.student_id
                     WHERE oda.is_synced IN (0, 2)";
 
-                if (!string.IsNullOrEmpty(teacherId))
-                {
-                    query += " AND oda.teacher_id = @teacherId";
-                }
+                // Removed teacher filter for device-wide daily list
+                // if (!string.IsNullOrEmpty(teacherId))
+                // {
+                //     query += " AND oda.teacher_id = @teacherId";
+                // }
 
                 if (!string.IsNullOrEmpty(date))
                 {
@@ -566,10 +590,10 @@ namespace NewscannerMAUI.Services
                 var records = new List<OfflineDailyAttendanceRecord>();
                 
                 using var command = new SqliteCommand(query, connection);
-                if (!string.IsNullOrEmpty(teacherId))
-                {
-                    command.Parameters.AddWithValue("@teacherId", teacherId);
-                }
+                // if (!string.IsNullOrEmpty(teacherId))
+                // {
+                //     command.Parameters.AddWithValue("@teacherId", teacherId);
+                // }
                 if (!string.IsNullOrEmpty(date))
                 {
                     command.Parameters.AddWithValue("@date", date);
@@ -604,7 +628,8 @@ namespace NewscannerMAUI.Services
                         DeviceId = reader.IsDBNull("device_id") ? "" : reader.GetString("device_id"),
                         IsSynced = reader.GetInt32("is_synced") == 1,
                         AttendanceType = reader.GetString("attendance_type"),
-                        CreatedAt = reader.GetDateTime("created_at")
+                        CreatedAt = reader.GetDateTime("created_at"),
+                        TeacherId = reader.IsDBNull("teacher_id") ? null : reader.GetString("teacher_id")
                     });
                 }
                 return records;
@@ -613,6 +638,57 @@ namespace NewscannerMAUI.Services
             {
                 System.Diagnostics.Debug.WriteLine($"Error getting unsynced daily attendance records: {ex.Message}");
                 return new List<OfflineDailyAttendanceRecord>();
+            }
+        }
+
+        public async Task<List<OfflineAttendanceRecord>> GetSubjectAttendanceForStudentAsync(string studentId, string subjectId, DateTime date)
+        {
+            try
+            {
+                var dateStr = date.ToString("yyyy-MM-dd");
+                using var connection = new SqliteConnection(_connectionString);
+                await connection.OpenAsync();
+
+                var query = @"
+                    SELECT * FROM offline_attendance 
+                    WHERE student_id = @studentId 
+                    AND subject_id = @subjectId 
+                    AND date(timestamp) = @dateDate";
+
+                var records = new List<OfflineAttendanceRecord>();
+                using var command = new SqliteCommand(query, connection);
+                command.Parameters.AddWithValue("@studentId", studentId);
+                command.Parameters.AddWithValue("@subjectId", subjectId);
+                command.Parameters.AddWithValue("@dateDate", dateStr);
+
+                using var reader = await command.ExecuteReaderAsync();
+                
+                // Pre-load student name for the record
+                var studentName = await GetStudentNameAsync(studentId);
+
+                while (await reader.ReadAsync())
+                {
+                    records.Add(new OfflineAttendanceRecord
+                    {
+                        Id = reader.GetString("attendance_id"),
+                        StudentId = reader.GetString("student_id"),
+                        StudentName = studentName,
+                        SubjectId = reader.IsDBNull("subject_id") ? "" : reader.GetString("subject_id"),
+                        AttendanceType = reader.GetString("attendance_type"),
+                        ScanTime = reader.GetDateTime("timestamp"),
+                        DeviceId = reader.IsDBNull("device_id") ? "" : reader.GetString("device_id"),
+                        IsSynced = reader.GetInt32("is_synced") == 1,
+                        Remarks = reader.IsDBNull("remarks") ? "" : reader.GetString("remarks"),
+                        TeacherId = reader.IsDBNull("teacher_id") ? "" : reader.GetString("teacher_id"),
+                        Status = reader.IsDBNull("status") ? "Present" : reader.GetString("status")
+                    });
+                }
+                return records;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error getting subject attendance for student: {ex.Message}");
+                return new List<OfflineAttendanceRecord>();
             }
         }
 
@@ -627,7 +703,7 @@ namespace NewscannerMAUI.Services
                 await connection.OpenAsync();
                 
                 var query = @"
-                    SELECT attendance_id, student_id, date, time_in, time_out, status, device_id, is_synced, attendance_type, created_at
+                    SELECT attendance_id, student_id, date, time_in, time_out, status, device_id, is_synced, attendance_type, created_at, teacher_id
                     FROM offline_daily_attendance 
                     WHERE date = @date AND student_id = @studentId";
 
@@ -737,48 +813,32 @@ namespace NewscannerMAUI.Services
                 using var connection = new SqliteConnection(_connectionString);
                 await connection.OpenAsync();
 
-                var dailyQuery = @"SELECT a.attendance_id, a.student_id, a.date, a.time_in, a.time_out, a.status, a.device_id, a.is_synced, a.created_at, a.attendance_type, a.remarks,
+                var dailyQuery = @"SELECT a.attendance_id, a.student_id, a.date, a.time_in, a.time_out, a.status, a.device_id, a.is_synced, a.created_at, a.attendance_type, a.remarks, a.teacher_id,
                              COALESCE(n.student_name, '') as student_name
                       FROM offline_daily_attendance a
                       LEFT JOIN student_names_cache n ON a.student_id = n.student_id
                       WHERE a.is_synced IN (0, 2)";
 
-                if (!string.IsNullOrEmpty(teacherId))
-                {
-                    dailyQuery += " AND a.teacher_id = @teacherId";
-                }
+                // Remove teacher filtering to ensure ALL device records are visible in Sync List
+                // if (!string.IsNullOrEmpty(teacherId))
+                // {
+                //     dailyQuery += " AND a.teacher_id = @teacherId";
+                // }
 
                 dailyQuery += " ORDER BY a.created_at";
 
                 var dailyCommand = new SqliteCommand(dailyQuery, connection);
-                if (!string.IsNullOrEmpty(teacherId))
-                {
-                    dailyCommand.Parameters.AddWithValue("@teacherId", teacherId);
-                }
+                // if (!string.IsNullOrEmpty(teacherId))
+                // {
+                //     dailyCommand.Parameters.AddWithValue("@teacherId", teacherId);
+                // }
 
-                // Debug: Log what's in the database
-                System.Diagnostics.Debug.WriteLine("=== DEBUGGING DATABASE RECORDS ===");
-                var debugCommand = new SqliteCommand(
-                    @"SELECT attendance_id, student_id, date, time_in, time_out, device_id, is_synced 
-                      FROM offline_daily_attendance 
-                      ORDER BY created_at",
-                    connection);
-                
-                using var debugReader = await debugCommand.ExecuteReaderAsync();
-                while (await debugReader.ReadAsync())
-                {
-                    var debugAttendanceId = debugReader.GetString("attendance_id");
-                    var debugStudentId = debugReader.GetString("student_id");
-                    var debugDate = debugReader.GetString("date");
-                    var debugTimeIn = debugReader.IsDBNull("time_in") ? "NULL" : debugReader.GetString("time_in");
-                    var debugTimeOut = debugReader.IsDBNull("time_out") ? "NULL" : debugReader.GetString("time_out");
-                    var debugDeviceId = debugReader.GetString("device_id");
-                    var debugIsSynced = debugReader.GetInt32("is_synced");
-                    
-                    System.Diagnostics.Debug.WriteLine($"DB Record: ID={debugAttendanceId}, Student={debugStudentId}, Date={debugDate}, TimeIn={debugTimeIn}, TimeOut={debugTimeOut}, DeviceId={debugDeviceId}, Synced={debugIsSynced}");
-                }
-                debugReader.Close();
-                System.Diagnostics.Debug.WriteLine("=== END DATABASE RECORDS DEBUG ===");
+                // Debug logging simplified and safer
+                try {
+                    var debugCountCmd = new SqliteCommand("SELECT COUNT(*) FROM offline_daily_attendance WHERE is_synced IN (0, 2)", connection);
+                    var count = await debugCountCmd.ExecuteScalarAsync();
+                    System.Diagnostics.Debug.WriteLine($"Unsynced daily records count: {count}");
+                } catch { }
 
                 // Pre-load unknown IDs for this teacher
                 var unknownIds = await GetUnknownStudentIdsAsync(teacherId);
@@ -833,19 +893,33 @@ namespace NewscannerMAUI.Services
                         SyncStatus = dailyReader.GetInt32("is_synced"),
                         Remarks = dailyReader.IsDBNull("remarks") ? "" : dailyReader.GetString("remarks"),
                         DeviceId = deviceId,
-                        CreatedAt = createdAt
+                        CreatedAt = createdAt,
+                        Status = dailyReader.IsDBNull("status") ? "Present" : dailyReader.GetString("status"),
+                        TeacherId = dailyReader.IsDBNull("teacher_id") ? null : dailyReader.GetString("teacher_id")
                     });
                 }
                 dailyReader.Close();
 
                 // Get unsynced regular attendance records
-                var regularCommand = new SqliteCommand(
-                    @"SELECT a.attendance_id, a.student_id, a.subject_id, a.timestamp, a.attendance_type, a.device_id, a.is_synced, a.created_at, a.remarks,
+                var regularQuery = @"SELECT a.attendance_id, a.student_id, a.subject_id, a.timestamp, a.attendance_type, a.status, a.device_id, a.is_synced, a.created_at, a.remarks, a.teacher_id,
                              COALESCE(n.student_name, '') as student_name
                       FROM offline_attendance a
                       LEFT JOIN student_names_cache n ON a.student_id = n.student_id
-                      WHERE a.is_synced IN (0, 2) ORDER BY a.created_at",
-                    connection);
+                      WHERE a.is_synced IN (0, 2)";
+
+                // Remove teacher filtering to ensure ALL device records are visible in Sync List
+                // if (!string.IsNullOrEmpty(teacherId))
+                // {
+                //     regularQuery += " AND a.teacher_id = @teacherId";
+                // }
+
+                regularQuery += " ORDER BY a.created_at";
+
+                var regularCommand = new SqliteCommand(regularQuery, connection);
+                // if (!string.IsNullOrEmpty(teacherId))
+                // {
+                //     regularCommand.Parameters.AddWithValue("@teacherId", teacherId);
+                // }
 
                 using var regularReader = await regularCommand.ExecuteReaderAsync();
                 while (await regularReader.ReadAsync())
@@ -872,7 +946,9 @@ namespace NewscannerMAUI.Services
                         IsSynced = regularReader.GetInt32("is_synced") == 1,
                         SyncStatus = regularReader.GetInt32("is_synced"),
                         Remarks = regularReader.IsDBNull("remarks") ? "" : regularReader.GetString("remarks"),
-                        CreatedAt = regularReader.GetDateTime("created_at")
+                        CreatedAt = regularReader.GetDateTime("created_at"),
+                        Status = regularReader.IsDBNull("status") ? "Present" : regularReader.GetString("status"),
+                        TeacherId = regularReader.IsDBNull("teacher_id") ? null : regularReader.GetString("teacher_id")
                     });
                 }
             }
@@ -957,39 +1033,41 @@ namespace NewscannerMAUI.Services
                 
                 // Count individual daily attendance records (separate TimeIn/TimeOut records)
                 // Count UNIQUE students instead of raw records
-                var dailyQuery = @"SELECT COUNT(DISTINCT student_id) 
-                      FROM offline_daily_attendance 
-                      WHERE is_synced IN (0, 2)";
-                if (!string.IsNullOrEmpty(teacherId))
-                {
-                    dailyQuery += " AND teacher_id = @teacherId";
-                }
-                var dailyCountCommand = new SqliteCommand(dailyQuery, connection);
-                if (!string.IsNullOrEmpty(teacherId))
-                {
-                    dailyCountCommand.Parameters.AddWithValue("@teacherId", teacherId);
-                }
-                var dailyCount = Convert.ToInt32(await dailyCountCommand.ExecuteScalarAsync());
-                System.Diagnostics.Debug.WriteLine($"Unique students pending daily attendance: {dailyCount}");
-
-                // Count other unsynced attendance records
-                var otherQuery = @"SELECT COUNT(DISTINCT student_id) 
-                      FROM offline_attendance 
-                      WHERE is_synced IN (0, 2)";
-                if (!string.IsNullOrEmpty(teacherId))
-                {
-                    otherQuery += " AND teacher_id = @teacherId";
-                }
-                var otherCountCommand = new SqliteCommand(otherQuery, connection);
-                if (!string.IsNullOrEmpty(teacherId))
-                {
-                    otherCountCommand.Parameters.AddWithValue("@teacherId", teacherId);
-                }
+                 var dailyQuery = @"SELECT COUNT(DISTINCT student_id) 
+                       FROM offline_daily_attendance 
+                       WHERE is_synced IN (0, 2)";
+                 // Removed teacher filter for device-wide badge
+                 // if (!string.IsNullOrEmpty(teacherId))
+                 // {
+                 //     dailyQuery += " AND teacher_id = @teacherId";
+                 // }
+                 var dailyCountCommand = new SqliteCommand(dailyQuery, connection);
+                 // if (!string.IsNullOrEmpty(teacherId))
+                 // {
+                 //     dailyCountCommand.Parameters.AddWithValue("@teacherId", teacherId);
+                 // }
+                 var dailyCount = Convert.ToInt32(await dailyCountCommand.ExecuteScalarAsync());
+                 System.Diagnostics.Debug.WriteLine($"Unique students pending daily attendance: {dailyCount}");
+ 
+                 // Count other unsynced attendance records
+                 var otherQuery = @"SELECT COUNT(DISTINCT student_id) 
+                       FROM offline_attendance 
+                       WHERE is_synced IN (0, 2)";
+                 // Removed teacher filter for device-wide badge
+                 // if (!string.IsNullOrEmpty(teacherId))
+                 // {
+                 //     otherQuery += " AND teacher_id = @teacherId";
+                 // }
+                 var otherCountCommand = new SqliteCommand(otherQuery, connection);
+                // if (!string.IsNullOrEmpty(teacherId))
+                // {
+                //     otherCountCommand.Parameters.AddWithValue("@teacherId", teacherId);
+                // }
                 var otherCount = Convert.ToInt32(await otherCountCommand.ExecuteScalarAsync());
                 System.Diagnostics.Debug.WriteLine($"Other unsynced attendance count: {otherCount}");
 
-                // For total unique students, we would ideally do a UNION, but for now max is safe
-                var totalCount = Math.Max(dailyCount, otherCount);
+                // For total unique students, we sum both counts
+                var totalCount = dailyCount + otherCount;
                 System.Diagnostics.Debug.WriteLine($"Unsynced unique student count result: {totalCount}");
                 return totalCount;
             }
@@ -1016,10 +1094,11 @@ namespace NewscannerMAUI.Services
                     LEFT JOIN student_names_cache n ON a.student_id = n.student_id
                     WHERE a.is_synced = 0";
 
-                if (!string.IsNullOrEmpty(teacherId))
-                {
-                    query += " AND a.teacher_id = @teacherId";
-                }
+                // Removed teacher filter for device-wide pending list
+                // if (!string.IsNullOrEmpty(teacherId))
+                // {
+                //     query += " AND a.teacher_id = @teacherId";
+                // }
 
                 query += " ORDER BY a.created_at DESC";
                 
@@ -1107,10 +1186,12 @@ namespace NewscannerMAUI.Services
                 var otherQuery = @"SELECT attendance_id, student_id, timestamp, attendance_type, device_id, created_at
                       FROM offline_attendance 
                       WHERE is_synced = 0";
-                if (!string.IsNullOrEmpty(teacherId))
-                {
-                    otherQuery += " AND teacher_id = @teacherId";
-                }
+                
+                // Removed teacher filter for device-wide pending list
+                // if (!string.IsNullOrEmpty(teacherId))
+                // {
+                //     otherQuery += " AND teacher_id = @teacherId";
+                // }
                 otherQuery += " ORDER BY created_at";
 
                 var otherCommand = new SqliteCommand(otherQuery, connection);
@@ -1435,41 +1516,51 @@ namespace NewscannerMAUI.Services
         {
             try
             {
-                System.Diagnostics.Debug.WriteLine($"Starting bulk download of students for teacher: {teacherId}");
+                System.Diagnostics.Debug.WriteLine($"Starting bulk download for teacher: {teacherId}");
 
                 using var httpClient = new HttpClient();
                 httpClient.BaseAddress = new Uri(apiBaseUrl);
-                httpClient.Timeout = TimeSpan.FromSeconds(60); // Longer timeout for bulk download
+                httpClient.Timeout = TimeSpan.FromSeconds(60);
 
-                // Get all students assigned to this teacher
-                var response = await httpClient.GetAsync($"api/teacher/{teacherId}/students");
+                // 1. Get all students assigned to this teacher
+                var studentsResponse = await httpClient.GetAsync($"api/teacher/{teacherId}/students");
+                bool studentsSuccess = false;
                 
-                if (response.IsSuccessStatusCode)
+                if (studentsResponse.IsSuccessStatusCode)
                 {
-                    var json = await response.Content.ReadAsStringAsync();
-                    System.Diagnostics.Debug.WriteLine($"Students API response: {json}");
-                    
-                    // Parse the JSON array of students
+                    var json = await studentsResponse.Content.ReadAsStringAsync();
                     var students = System.Text.Json.JsonSerializer.Deserialize<List<Dictionary<string, object>>>(json);
                     
-                    if (students != null && students.Any())
+                    if (students != null)
                     {
-                        // Clear existing cache and bulk insert
                         await ClearStudentCacheAsync();
                         await BulkCacheStudentsAsync(students);
-                        
-                        System.Diagnostics.Debug.WriteLine($"Successfully cached {students.Count} students for teacher {teacherId}");
-                        return true;
+                        studentsSuccess = true;
                     }
                 }
-                else
+
+                // 2. Get all class offerings for this teacher
+                var classesResponse = await httpClient.GetAsync($"api/ClassOffering/teacher/{teacherId}");
+                bool classesSuccess = false;
+
+                if (classesResponse.IsSuccessStatusCode)
                 {
-                    System.Diagnostics.Debug.WriteLine($"Students API error: {response.StatusCode} - {response.ReasonPhrase}");
+                    var json = await classesResponse.Content.ReadAsStringAsync();
+                    var options = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                    var classes = System.Text.Json.JsonSerializer.Deserialize<List<ClassOffering>>(json, options);
+
+                    if (classes != null)
+                    {
+                        await CacheClassOfferingsAsync(teacherId, classes);
+                        classesSuccess = true;
+                    }
                 }
+                
+                return studentsSuccess || classesSuccess;
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Error downloading students for teacher: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"Error downloading data for teacher: {ex.Message}");
             }
             
             return false;
@@ -1548,6 +1639,88 @@ namespace NewscannerMAUI.Services
             }
         }
 
+        public async Task<bool> CacheClassOfferingsAsync(string teacherId, List<ClassOffering> classes)
+        {
+            try
+            {
+                using var connection = new SqliteConnection(_connectionString);
+                await connection.OpenAsync();
+
+                using var transaction = connection.BeginTransaction();
+                
+                // Delete existing classes for this teacher
+                var deleteCommand = new SqliteCommand("DELETE FROM class_offerings_cache WHERE teacher_id = @teacherId", connection, transaction);
+                deleteCommand.Parameters.AddWithValue("@teacherId", teacherId);
+                await deleteCommand.ExecuteNonQueryAsync();
+
+                var command = new SqliteCommand(
+                    @"INSERT INTO class_offerings_cache (class_offering_id, subject_id, subject_name, teacher_id, day_of_week, schedule_start, schedule_end, section, grade_level) 
+                      VALUES (@id, @subjectId, @subjectName, @teacherId, @days, @start, @end, @section, @grade)",
+                    connection, transaction);
+
+                foreach (var cls in classes)
+                {
+                    command.Parameters.Clear();
+                    command.Parameters.AddWithValue("@id", cls.ClassOfferingId);
+                    command.Parameters.AddWithValue("@subjectId", cls.SubjectId);
+                    command.Parameters.AddWithValue("@subjectName", cls.SubjectName);
+                    command.Parameters.AddWithValue("@teacherId", teacherId);
+                    command.Parameters.AddWithValue("@days", cls.DayOfWeek);
+                    command.Parameters.AddWithValue("@start", cls.ScheduleStart.ToString());
+                    command.Parameters.AddWithValue("@end", cls.ScheduleEnd.ToString());
+                    command.Parameters.AddWithValue("@section", cls.Section);
+                    command.Parameters.AddWithValue("@grade", cls.GradeLevel);
+                    await command.ExecuteNonQueryAsync();
+                }
+
+                transaction.Commit();
+                System.Diagnostics.Debug.WriteLine($"Successfully cached {classes.Count} class offerings for teacher {teacherId}");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error caching class offerings: {ex.Message}");
+                return false;
+            }
+        }
+
+        public async Task<List<ClassOffering>> GetClassOfferingsOfflineAsync(string teacherId)
+        {
+            try
+            {
+                using var connection = new SqliteConnection(_connectionString);
+                await connection.OpenAsync();
+
+                var query = "SELECT * FROM class_offerings_cache WHERE teacher_id = @teacherId";
+                using var command = new SqliteCommand(query, connection);
+                command.Parameters.AddWithValue("@teacherId", teacherId);
+
+                var classes = new List<ClassOffering>();
+                using var reader = await command.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    classes.Add(new ClassOffering
+                    {
+                        ClassOfferingId = reader.GetString("class_offering_id"),
+                        SubjectId = reader.GetString("subject_id"),
+                        SubjectName = reader.GetString("subject_name"),
+                        TeacherId = reader.GetString("teacher_id"),
+                        DayOfWeek = reader.GetString("day_of_week"),
+                        ScheduleStart = TimeSpan.Parse(reader.GetString("schedule_start")),
+                        ScheduleEnd = TimeSpan.Parse(reader.GetString("schedule_end")),
+                        Section = reader.GetString("section"),
+                        GradeLevel = reader.GetInt32("grade_level")
+                    });
+                }
+                return classes;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error getting offline class offerings: {ex.Message}");
+                return new List<ClassOffering>();
+            }
+        }
+
         public async Task<SyncResult> SyncIndividualStudentAsync(string studentId, string apiBaseUrl, string teacherId)
         {
             try
@@ -1588,23 +1761,46 @@ namespace NewscannerMAUI.Services
                     {
                         HttpResponseMessage response;
                         
-                        if (record.AttendanceType == "TimeIn")
+                        if (!string.IsNullOrEmpty(record.SubjectId))
                         {
-                            var request = new
+                            // === SUBJECT ATTENDANCE SYNC ===
+                            var batchRequest = new SubjectAttendanceBatchRequest
+                            {
+                                ClassOfferingId = record.SubjectId,
+                                Date = DateTime.SpecifyKind(record.ScanTime.Date, DateTimeKind.Unspecified),
+                                Items = new List<SubjectAttendanceItem>
+                                {
+                                    new SubjectAttendanceItem
+                                    {
+                                        StudentId = record.StudentId,
+                                        Status = record.Status ?? "Present",
+                                        AttendanceType = record.AttendanceType,
+                                        ScanTimestamp = DateTime.SpecifyKind(record.ScanTime, DateTimeKind.Unspecified),
+                                        Remarks = record.Remarks
+                                    }
+                                }
+                            };
+                            response = await httpClient.PostAsJsonAsync("api/SubjectAttendance/batch", batchRequest);
+                        }
+                        else if (record.AttendanceType == "TimeIn")
+                        {
+                            var request = new DailyTimeInRequest
                             {
                                 StudentId = record.StudentId,
-                                Date = record.ScanTime.Date,
-                                TimeIn = record.ScanTime.TimeOfDay
+                                Date = DateTime.SpecifyKind(record.ScanTime.Date, DateTimeKind.Unspecified),
+                                TimeIn = record.ScanTime.TimeOfDay,
+                                TeacherId = teacherId
                             };
                             response = await httpClient.PostAsJsonAsync("api/dailyattendance/daily-timein", request);
                         }
                         else
                         {
-                            var request = new
+                            var request = new DailyTimeOutRequest
                             {
                                 StudentId = record.StudentId,
-                                Date = record.ScanTime.Date,
-                                TimeOut = record.ScanTime.TimeOfDay
+                                Date = DateTime.SpecifyKind(record.ScanTime.Date, DateTimeKind.Unspecified),
+                                TimeOut = record.ScanTime.TimeOfDay,
+                                TeacherId = teacherId
                             };
                             response = await httpClient.PostAsJsonAsync("api/dailyattendance/daily-timeout", request);
                         }
@@ -1660,12 +1856,12 @@ namespace NewscannerMAUI.Services
                 var csv = new System.Text.StringBuilder();
                 
                 // CSV Header
-                csv.AppendLine("Student ID,Attendance Type,Scan Time,Device ID,Created At");
+                csv.AppendLine("Student ID,Attendance Type,Scan Time,Device ID,Subject ID,Teacher ID,Created At");
 
                 // CSV Data
                 foreach (var record in records)
                 {
-                    csv.AppendLine($"{record.StudentId},{record.AttendanceType},{record.ScanTime:yyyy-MM-dd HH:mm:ss},{record.DeviceId},{record.CreatedAt:yyyy-MM-dd HH:mm:ss}");
+                    csv.AppendLine($"{record.StudentId},{record.AttendanceType},{record.ScanTime:yyyy-MM-dd HH:mm:ss},{record.DeviceId},{record.SubjectId},{record.TeacherId},{record.CreatedAt:yyyy-MM-dd HH:mm:ss}");
                 }
 
                 return csv.ToString();
@@ -2025,6 +2221,9 @@ namespace NewscannerMAUI.Services
 
                 int processed = 0;
                 int total = unsyncedRecords.Count;
+                
+                // Call progress callback immediately to initialize UI with total count
+                progressCallback?.Invoke(0, total);
 
                 foreach (var record in unsyncedRecords)
                 {
@@ -2045,12 +2244,33 @@ namespace NewscannerMAUI.Services
                             ? record.TeacherId 
                             : teacherId;
 
-                        if (record.AttendanceType == "TimeIn")
+                        if (!string.IsNullOrEmpty(record.SubjectId))
+                        {
+                            // === SUBJECT ATTENDANCE SYNC ===
+                            var batchRequest = new SubjectAttendanceBatchRequest
+                            {
+                                ClassOfferingId = record.SubjectId,
+                                Date = DateTime.SpecifyKind(record.ScanTime.Date, DateTimeKind.Unspecified),
+                                Items = new List<SubjectAttendanceItem>
+                                {
+                                    new SubjectAttendanceItem
+                                    {
+                                        StudentId = record.StudentId,
+                                        Status = record.Status ?? "Present",
+                                        AttendanceType = record.AttendanceType,
+                                        ScanTimestamp = DateTime.SpecifyKind(record.ScanTime, DateTimeKind.Unspecified),
+                                        Remarks = record.Remarks
+                                    }
+                                }
+                            };
+                            response = await httpClient.PostAsJsonAsync("api/SubjectAttendance/batch", batchRequest);
+                        }
+                        else if (record.AttendanceType == "TimeIn")
                         {
                             var request = new DailyTimeInRequest
                             {
                                 StudentId = record.StudentId,
-                                Date = record.ScanTime.Date,
+                                Date = DateTime.SpecifyKind(record.ScanTime.Date, DateTimeKind.Unspecified),
                                 TimeIn = record.ScanTime.TimeOfDay,
                                 TeacherId = effectiveTeacherId
                             };
@@ -2061,7 +2281,7 @@ namespace NewscannerMAUI.Services
                             var request = new DailyTimeOutRequest
                             {
                                 StudentId = record.StudentId,
-                                Date = record.ScanTime.Date,
+                                Date = DateTime.SpecifyKind(record.ScanTime.Date, DateTimeKind.Unspecified),
                                 TimeOut = record.ScanTime.TimeOfDay,
                                 TeacherId = effectiveTeacherId
                             };
@@ -2087,9 +2307,9 @@ namespace NewscannerMAUI.Services
                             {
                                 detail.Message = "No teacher info (re-login and sync again)";
                             }
-                            else if (errorContent.Contains("not assigned") || errorContent.Contains("not in your class"))
+                            else if (errorContent.Contains("not assigned") || errorContent.Contains("not in your class") || errorContent.Contains("not found in this class list") || errorContent.Contains("Wrong Subject") || errorContent.Contains("Validation failed"))
                             {
-                                detail.Message = "Not your student";
+                                detail.Message = "Validation Error: " + errorContent;
                                 isPermanentRejection = true;
                             }
                             else if (errorContent.Contains("Section mismatch"))
@@ -2105,6 +2325,11 @@ namespace NewscannerMAUI.Services
                             else if (errorContent.Contains("Grade level mismatch"))
                             {
                                 detail.Message = "Not student (Grade Mismatch)";
+                                isPermanentRejection = true;
+                            }
+                            else if (errorContent.Contains("No Time In found"))
+                            {
+                                detail.Message = "Time Out Failed: No Time In recorded on server";
                                 isPermanentRejection = true;
                             }
 
@@ -2436,6 +2661,7 @@ namespace NewscannerMAUI.Services
         public string Remarks { get; set; } = string.Empty;
         public DateTime CreatedAt { get; set; }
         public string TeacherId { get; set; } = string.Empty;
+        public string Status { get; set; } = string.Empty;
     }
 
 
@@ -2484,5 +2710,6 @@ namespace NewscannerMAUI.Services
         public int SyncStatus { get; set; }
         public string AttendanceType { get; set; } = string.Empty;
         public DateTime CreatedAt { get; set; }
+        public string? TeacherId { get; set; }
     }
 }

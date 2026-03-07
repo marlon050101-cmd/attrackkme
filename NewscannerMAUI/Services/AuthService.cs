@@ -150,8 +150,8 @@ namespace NewscannerMAUI.Services
                         SaveUserToStorage();
                         AuthenticationStateChanged.Invoke(true);
                         
-                        // Download all students for this teacher if they are a teacher
-                        if (userInfo.UserType == UserType.SubjectTeacher && !string.IsNullOrEmpty(userInfo.TeacherId))
+                        // Download all students for this teacher if they are a teacher or adviser
+                        if ((userInfo.UserType == UserType.SubjectTeacher || userInfo.UserType == UserType.Adviser) && !string.IsNullOrEmpty(userInfo.TeacherId))
                         {
                             System.Diagnostics.Debug.WriteLine($"Downloading students for teacher: {userInfo.TeacherId}");
                             _ = Task.Run(async () => 

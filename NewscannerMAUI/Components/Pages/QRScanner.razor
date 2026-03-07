@@ -1118,8 +1118,23 @@
         {
             if (currentTeacher == null || string.IsNullOrEmpty(currentTeacher.TeacherId)) return;
 
-            var httpClient = HttpClientFactory.CreateClient("AttrakAPI");
-            var result = await httpClient.GetFromJsonAsync<List<ClassOffering>>($"api/ClassOffering/teacher/{currentTeacher.TeacherId}");
+            List<ClassOffering>? result = null;
+            try 
+            {
+                var httpClient = HttpClientFactory.CreateClient("AttrakAPI");
+                result = await httpClient.GetFromJsonAsync<List<ClassOffering>>($"api/ClassOffering/teacher/{currentTeacher.TeacherId}");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Online schedule load failed, trying offline: {ex.Message}");
+            }
+            
+            // Fallback to offline cache if online failed or is empty
+            if (result == null || !result.Any())
+            {
+                result = await OfflineDataService.GetClassOfferingsOfflineAsync(currentTeacher.TeacherId);
+                System.Diagnostics.Debug.WriteLine($"Loaded {result?.Count ?? 0} classes from offline cache");
+            }
             
             if (result != null)
             {
@@ -1366,16 +1381,16 @@
                     // Get all regular attendance scans and filter by our subject
                     var allOffline = await OfflineDataService.GetUnsyncedAttendanceAsync(currentTeacher.TeacherId);
                     attendanceList = allOffline
-                        .Where(r => r.SubjectId == selectedClass.ClassOfferingId && r.CreatedAt.Date == DateTime.Today)
+                        .Where(r => r.SubjectId == selectedClass.ClassOfferingId && r.ScanTime.Date == DateTime.Today)
                         .Select(r => new AttendanceRecord {
                             StudentId = r.StudentId,
                             StudentName = r.StudentName,
                             SubjectName = selectedClass.SubjectName,
                             TimeIn = r.ScanTime,
-                            AttendanceType = "Present",
-                            Status = "Present",
+                            AttendanceType = r.AttendanceType,
+                            Status = r.Status,
                             Remarks = r.Remarks,
-                            Timestamp = r.CreatedAt
+                            Timestamp = r.ScanTime
                         }).OrderByDescending(a => a.Timestamp).ToList();
                     
                     await InvokeAsync(StateHasChanged);
@@ -1647,6 +1662,8 @@
     
     private async Task LoadOfflineRecords()
     {
+        // Reload count and records to ensure fresh state
+        await LoadOfflineRecordCount();
         offlineRecords = (await OfflineDataService.GetUnsyncedAttendanceAsync(currentTeacher?.TeacherId)) ?? new();
         await InvokeAsync(StateHasChanged);
     }
