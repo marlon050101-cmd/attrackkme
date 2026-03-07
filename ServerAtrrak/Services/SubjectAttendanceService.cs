@@ -35,19 +35,22 @@ namespace ServerAtrrak.Services
                     // --- ENROLLMENT VALIDATION ---
                     // Validate student is in the correct section for this class offering.
                     // Uses GradeLevel + Section + Strand from class_offering.
-                    // Also validates the class_offering has a TeacherId assigned (the scanning teacher).
                     var validateSql = @"
-                        SELECT COUNT(*) FROM student st
+                        SELECT co.TeacherId FROM student st
                         INNER JOIN class_offering co ON co.ClassOfferingId = @COId
                         WHERE st.StudentId = @StudentId
                           AND st.IsActive = 1
                           AND st.GradeLevel = co.GradeLevel
                           AND st.Section = co.Section
-                          AND (co.Strand IS NULL OR st.Strand = co.Strand)";
+                          AND (co.Strand IS NULL OR st.Strand = co.Strand)
+                        LIMIT 1";
                     using var vcmd = new MySqlCommand(validateSql, connection);
                     vcmd.Parameters.AddWithValue("@COId", request.ClassOfferingId);
                     vcmd.Parameters.AddWithValue("@StudentId", item.StudentId);
-                    bool isEnrolled = Convert.ToInt32(await vcmd.ExecuteScalarAsync()) > 0;
+                    
+                    var teacherIdRaw = await vcmd.ExecuteScalarAsync();
+                    bool isEnrolled = teacherIdRaw != null;
+                    string? teacherSubjectId = teacherIdRaw?.ToString();
 
                     if (!isEnrolled)
                     {
@@ -82,11 +85,13 @@ namespace ServerAtrrak.Services
                                 TimeIn = IF(@Type = 'TimeIn', @Time, TimeIn),
                                 TimeOut = IF(@Type = 'TimeOut', @Time, TimeOut),
                                 ClassOfferingId = COALESCE(@COId, ClassOfferingId),
+                                TeacherSubjectId = COALESCE(@TeacherSubjectId, TeacherSubjectId),
                                 UpdatedAt = NOW()
                             WHERE SubjectAttendanceId = @Id";
                         using var cmd = new MySqlCommand(updateSql, connection);
                         cmd.Parameters.AddWithValue("@Id", existingId);
                         cmd.Parameters.AddWithValue("@COId", request.ClassOfferingId);
+                        cmd.Parameters.AddWithValue("@TeacherSubjectId", (object?)teacherSubjectId ?? DBNull.Value);
                         cmd.Parameters.AddWithValue("@Status", status);
                         cmd.Parameters.AddWithValue("@Remarks", item.Remarks ?? (object)DBNull.Value);
                         cmd.Parameters.AddWithValue("@Type", item.AttendanceType ?? "TimeIn");
@@ -96,11 +101,12 @@ namespace ServerAtrrak.Services
                     else
                     {
                         var insertSql = @"
-                            INSERT INTO subject_attendance (SubjectAttendanceId, ClassOfferingId, StudentId, Date, Status, Remarks, TimeIn, TimeOut)
-                            VALUES (@Id, @COId, @StudentId, @Date, @Status, @Remarks, @TimeIn, @TimeOut)";
+                            INSERT INTO subject_attendance (SubjectAttendanceId, ClassOfferingId, TeacherSubjectId, StudentId, Date, Status, Remarks, TimeIn, TimeOut)
+                            VALUES (@Id, @COId, @TeacherSubjectId, @StudentId, @Date, @Status, @Remarks, @TimeIn, @TimeOut)";
                         using var cmd = new MySqlCommand(insertSql, connection);
                         cmd.Parameters.AddWithValue("@Id", Guid.NewGuid().ToString());
                         cmd.Parameters.AddWithValue("@COId", request.ClassOfferingId);
+                        cmd.Parameters.AddWithValue("@TeacherSubjectId", (object?)teacherSubjectId ?? DBNull.Value);
                         cmd.Parameters.AddWithValue("@StudentId", item.StudentId);
                         cmd.Parameters.AddWithValue("@Date", date);
                         cmd.Parameters.AddWithValue("@Status", status);

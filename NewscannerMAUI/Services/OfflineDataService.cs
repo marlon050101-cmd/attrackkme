@@ -813,143 +813,118 @@ namespace NewscannerMAUI.Services
                 using var connection = new SqliteConnection(_connectionString);
                 await connection.OpenAsync();
 
+                // 1. Get unsynced daily attendance records (SCHOOL-WIDE)
                 var dailyQuery = @"SELECT a.attendance_id, a.student_id, a.date, a.time_in, a.time_out, a.status, a.device_id, a.is_synced, a.created_at, a.attendance_type, a.remarks, a.teacher_id,
                              COALESCE(n.student_name, '') as student_name
                       FROM offline_daily_attendance a
                       LEFT JOIN student_names_cache n ON a.student_id = n.student_id
-                      WHERE a.is_synced IN (0, 2)";
-
-                // Remove teacher filtering to ensure ALL device records are visible in Sync List
-                // if (!string.IsNullOrEmpty(teacherId))
-                // {
-                //     dailyQuery += " AND a.teacher_id = @teacherId";
-                // }
-
-                dailyQuery += " ORDER BY a.created_at";
-
-                var dailyCommand = new SqliteCommand(dailyQuery, connection);
-                // if (!string.IsNullOrEmpty(teacherId))
-                // {
-                //     dailyCommand.Parameters.AddWithValue("@teacherId", teacherId);
-                // }
-
-                // Debug logging simplified and safer
-                try {
-                    var debugCountCmd = new SqliteCommand("SELECT COUNT(*) FROM offline_daily_attendance WHERE is_synced IN (0, 2)", connection);
-                    var count = await debugCountCmd.ExecuteScalarAsync();
-                    System.Diagnostics.Debug.WriteLine($"Unsynced daily records count: {count}");
-                } catch { }
+                      WHERE a.is_synced IN (0, 2)
+                      ORDER BY a.created_at";
 
                 // Pre-load unknown IDs for this teacher
                 var unknownIds = await GetUnknownStudentIdsAsync(teacherId);
 
+                using var dailyCommand = new SqliteCommand(dailyQuery, connection);
                 using var dailyReader = await dailyCommand.ExecuteReaderAsync();
                 while (await dailyReader.ReadAsync())
                 {
-                    var date = DateTime.Parse(dailyReader.GetString("date"));
-                    var studentId = dailyReader.GetString("student_id");
-                    var attendanceId = dailyReader.GetString("attendance_id");
-                    var deviceId = dailyReader.IsDBNull("device_id") ? "" : dailyReader.GetString("device_id");
-                    var isSynced = dailyReader.GetInt32("is_synced") == 1;
-                    var createdAt = dailyReader.GetDateTime("created_at");
-                    var attendanceType = dailyReader.IsDBNull("attendance_type") ? "Unknown" : dailyReader.GetString("attendance_type");
-                    
-                    var cachedName = dailyReader.IsDBNull(dailyReader.GetOrdinal("student_name")) ? "" : dailyReader.GetString("student_name");
-                    var studentName = cachedName;
-                    
-                    if (string.IsNullOrEmpty(studentName) || studentName.StartsWith("Student "))
+                    try 
                     {
-                        var index = unknownIds.IndexOf(studentId);
-                        studentName = $"Student {(index == -1 ? unknownIds.Count + 1 : index + 1)}";
-                    }
+                        var studentId = dailyReader.GetString(dailyReader.GetOrdinal("student_id"));
+                        var checkDate = dailyReader.GetString(dailyReader.GetOrdinal("date"));
+                        DateTime date = DateTime.TryParse(checkDate, out var dt) ? dt : DateTime.Today;
+                        
+                        var attendanceType = dailyReader.IsDBNull(dailyReader.GetOrdinal("attendance_type")) ? "Unknown" : dailyReader.GetString(dailyReader.GetOrdinal("attendance_type"));
+                        
+                        var cachedName = dailyReader.IsDBNull(dailyReader.GetOrdinal("student_name")) ? "" : dailyReader.GetString(dailyReader.GetOrdinal("student_name"));
+                        var studentName = cachedName;
+                        
+                        if (string.IsNullOrEmpty(studentName) || studentName.StartsWith("Student "))
+                        {
+                            var index = unknownIds.IndexOf(studentId);
+                            studentName = $"Student {(index == -1 ? unknownIds.Count + 1 : index + 1)}";
+                        }
 
-                    // Create one record per attendance type (TimeIn or TimeOut)
-                    // Since we now create separate records for each scan, we only need one record per row
-                    DateTime scanTime;
-                    if (attendanceType == "TimeIn" && !dailyReader.IsDBNull("time_in"))
-                    {
-                        var timeIn = TimeSpan.Parse(dailyReader.GetString("time_in"));
-                        scanTime = date.Add(timeIn);
+                        DateTime scanTime = DateTime.Now;
+                        if (attendanceType == "TimeIn" && !dailyReader.IsDBNull(dailyReader.GetOrdinal("time_in")))
+                        {
+                            if (TimeSpan.TryParse(dailyReader.GetString(dailyReader.GetOrdinal("time_in")), out var ts))
+                                scanTime = date.Add(ts);
+                        }
+                        else if (attendanceType == "TimeOut" && !dailyReader.IsDBNull(dailyReader.GetOrdinal("time_out")))
+                        {
+                            if (TimeSpan.TryParse(dailyReader.GetString(dailyReader.GetOrdinal("time_out")), out var ts))
+                                scanTime = date.Add(ts);
+                        }
+
+                        records.Add(new OfflineAttendanceRecord
+                        {
+                            Id = dailyReader.GetString(dailyReader.GetOrdinal("attendance_id")),
+                            StudentId = studentId,
+                            StudentName = studentName,
+                            ScanTime = scanTime,
+                            AttendanceType = attendanceType,
+                            IsSynced = dailyReader.GetInt32(dailyReader.GetOrdinal("is_synced")) == 1,
+                            SyncStatus = dailyReader.GetInt32(dailyReader.GetOrdinal("is_synced")),
+                            Remarks = dailyReader.IsDBNull(dailyReader.GetOrdinal("remarks")) ? "" : dailyReader.GetString(dailyReader.GetOrdinal("remarks")),
+                            DeviceId = dailyReader.IsDBNull(dailyReader.GetOrdinal("device_id")) ? "" : dailyReader.GetString(dailyReader.GetOrdinal("device_id")),
+                            CreatedAt = dailyReader.GetDateTime(dailyReader.GetOrdinal("created_at")),
+                            Status = dailyReader.IsDBNull(dailyReader.GetOrdinal("status")) ? "Present" : dailyReader.GetString(dailyReader.GetOrdinal("status")),
+                            TeacherId = dailyReader.IsDBNull(dailyReader.GetOrdinal("teacher_id")) ? null : dailyReader.GetString(dailyReader.GetOrdinal("teacher_id"))
+                        });
                     }
-                    else if (attendanceType == "TimeOut" && !dailyReader.IsDBNull("time_out"))
+                    catch (Exception loopEx)
                     {
-                        var timeOut = TimeSpan.Parse(dailyReader.GetString("time_out"));
-                        scanTime = date.Add(timeOut);
+                        System.Diagnostics.Debug.WriteLine($"Error parsing daily record: {loopEx.Message}");
                     }
-                    else
-                    {
-                        // Fallback to current time if no time found
-                        scanTime = DateTime.Now;
-                    }
-                    
-                    records.Add(new OfflineAttendanceRecord
-                    {
-                        Id = attendanceId,
-                        StudentId = studentId,
-                        StudentName = studentName,
-                        ScanTime = scanTime,
-                        AttendanceType = attendanceType,
-                        IsSynced = dailyReader.GetInt32("is_synced") == 1,
-                        SyncStatus = dailyReader.GetInt32("is_synced"),
-                        Remarks = dailyReader.IsDBNull("remarks") ? "" : dailyReader.GetString("remarks"),
-                        DeviceId = deviceId,
-                        CreatedAt = createdAt,
-                        Status = dailyReader.IsDBNull("status") ? "Present" : dailyReader.GetString("status"),
-                        TeacherId = dailyReader.IsDBNull("teacher_id") ? null : dailyReader.GetString("teacher_id")
-                    });
                 }
                 dailyReader.Close();
 
-                // Get unsynced regular attendance records
+                // 2. Get unsynced regular attendance records (SUBJECT-SPECIFIC)
                 var regularQuery = @"SELECT a.attendance_id, a.student_id, a.subject_id, a.timestamp, a.attendance_type, a.status, a.device_id, a.is_synced, a.created_at, a.remarks, a.teacher_id,
                              COALESCE(n.student_name, '') as student_name
                       FROM offline_attendance a
                       LEFT JOIN student_names_cache n ON a.student_id = n.student_id
-                      WHERE a.is_synced IN (0, 2)";
+                      WHERE a.is_synced IN (0, 2)
+                      ORDER BY a.created_at";
 
-                // Remove teacher filtering to ensure ALL device records are visible in Sync List
-                // if (!string.IsNullOrEmpty(teacherId))
-                // {
-                //     regularQuery += " AND a.teacher_id = @teacherId";
-                // }
-
-                regularQuery += " ORDER BY a.created_at";
-
-                var regularCommand = new SqliteCommand(regularQuery, connection);
-                // if (!string.IsNullOrEmpty(teacherId))
-                // {
-                //     regularCommand.Parameters.AddWithValue("@teacherId", teacherId);
-                // }
-
+                using var regularCommand = new SqliteCommand(regularQuery, connection);
                 using var regularReader = await regularCommand.ExecuteReaderAsync();
                 while (await regularReader.ReadAsync())
                 {
-                    var studentId = regularReader.GetString("student_id");
-                    var cachedName = regularReader.IsDBNull(regularReader.GetOrdinal("student_name")) ? "" : regularReader.GetString("student_name");
-                    var studentName = cachedName;
-                    
-                    if (string.IsNullOrEmpty(studentName) || studentName.StartsWith("Student "))
+                    try 
                     {
-                        var index = unknownIds.IndexOf(studentId);
-                        studentName = $"Student {(index == -1 ? unknownIds.Count + 1 : index + 1)}";
-                    }
+                        var studentId = regularReader.GetString(regularReader.GetOrdinal("student_id"));
+                        var cachedName = regularReader.IsDBNull(regularReader.GetOrdinal("student_name")) ? "" : regularReader.GetString(regularReader.GetOrdinal("student_name"));
+                        var studentName = cachedName;
+                        
+                        if (string.IsNullOrEmpty(studentName) || studentName.StartsWith("Student "))
+                        {
+                            var index = unknownIds.IndexOf(studentId);
+                            studentName = $"Student {(index == -1 ? unknownIds.Count + 1 : index + 1)}";
+                        }
 
-                    records.Add(new OfflineAttendanceRecord
+                        records.Add(new OfflineAttendanceRecord
+                        {
+                            Id = regularReader.GetString(regularReader.GetOrdinal("attendance_id")),
+                            StudentId = studentId,
+                            StudentName = studentName,
+                            SubjectId = regularReader.IsDBNull(regularReader.GetOrdinal("subject_id")) ? "" : regularReader.GetString(regularReader.GetOrdinal("subject_id")),
+                            AttendanceType = regularReader.GetString(regularReader.GetOrdinal("attendance_type")),
+                            ScanTime = regularReader.GetDateTime(regularReader.GetOrdinal("timestamp")),
+                            DeviceId = regularReader.IsDBNull(regularReader.GetOrdinal("device_id")) ? "" : regularReader.GetString(regularReader.GetOrdinal("device_id")),
+                            IsSynced = regularReader.GetInt32(regularReader.GetOrdinal("is_synced")) == 1,
+                            SyncStatus = regularReader.GetInt32(regularReader.GetOrdinal("is_synced")),
+                            Remarks = regularReader.IsDBNull(regularReader.GetOrdinal("remarks")) ? "" : regularReader.GetString(regularReader.GetOrdinal("remarks")),
+                            CreatedAt = regularReader.GetDateTime(regularReader.GetOrdinal("created_at")),
+                            Status = regularReader.IsDBNull(regularReader.GetOrdinal("status")) ? "Present" : regularReader.GetString(regularReader.GetOrdinal("status")),
+                            TeacherId = regularReader.IsDBNull(regularReader.GetOrdinal("teacher_id")) ? null : regularReader.GetString(regularReader.GetOrdinal("teacher_id"))
+                        });
+                    }
+                    catch (Exception loopEx)
                     {
-                        Id = regularReader.GetString("attendance_id"),
-                        StudentId = studentId,
-                        StudentName = studentName,
-                        SubjectId = regularReader.IsDBNull("subject_id") ? "" : regularReader.GetString("subject_id"),
-                        AttendanceType = regularReader.GetString("attendance_type"),
-                        ScanTime = regularReader.GetDateTime("timestamp"),
-                        DeviceId = regularReader.IsDBNull("device_id") ? "" : regularReader.GetString("device_id"),
-                        IsSynced = regularReader.GetInt32("is_synced") == 1,
-                        SyncStatus = regularReader.GetInt32("is_synced"),
-                        Remarks = regularReader.IsDBNull("remarks") ? "" : regularReader.GetString("remarks"),
-                        CreatedAt = regularReader.GetDateTime("created_at"),
-                        Status = regularReader.IsDBNull("status") ? "Present" : regularReader.GetString("status"),
-                        TeacherId = regularReader.IsDBNull("teacher_id") ? null : regularReader.GetString("teacher_id")
-                    });
+                        System.Diagnostics.Debug.WriteLine($"Error parsing regular record: {loopEx.Message}");
+                    }
                 }
             }
             catch (Exception ex)
@@ -1018,57 +993,17 @@ namespace NewscannerMAUI.Services
                 
                 System.Diagnostics.Debug.WriteLine($"Found tables: {string.Join(", ", tables)}");
 
-                // Debug: Check what's actually in the database
-                var debugCommand = new SqliteCommand("SELECT COUNT(*) FROM offline_daily_attendance", connection);
-                var totalRecords = await debugCommand.ExecuteScalarAsync();
-                System.Diagnostics.Debug.WriteLine($"Total records in offline_daily_attendance: {totalRecords}");
+                // 1. Count unsynced daily records
+                var dailyCountCmd = new SqliteCommand("SELECT COUNT(*) FROM offline_daily_attendance WHERE is_synced IN (0, 2)", connection);
+                int dailyCount = Convert.ToInt32(await dailyCountCmd.ExecuteScalarAsync());
                 
-                var debugCommand2 = new SqliteCommand("SELECT COUNT(*) FROM offline_daily_attendance WHERE is_synced = 0", connection);
-                var unsyncedRecords = await debugCommand2.ExecuteScalarAsync();
-                System.Diagnostics.Debug.WriteLine($"Unsynced records (no device_id filter): {unsyncedRecords}");
-                
-                var debugCommand3 = new SqliteCommand("SELECT COUNT(*) FROM offline_daily_attendance WHERE device_id IS NOT NULL", connection);
-                var recordsWithDeviceId = await debugCommand3.ExecuteScalarAsync();
-                System.Diagnostics.Debug.WriteLine($"Records with device_id: {recordsWithDeviceId}");
-                
-                // Count individual daily attendance records (separate TimeIn/TimeOut records)
-                // Count UNIQUE students instead of raw records
-                 var dailyQuery = @"SELECT COUNT(DISTINCT student_id) 
-                       FROM offline_daily_attendance 
-                       WHERE is_synced IN (0, 2)";
-                 // Removed teacher filter for device-wide badge
-                 // if (!string.IsNullOrEmpty(teacherId))
-                 // {
-                 //     dailyQuery += " AND teacher_id = @teacherId";
-                 // }
-                 var dailyCountCommand = new SqliteCommand(dailyQuery, connection);
-                 // if (!string.IsNullOrEmpty(teacherId))
-                 // {
-                 //     dailyCountCommand.Parameters.AddWithValue("@teacherId", teacherId);
-                 // }
-                 var dailyCount = Convert.ToInt32(await dailyCountCommand.ExecuteScalarAsync());
-                 System.Diagnostics.Debug.WriteLine($"Unique students pending daily attendance: {dailyCount}");
- 
-                 // Count other unsynced attendance records
-                 var otherQuery = @"SELECT COUNT(DISTINCT student_id) 
-                       FROM offline_attendance 
-                       WHERE is_synced IN (0, 2)";
-                 // Removed teacher filter for device-wide badge
-                 // if (!string.IsNullOrEmpty(teacherId))
-                 // {
-                 //     otherQuery += " AND teacher_id = @teacherId";
-                 // }
-                 var otherCountCommand = new SqliteCommand(otherQuery, connection);
-                // if (!string.IsNullOrEmpty(teacherId))
-                // {
-                //     otherCountCommand.Parameters.AddWithValue("@teacherId", teacherId);
-                // }
-                var otherCount = Convert.ToInt32(await otherCountCommand.ExecuteScalarAsync());
-                System.Diagnostics.Debug.WriteLine($"Other unsynced attendance count: {otherCount}");
+                // 2. Count unsynced regular records
+                var regularCountCmd = new SqliteCommand("SELECT COUNT(*) FROM offline_attendance WHERE is_synced IN (0, 2)", connection);
+                int regularCount = Convert.ToInt32(await regularCountCmd.ExecuteScalarAsync());
 
-                // For total unique students, we sum both counts
-                var totalCount = dailyCount + otherCount;
-                System.Diagnostics.Debug.WriteLine($"Unsynced unique student count result: {totalCount}");
+                var totalCount = dailyCount + regularCount;
+                System.Diagnostics.Debug.WriteLine($"Total unsynced records found: {totalCount}");
+                return totalCount;
                 return totalCount;
             }
             catch (Exception ex)

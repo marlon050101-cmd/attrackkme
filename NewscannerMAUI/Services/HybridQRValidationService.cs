@@ -421,7 +421,7 @@ namespace NewscannerMAUI.Services
             try
             {
                 System.Diagnostics.Debug.WriteLine($"--- VALIDATING OFFLINE for Teacher: {teacherId ?? "Unknown"} ---");
-                System.Diagnostics.Debug.WriteLine($"Offline mode: Validating locally for {studentId}...");
+                System.Diagnostics.Debug.WriteLine($"Offline mode: Saving locally for {studentId}...");
 
                 // Handle "Auto" mode in offline
                 if (attendanceType == "Auto")
@@ -430,29 +430,18 @@ namespace NewscannerMAUI.Services
                     attendanceType = status.HasTimeIn ? "TimeOut" : "TimeIn";
                     System.Diagnostics.Debug.WriteLine($"Offline Auto resolved to: {attendanceType}");
                 }
-                
-                // 1. Strict Validation for Offline Mode (ONLY allow students in teacher's cached list)
-                var studentProfile = await _offlineDataService.GetStudentProfileAsync(studentId);
-                
-                if (studentProfile == null)
-                {
-                    return new QRValidationResult
-                    {
-                        IsValid = false,
-                        Message = "This student is not in your assigned class list",
-                        ErrorType = QRValidationErrorType.ValidationError
-                    };
-                }
 
-                var studentName = studentProfile.FullName;
-                System.Diagnostics.Debug.WriteLine($"OFFLINE VALIDATION (STRICT): Allowing scan for {studentName} ({studentId})");
+                // === LAX OFFLINE MODE ===
+                // Accept all scans offline. The server will validate on sync.
+                // If the server rejects a record on sync, it gets marked as Rejected (is_synced = 2).
+                // This prevents blocking teachers in the field due to empty caches.
 
-                // Check if already scanned today offline
+                // Try to get student name from cache; fallback if not found
+                var studentName = await _offlineDataService.GetStudentNameForDisplayAsync(studentId, teacherId);
+
+                // Duplicate check: prevent double TimeIn or double TimeOut for today
                 var offlineStatus = await CheckOfflineAttendanceStatusAsync(studentId, attendanceType, teacherId, classOfferingId);
-                
-                // Removed lax "Student X" logic as per user request for strict teacher-based subjects
-                
-                // Standard duplicate checks for known students
+
                 if (attendanceType == "TimeIn" && offlineStatus.HasTimeIn)
                 {
                     return new QRValidationResult
@@ -462,7 +451,7 @@ namespace NewscannerMAUI.Services
                         ErrorType = QRValidationErrorType.ValidationError
                     };
                 }
-                
+
                 if (attendanceType == "TimeOut" && offlineStatus.HasTimeOut)
                 {
                     return new QRValidationResult
@@ -473,18 +462,10 @@ namespace NewscannerMAUI.Services
                     };
                 }
                 
-                if (attendanceType == "TimeOut" && !offlineStatus.HasTimeIn)
-                {
-                    // In offline mode, we might allow TimeOut without TimeIn if the TimeIn was synced
-                    // But if we strictly enforce flow:
-                    // For now, allow it and let server reconcile, or check local specific logic
-                    // A lax approach is better for offline to avoid blocking users
-                }
-                
-                // Save to local SQLite
+                // Save to local SQLite — server validates on sync
                 var saved = await _offlineDataService.SaveOfflineAttendanceAsync(
-                    studentId, 
-                    attendanceType, 
+                    studentId,
+                    attendanceType,
                     System.Environment.MachineName,
                     DateTime.Now,
                     isSynced: false,
@@ -493,7 +474,7 @@ namespace NewscannerMAUI.Services
                     subjectId: classOfferingId,
                     remarks: remarks
                 );
-                
+
                 if (saved)
                 {
                     return new QRValidationResult
@@ -502,8 +483,8 @@ namespace NewscannerMAUI.Services
                         Message = $"{studentName} - {attendanceType} Successful",
                         StudentName = studentName,
                         ErrorType = QRValidationErrorType.None,
-                        StudentData = new StudentQRData 
-                        { 
+                        StudentData = new StudentQRData
+                        {
                             StudentId = studentId,
                             FullName = studentName
                         }
