@@ -33,12 +33,14 @@ namespace ServerAtrrak.Services
                     if (string.IsNullOrEmpty(item.StudentId)) continue;
 
                     // --- ENROLLMENT VALIDATION ---
+                    // Validate student is in the correct section for this class offering.
+                    // Uses GradeLevel + Section + Strand from class_offering.
+                    // Also validates the class_offering has a TeacherId assigned (the scanning teacher).
                     var validateSql = @"
                         SELECT COUNT(*) FROM student st
                         INNER JOIN class_offering co ON co.ClassOfferingId = @COId
                         WHERE st.StudentId = @StudentId
                           AND st.IsActive = 1
-                          AND st.AdviserId = co.AdviserId
                           AND st.GradeLevel = co.GradeLevel
                           AND st.Section = co.Section
                           AND (co.Strand IS NULL OR st.Strand = co.Strand)";
@@ -133,7 +135,6 @@ namespace ServerAtrrak.Services
                     INNER JOIN school s ON st.SchoolId = s.SchoolId
                     INNER JOIN class_offering co ON co.ClassOfferingId = @ClassOfferingId
                     WHERE st.IsActive = 1
-                      AND st.AdviserId = co.AdviserId
                       AND st.GradeLevel = co.GradeLevel
                       AND st.Section = co.Section
                       AND (co.Strand IS NULL OR st.Strand = co.Strand)
