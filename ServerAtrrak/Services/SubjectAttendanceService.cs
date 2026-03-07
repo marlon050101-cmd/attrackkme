@@ -32,32 +32,33 @@ namespace ServerAtrrak.Services
                 {
                     if (string.IsNullOrEmpty(item.StudentId)) continue;
 
-                    // --- ENROLLMENT VALIDATION ---
-                    // Validate student is in the correct section for this class offering.
-                    // Uses GradeLevel + Section + Strand from class_offering.
-                    // Strand check: student is accepted if either co.Strand or st.Strand is NULL, OR they match.
+                    // --- SIMPLE VALIDATION ---
+                    // The teacher already selected the correct ClassOffering from their dashboard.
+                    // We only verify: (1) the class offering exists, (2) the student is active.
+                    // We skip strict GradeLevel/Section/Strand matching which caused false negatives.
                     var validateSql = @"
-                        SELECT co.TeacherId FROM student st
-                        INNER JOIN class_offering co ON co.ClassOfferingId = @COId
-                        WHERE st.StudentId = @StudentId
-                          AND st.IsActive = 1
-                          AND st.GradeLevel = co.GradeLevel
-                          AND LOWER(TRIM(st.Section)) = LOWER(TRIM(co.Section))
-                          AND (co.Strand IS NULL OR st.Strand IS NULL OR LOWER(TRIM(st.Strand)) = LOWER(TRIM(co.Strand)))
+                        SELECT co.TeacherId 
+                        FROM class_offering co
+                        WHERE co.ClassOfferingId = @COId
+                        AND EXISTS (
+                            SELECT 1 FROM student st 
+                            WHERE st.StudentId = @StudentId 
+                            AND st.IsActive = 1
+                        )
                         LIMIT 1";
                     using var vcmd = new MySqlCommand(validateSql, connection);
                     vcmd.Parameters.AddWithValue("@COId", request.ClassOfferingId);
                     vcmd.Parameters.AddWithValue("@StudentId", item.StudentId);
                     
                     var teacherIdRaw = await vcmd.ExecuteScalarAsync();
-                    // Row found = enrolled (teacherIdRaw is NON-null even if the column value is DBNull/NULL)
+                    // Row found = class offering exists and student is active
                     bool isEnrolled = teacherIdRaw != null;
-                    // Safely convert: DBNull.Value means column is NULL (teacher not yet assigned), not a string
+                    // Safely convert: DBNull.Value means TeacherId column is NULL (not yet assigned), not a string
                     string? teacherSubjectId = (teacherIdRaw == null || teacherIdRaw == DBNull.Value) 
                         ? null 
                         : teacherIdRaw.ToString();
 
-                    _logger.LogInformation("Enrollment check: Student={StudentId}, ClassOffering={COId}, Enrolled={Enrolled}, TeacherSubjectId={TID}",
+                    _logger.LogInformation("Validation: Student={StudentId}, ClassOffering={COId}, Valid={Valid}, TeacherSubjectId={TID}",
                         item.StudentId, request.ClassOfferingId, isEnrolled, teacherSubjectId ?? "NULL");
 
                     if (!isEnrolled)
@@ -65,7 +66,7 @@ namespace ServerAtrrak.Services
                         return new SubjectAttendanceResponse
                         {
                             Success = false,
-                            Message = "Wrong Subject: Please check your subject. Student is not found in this class list."
+                            Message = "Student not found or inactive, or class offering does not exist."
                         };
                     }
 
