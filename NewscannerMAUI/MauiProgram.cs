@@ -29,7 +29,7 @@ namespace NewscannerMAUI
                 client.DefaultRequestHeaders.Add("Accept", "application/json");
                 client.DefaultRequestHeaders.Add("User-Agent", "NewscannerMAUI/1.0");
                 // Add timeout
-                client.Timeout = TimeSpan.FromSeconds(30);
+                client.Timeout = TimeSpan.FromSeconds(100);
             })
             .ConfigurePrimaryHttpMessageHandler(() =>
             {

@@ -1,5 +1,6 @@
 using AttrackSharedClass.Models;
 using System.Text.Json;
+using System.Net.Http.Json;
 
 namespace NewscannerMAUI.Services
 {
@@ -7,15 +8,17 @@ namespace NewscannerMAUI.Services
     {
         private UserInfo? _currentUser;
         private readonly OfflineDataService _offlineDataService;
+        private readonly IHttpClientFactory _httpClientFactory;
         private const string USER_KEY = "current_user";
 
         public bool IsAuthenticated => _currentUser != null;
         public bool IsOfflineMode { get; private set; } = false;
         public event Action<bool> AuthenticationStateChanged = delegate { };
 
-        public AuthService(OfflineDataService offlineDataService)
+        public AuthService(OfflineDataService offlineDataService, IHttpClientFactory httpClientFactory)
         {
             _offlineDataService = offlineDataService;
+            _httpClientFactory = httpClientFactory;
         }
 
         public async Task<UserInfo?> GetCurrentUserAsync()
@@ -126,22 +129,19 @@ namespace NewscannerMAUI.Services
                 // For now, try online authentication first
 
                 // Make API call to server for authentication
-                using var httpClient = new HttpClient();
+                var httpClient = _httpClientFactory.CreateClient("AttrakAPI");
                 var loginRequest = new
                 {
                     Username = username,
                     Password = password
                 };
 
-                var json = JsonSerializer.Serialize(loginRequest);
-                var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
-
-                var response = await httpClient.PostAsync($"{serverUrl}/api/auth/login", content);
+                var response = await httpClient.PostAsJsonAsync("api/auth/login", loginRequest);
                 
                 if (response.IsSuccessStatusCode)
                 {
-                    var responseJson = await response.Content.ReadAsStringAsync();
-                    var userInfo = JsonSerializer.Deserialize<UserInfo>(responseJson);
+                    var result = await response.Content.ReadFromJsonAsync<LoginResponse>();
+                    var userInfo = result?.User;
                     
                     if (userInfo != null)
                     {

@@ -330,8 +330,8 @@
             connectionStatus = "Online";
             await InvokeAsync(StateHasChanged);
             
-            // Use a longer timeout (30s) to handle Render.com cold starts
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            // Use a longer timeout (100s) to handle Render.com cold starts
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(100));
             
             var httpClient = HttpClientFactory.CreateClient("AttrakAPI");
             var response = await httpClient.PostAsJsonAsync("api/auth/login", loginRequest, cts.Token);

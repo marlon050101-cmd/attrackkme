@@ -17,20 +17,6 @@ namespace ServerAtrrak.Controllers
             _logger = logger;
         }
 
-        [HttpGet("class/{teacherSubjectId}/date/{date:datetime}")]
-        public async Task<ActionResult<List<SubjectAttendanceRecord>>> GetByClassAndDate(string teacherSubjectId, DateTime date)
-        {
-            try
-            {
-                var list = await _service.GetByClassAndDateAsync(teacherSubjectId, date.Date);
-                return Ok(list);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting subject attendance");
-                return StatusCode(500, new List<SubjectAttendanceRecord>());
-            }
-        }
 
         [HttpPost("batch")]
         public async Task<ActionResult<SubjectAttendanceResponse>> SaveBatch([FromBody] SubjectAttendanceBatchRequest request)
@@ -42,20 +28,6 @@ namespace ServerAtrrak.Controllers
             return BadRequest(result);
         }
 
-        [HttpGet("class/{teacherSubjectId}/roster")]
-        public async Task<ActionResult<List<StudentDisplayInfo>>> GetClassRoster(string teacherSubjectId)
-        {
-            try
-            {
-                var list = await _service.GetClassRosterAsync(teacherSubjectId);
-                return Ok(list);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting class roster");
-                return StatusCode(500, new List<StudentDisplayInfo>());
-            }
-        }
 
         [HttpGet("class-offering/{classOfferingId}/roster")]
         public async Task<ActionResult<List<StudentDisplayInfo>>> GetClassOfferingRoster(string classOfferingId)

@@ -611,7 +611,7 @@
         <div class="schedule-wrapper">
             <div class="schedule-header-row">
                 <div class="schedule-title">
-                    <i class="fas fa-calendar-alt"></i> My Schedule Today
+                    <i class="fas fa-calendar-alt"></i> @(isShowingFullSchedule ? "Full Schedule / All Subjects" : "My Schedule Today")
                 </div>
                 @if (selectedClass != null && IsClassActive(selectedClass))
                 {
@@ -624,8 +624,9 @@
                 @foreach (var cls in teacherClasses)
                 {
                     var isActive = IsClassActive(cls);
+                    var dayShort = GetShortDays(cls.DayOfWeek);
                     <option value="@cls.ClassOfferingId" selected="@(selectedClass?.ClassOfferingId == cls.ClassOfferingId)">
-                        @(isActive ? "🟢" : "🔒") @cls.SubjectName | @cls.Section | @FormatTimeSpan(cls.ScheduleStart) - @FormatTimeSpan(cls.ScheduleEnd)
+                        @(isActive ? "🟢" : "🔒") @cls.SubjectName | @cls.Section | @dayShort | @FormatTimeSpan(cls.ScheduleStart) - @FormatTimeSpan(cls.ScheduleEnd)
                     </option>
                 }
             </select>
@@ -1033,6 +1034,7 @@
     private ClassOffering? selectedClass;
     private string subjectRemarks = "";
     private System.Threading.Timer? scheduleTimer;
+    private bool isShowingFullSchedule = false;
 
     private ElementReference hidInput;
     private string hidBuffer = "";
@@ -1122,10 +1124,21 @@
             if (result != null)
             {
                 // Filter for today's classes
-                var todayDay = DateTime.Now.DayOfWeek.ToString();
-                teacherClasses = result.Where(c => c.DayOfWeek.Contains(todayDay, StringComparison.OrdinalIgnoreCase))
+                var todayClasses = result.Where(c => MatchesToday(c.DayOfWeek))
                                        .OrderBy(c => c.ScheduleStart)
                                        .ToList();
+                
+                if (todayClasses.Any())
+                {
+                    teacherClasses = todayClasses;
+                    isShowingFullSchedule = false;
+                }
+                else
+                {
+                    // Fallback to all classes if today is empty (e.g. Saturday/Sunday makeup check)
+                    teacherClasses = result.OrderBy(c => c.ScheduleStart).ToList();
+                    isShowingFullSchedule = true;
+                }
                 
                 AutoSelectClass();
                 
@@ -1160,14 +1173,33 @@
 
     private void SelectClass(ClassOffering cls)
     {
-        // Time-based guard: only allow selecting this class if current time is within its schedule window (with buffer)
-        if (!IsClassActive(cls))
+        // Strict Validation: Day
+        if (!MatchesToday(cls.DayOfWeek))
         {
-            var start = FormatTimeSpan(cls.ScheduleStart);
-            var end = FormatTimeSpan(cls.ScheduleEnd);
-            toastMessage = $"Cannot scan for '{cls.SubjectName}'. Allowed only during {start} – {end}.";
+            var dayShort = GetShortDays(cls.DayOfWeek);
+            toastMessage = $"'{cls.SubjectName}' is scheduled for {dayShort}. Today is {DateTime.Now.DayOfWeek}.";
             showToast = true;
-            _ = Task.Run(async () => { await Task.Delay(3500); showToast = false; await InvokeAsync(StateHasChanged); });
+            _ = Task.Run(async () => { await Task.Delay(4000); showToast = false; await InvokeAsync(StateHasChanged); });
+            StateHasChanged();
+            return;
+        }
+
+        // Time Validation with "Advance" option
+        if (!IsTimeActive(cls))
+        {
+            confirmTitle = "Advance Session";
+            var start = FormatTimeSpan(cls.ScheduleStart);
+            confirmMessage = $"'{cls.SubjectName}' starts at {start}. Do you want to advance and start scanning now?";
+            onConfirmAction = async () => {
+                selectedClass = cls;
+                await LoadTodayAttendance();
+                await InvokeAsync(StateHasChanged);
+                
+                toastMessage = $"Advanced session for {cls.SubjectName} started.";
+                showToast = true;
+                _ = Task.Run(async () => { await Task.Delay(3000); showToast = false; await InvokeAsync(StateHasChanged); });
+            };
+            showConfirmModal = true;
             StateHasChanged();
             return;
         }
@@ -1197,12 +1229,58 @@
 
     private bool IsClassActive(ClassOffering cls)
     {
+        if (!MatchesToday(cls.DayOfWeek)) return false;
+        return IsTimeActive(cls);
+    }
+
+    private bool MatchesToday(string dbDays)
+    {
+        if (string.IsNullOrEmpty(dbDays)) return false;
+        
+        var today = DateTime.Now.DayOfWeek;
+        var dayNames = dbDays.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(d => d.Trim().ToLower());
+        
+        foreach (var d in dayNames)
+        {
+            if (d == "monday" || d == "mon" || d == "m") { if (today == DayOfWeek.Monday) return true; continue; }
+            if (d == "tuesday" || d == "tue" || d == "t") { if (today == DayOfWeek.Tuesday) return true; continue; }
+            if (d == "wednesday" || d == "wed" || d == "w") { if (today == DayOfWeek.Wednesday) return true; continue; }
+            if (d == "thursday" || d == "thu" || d == "th") { if (today == DayOfWeek.Thursday) return true; continue; }
+            if (d == "friday" || d == "fri" || d == "f") { if (today == DayOfWeek.Friday) return true; continue; }
+            if (d == "saturday" || d == "sat" || d == "s") { if (today == DayOfWeek.Saturday) return true; continue; }
+            if (d == "sunday" || d == "sun" || d == "su") { if (today == DayOfWeek.Sunday) return true; continue; }
+        }
+        return false;
+    }
+
+    private bool IsTimeActive(ClassOffering cls)
+    {
         var now = DateTime.Now.TimeOfDay;
         // A class is active if it's within the time range (+ some buffer, e.g. 15 mins before/after)
-        var bufferBefore = TimeSpan.FromMinutes(5);
-        var bufferAfter = TimeSpan.FromMinutes(15);
+        var bufferBefore = TimeSpan.FromMinutes(10); // increased buffer for convenience
+        var bufferAfter = TimeSpan.FromMinutes(20);
         
         return now >= cls.ScheduleStart.Subtract(bufferBefore) && now <= cls.ScheduleEnd.Add(bufferAfter);
+    }
+
+    private string GetShortDays(string days)
+    {
+        if (string.IsNullOrEmpty(days)) return "";
+        
+        var list = days.Split(',', StringSplitOptions.RemoveEmptyEntries);
+        var shortList = list.Select(d => {
+            var day = d.Trim().ToLower();
+            if (day.Contains("monday") || day == "mon" || day == "m") return "M";
+            if (day.Contains("tuesday") || day == "tue" || day == "t") return "T";
+            if (day.Contains("wednesday") || day == "wed" || day == "w") return "W";
+            if (day.Contains("thursday") || day == "thu" || day == "th") return "TH";
+            if (day.Contains("friday") || day == "fri" || day == "f") return "F";
+            if (day.Contains("saturday") || day == "sat" || day == "s") return "S";
+            if (day.Contains("sunday") || day == "sun" || day == "su") return "SU";
+            return d.Trim().ToUpper();
+        });
+        
+        return string.Join(",", shortList);
     }
 
     private string FormatTimeSpan(TimeSpan ts)
@@ -1257,10 +1335,12 @@
                             SubjectName = selectedClass.SubjectName,
                             TimeIn = r.TimeIn,
                             TimeOut = r.TimeOut,
-                            AttendanceType = (r.TimeIn != null && r.TimeOut == null) ? "TimeIn" : (r.TimeOut != null ? "TimeOut" : "Unknown"),
+                            AttendanceType = (r.TimeIn != null && r.TimeOut != null) ? "Both" : 
+                                             (r.TimeIn != null ? "TimeIn" : 
+                                             (r.TimeOut != null ? "TimeOut" : "Unknown")),
                             Status = r.Status,
                             Remarks = r.Remarks,
-                            Timestamp = r.TimeOut ?? r.TimeIn ?? r.CreatedAt
+                            Timestamp = r.TimeOut ?? r.TimeIn ?? (r.CreatedAt != DateTime.MinValue ? r.CreatedAt : DateTime.Now)
                         }).OrderByDescending(a => a.Timestamp).ToList();
                         
                         await InvokeAsync(StateHasChanged);
@@ -1485,9 +1565,9 @@
             
             if (result.IsValid)
             {
-                // Refresh data immediately
-                _ = LoadTodayAttendance();
-                _ = LoadOfflineRecordCount();
+                // Refresh data immediately and WAIT for it
+                await LoadTodayAttendance();
+                await LoadOfflineRecordCount();
             }
             
             isProcessing = false;

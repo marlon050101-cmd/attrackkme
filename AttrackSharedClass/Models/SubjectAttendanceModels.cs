@@ -7,7 +7,6 @@ namespace AttrackSharedClass.Models
     {
         public string SubjectAttendanceId { get; set; } = "";
         public string? ClassOfferingId { get; set; }
-        public string? TeacherSubjectId { get; set; }
         public string StudentId { get; set; } = "";
         public string StudentName { get; set; } = "";
         public DateTime Date { get; set; }
@@ -22,7 +21,7 @@ namespace AttrackSharedClass.Models
     public class MarkSubjectAttendanceRequest
     {
         [Required]
-        public string TeacherSubjectId { get; set; } = "";
+        public string ClassOfferingId { get; set; } = "";
         [Required]
         public string StudentId { get; set; } = "";
         [Required]
@@ -35,10 +34,8 @@ namespace AttrackSharedClass.Models
 
     public class SubjectAttendanceBatchRequest
     {
-        /// <summary>Use when class is from class_offering (adviser-created).</summary>
+        [Required]
         public string? ClassOfferingId { get; set; }
-        /// <summary>Use when class is from teachersubject (legacy).</summary>
-        public string? TeacherSubjectId { get; set; }
         [Required]
         public DateTime Date { get; set; }
         [Required]
