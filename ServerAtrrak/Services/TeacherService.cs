@@ -1132,6 +1132,7 @@ namespace ServerAtrrak.Services
                 Console.WriteLine($"DEBUG: EXCEPTION in DeleteTeacherAsync: {ex.Message}");
                 return (false, $"Database error: {ex.Message}");
             }
+        }
         public async Task<IEnumerable<dynamic>> GetTeachersWithAssignmentsAsync(string schoolId, bool onlyUnassigned)
         {
             try
@@ -1182,7 +1183,7 @@ namespace ServerAtrrak.Services
             }
             catch (Exception ex)
             {
-                _logger?.LogError(ex, "Error getting teachers with assignments");
+                Console.WriteLine($"Error getting teachers with assignments: {ex.Message}");
                 throw;
             }
         }

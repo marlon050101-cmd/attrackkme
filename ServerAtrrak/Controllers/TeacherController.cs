@@ -309,7 +309,7 @@ namespace ServerAtrrak.Controllers
                 return StatusCode(500, new { message = "Internal server error", error = ex.Message });
             }
         }
-    }
+
 
         [HttpGet("assignments/{schoolId}")]
         public async Task<ActionResult<IEnumerable<dynamic>>> GetTeachersWithAssignments(string schoolId, [FromQuery] bool onlyUnassigned = false)
