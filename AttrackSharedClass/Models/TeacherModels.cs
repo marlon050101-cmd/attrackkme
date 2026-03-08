@@ -72,4 +72,24 @@ namespace AttrackSharedClass.Models
         public string? Section { get; set; }
         public string? Strand { get; set; }
     }
+
+    public class TeacherActivityInfo
+    {
+        public string FullName { get; set; } = string.Empty;
+        public string TeacherId { get; set; } = string.Empty;
+        public DateTime LastSync { get; set; }
+    }
+
+    public class HeadStatsResponse
+    {
+        public int ActiveTeachers { get; set; }
+        public int PendingApprovals { get; set; }
+        public int NoSubjectsCount { get; set; }
+        public int WithSubjectsCount { get; set; }
+        public int AdvisersCount { get; set; }
+        public int SubjectTeachersCount { get; set; }
+        public int TotalClassOfferings { get; set; }
+        public int AssignedClassOfferings { get; set; }
+        public List<TeacherActivityInfo> ActiveToday { get; set; } = new();
+    }
 }

@@ -856,7 +856,7 @@ namespace ServerAtrrak.Services
                 return false;
             }
         }
-        public async Task<object> GetHeadStatsAsync(string schoolId)
+        public async Task<HeadStatsResponse> GetHeadStatsAsync(string schoolId)
         {
             try
             {
@@ -907,18 +907,67 @@ namespace ServerAtrrak.Services
                 pendingCommand.Parameters.AddWithValue("@schoolId", schoolId);
                 var pendingApprovals = Convert.ToInt32(await pendingCommand.ExecuteScalarAsync());
 
-                return new
+                // Subject Assignment Progress
+                var totalOfferingsQuery = @"
+                    SELECT COUNT(*) FROM class_offering co 
+                    JOIN teacher t ON co.AdvisorId = t.TeacherId 
+                    WHERE t.SchoolId = @schoolId";
+                using var totalOfferingsCmd = new MySqlCommand(totalOfferingsQuery, connection);
+                totalOfferingsCmd.Parameters.AddWithValue("@schoolId", schoolId);
+                int totalClassOfferings = Convert.ToInt32(await totalOfferingsCmd.ExecuteScalarAsync());
+
+                var assignedOfferingsQuery = @"
+                    SELECT COUNT(*) FROM class_offering co 
+                    JOIN teacher t ON co.AdvisorId = t.TeacherId 
+                    WHERE t.SchoolId = @schoolId AND co.TeacherId IS NOT NULL";
+                using var assignedOfferingsCmd = new MySqlCommand(assignedOfferingsQuery, connection);
+                assignedOfferingsCmd.Parameters.AddWithValue("@schoolId", schoolId);
+                int assignedClassOfferings = Convert.ToInt32(await assignedOfferingsCmd.ExecuteScalarAsync());
+
+                // Active Today
+                var activeToday = new List<TeacherActivityInfo>();
+                var activeTodayQuery = @"
+                    SELECT DISTINCT t.FullName, u.TeacherId, MAX(sa.UpdatedAt) as LastSync
+                    FROM subject_attendance sa
+                    INNER JOIN class_offering co ON sa.ClassOfferingId = co.ClassOfferingId
+                    INNER JOIN teacher t ON co.TeacherId = t.TeacherId
+                    INNER JOIN user u ON t.TeacherId = u.TeacherId
+                    WHERE t.SchoolId = @schoolId AND sa.Date = CURDATE()
+                    GROUP BY t.TeacherId, t.FullName, u.TeacherId
+                    ORDER BY LastSync DESC";
+                
+                using (var activeTodayCmd = new MySqlCommand(activeTodayQuery, connection))
+                {
+                    activeTodayCmd.Parameters.AddWithValue("@schoolId", schoolId);
+                    using var activeReader = await activeTodayCmd.ExecuteReaderAsync();
+                    while (await activeReader.ReadAsync())
+                    {
+                        activeToday.Add(new TeacherActivityInfo
+                        {
+                            FullName = activeReader.GetString("FullName"),
+                            TeacherId = activeReader.GetString("TeacherId"),
+                            LastSync = activeReader.GetDateTime("LastSync")
+                        });
+                    }
+                }
+
+                return new HeadStatsResponse
                 {
                     ActiveTeachers = totalActiveTeachers,
                     PendingApprovals = pendingApprovals,
                     NoSubjectsCount = noSubjectsCount,
-                    WithSubjectsCount = totalActiveTeachers - noSubjectsCount
+                    WithSubjectsCount = totalActiveTeachers - noSubjectsCount,
+                    AdvisersCount = advisersCount,
+                    SubjectTeachersCount = subjectTeachersCount,
+                    TotalClassOfferings = totalClassOfferings,
+                    AssignedClassOfferings = assignedClassOfferings,
+                    ActiveToday = activeToday
                 };
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"Error in GetHeadStatsAsync: {ex.Message}");
-                return new { ActiveTeachers = 0, ActiveStudents = 0, PendingApprovals = 0 };
+                return new HeadStatsResponse();
             }
         }
         public async Task<object> GetTeacherApprovalDiagnosticsAsync(string schoolId)
