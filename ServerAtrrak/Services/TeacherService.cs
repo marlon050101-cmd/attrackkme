@@ -866,6 +866,7 @@ namespace ServerAtrrak.Services
             
             // 1. Get Teacher Counts and Roles
             // Determine role by priority: User record > Teacher record (Section presence)
+            // LENIENT MATCHING: Match by SchoolId OR SchoolName
             var teachersQuery = @"
                 SELECT 
                     CASE 
@@ -876,7 +877,9 @@ namespace ServerAtrrak.Services
                     t.TeacherId
                 FROM teacher t
                 LEFT JOIN user u ON t.TeacherId = u.TeacherId
-                WHERE UPPER(TRIM(t.SchoolId)) = UPPER(TRIM(@schoolId)) 
+                LEFT JOIN school s ON t.SchoolId = s.SchoolId
+                WHERE (UPPER(TRIM(t.SchoolId)) = UPPER(TRIM(@schoolId)) 
+                   OR UPPER(TRIM(s.SchoolName)) = UPPER(TRIM(@schoolId)))
                 AND (u.IsActive IS NULL OR u.IsActive = 1)";
             
             int advisersCount = 0;
@@ -953,8 +956,10 @@ namespace ServerAtrrak.Services
             var pendingQuery = @"
                 SELECT COUNT(*) 
                 FROM user u 
-                LEFT JOIN teacher t ON u.TeacherId = t.TeacherId
-                WHERE TRIM(t.SchoolId) = TRIM(@schoolId) 
+                INNER JOIN teacher t ON u.TeacherId = t.TeacherId
+                LEFT JOIN school s ON t.SchoolId = s.SchoolId
+                WHERE (UPPER(TRIM(t.SchoolId)) = UPPER(TRIM(@schoolId)) 
+                   OR UPPER(TRIM(s.SchoolName)) = UPPER(TRIM(@schoolId)))
                 AND u.IsApproved = 0 
                 AND u.UserType IN ('Teacher', 'SubjectTeacher', 'Adviser', 'Advisor')";
             using var pendingCommand = new MySqlCommand(pendingQuery, connection);
@@ -963,20 +968,24 @@ namespace ServerAtrrak.Services
 
             // 4. Subject Assignment Progress (Offering logic)
             // Total offerings for this school
-            // Note: class_offering AdvisorId or TeacherId might link to the school
             var totalOfferingsQuery = @"
                 SELECT COUNT(*) FROM class_offering co 
                 INNER JOIN teacher t ON co.AdvisorId = t.TeacherId 
-                WHERE TRIM(t.SchoolId) = TRIM(@schoolId)";
+                LEFT JOIN school s ON t.SchoolId = s.SchoolId
+                WHERE (UPPER(TRIM(t.SchoolId)) = UPPER(TRIM(@schoolId)) 
+                   OR UPPER(TRIM(s.SchoolName)) = UPPER(TRIM(@schoolId)))";
             using var totalOfferingsCmd = new MySqlCommand(totalOfferingsQuery, connection);
             totalOfferingsCmd.Parameters.AddWithValue("@schoolId", schoolId.Trim());
             int totalClassOfferings = Convert.ToInt32(await totalOfferingsCmd.ExecuteScalarAsync());
 
-            // Assigned offerings (where TeacherId column is filled)
+            // Assigned offerings
             var assignedOfferingsQuery = @"
                 SELECT COUNT(*) FROM class_offering co 
                 INNER JOIN teacher t ON co.AdvisorId = t.TeacherId 
-                WHERE TRIM(t.SchoolId) = TRIM(@schoolId) AND co.TeacherId IS NOT NULL AND co.TeacherId != ''";
+                LEFT JOIN school s ON t.SchoolId = s.SchoolId
+                WHERE (UPPER(TRIM(t.SchoolId)) = UPPER(TRIM(@schoolId)) 
+                   OR UPPER(TRIM(s.SchoolName)) = UPPER(TRIM(@schoolId))) 
+                AND co.TeacherId IS NOT NULL AND co.TeacherId != ''";
             using var assignedOfferingsCmd = new MySqlCommand(assignedOfferingsQuery, connection);
             assignedOfferingsCmd.Parameters.AddWithValue("@schoolId", schoolId.Trim());
             int assignedClassOfferings = Convert.ToInt32(await assignedOfferingsCmd.ExecuteScalarAsync());
@@ -989,7 +998,10 @@ namespace ServerAtrrak.Services
                 INNER JOIN class_offering co ON sa.ClassOfferingId = co.ClassOfferingId
                 INNER JOIN teacher t ON co.TeacherId = t.TeacherId
                 INNER JOIN user u ON t.TeacherId = u.TeacherId
-                WHERE TRIM(t.SchoolId) = TRIM(@schoolId) AND sa.Date = CURDATE()
+                LEFT JOIN school s ON t.SchoolId = s.SchoolId
+                WHERE (UPPER(TRIM(t.SchoolId)) = UPPER(TRIM(@schoolId)) 
+                   OR UPPER(TRIM(s.SchoolName)) = UPPER(TRIM(@schoolId)))
+                AND sa.Date = CURDATE()
                 GROUP BY t.TeacherId, t.FullName, u.TeacherId
                 ORDER BY MaxUpdatedAt DESC";
             

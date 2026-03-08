@@ -164,7 +164,8 @@
         try
         {
             var http = HttpClientFactory.CreateClient("AttrakAPI");
-            var result = await http.GetFromJsonAsync<HeadStatsResponse>($"/api/teacher/head-stats/{schoolId}");
+            var encodedId = Uri.EscapeDataString(schoolId);
+            var result = await http.GetFromJsonAsync<HeadStatsResponse>($"/api/teacher/head-stats/{encodedId}");
             if (result != null)
             {
                 stats = result;
@@ -184,7 +185,8 @@
         {
             showingOnlyUnassigned = unassigned;
             var http = HttpClientFactory.CreateClient("AttrakAPI");
-            selectedTeacherList = await http.GetFromJsonAsync<List<TeacherAssignmentInfo>>($"/api/teacher/assignments/{currentSchoolId}?onlyUnassigned={unassigned}");
+            var encodedId = Uri.EscapeDataString(currentSchoolId);
+            selectedTeacherList = await http.GetFromJsonAsync<List<TeacherAssignmentInfo>>($"/api/teacher/assignments/{encodedId}?onlyUnassigned={unassigned}");
         }
         catch (Exception ex)
         {
