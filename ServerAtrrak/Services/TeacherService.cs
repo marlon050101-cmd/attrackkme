@@ -970,7 +970,7 @@ namespace ServerAtrrak.Services
             // Total offerings for this school
             var totalOfferingsQuery = @"
                 SELECT COUNT(*) FROM class_offering co 
-                INNER JOIN teacher t ON co.AdvisorId = t.TeacherId 
+                INNER JOIN teacher t ON co.AdviserId = t.TeacherId 
                 LEFT JOIN school s ON t.SchoolId = s.SchoolId
                 WHERE (UPPER(TRIM(t.SchoolId)) = UPPER(TRIM(@schoolId)) 
                    OR UPPER(TRIM(s.SchoolName)) = UPPER(TRIM(@schoolId)))";
@@ -981,7 +981,7 @@ namespace ServerAtrrak.Services
             // Assigned offerings
             var assignedOfferingsQuery = @"
                 SELECT COUNT(*) FROM class_offering co 
-                INNER JOIN teacher t ON co.AdvisorId = t.TeacherId 
+                INNER JOIN teacher t ON co.AdviserId = t.TeacherId 
                 LEFT JOIN school s ON t.SchoolId = s.SchoolId
                 WHERE (UPPER(TRIM(t.SchoolId)) = UPPER(TRIM(@schoolId)) 
                    OR UPPER(TRIM(s.SchoolName)) = UPPER(TRIM(@schoolId))) 
