@@ -4,196 +4,561 @@
 @using AttrackSharedClass.Models
 @inject AuthService AuthService
 @inject NavigationManager Navigation
+@inject IHttpClientFactory HttpClientFactory
+@inject NewscannerMAUI.Services.OfflineDataService OfflineDataService
+@inject NewscannerMAUI.Services.ConnectionStatusService ConnectionStatusService
 
 <div class="dashboard-container">
-    <div class="welcome-banner">
-        <h2 class="mb-1">Hello, @teacherName!</h2>
-        <p class="text-muted small">Welcome to Sardo-TrackCare Teacher Portal</p>
-    </div>
 
-    <!-- Quick Stats -->
-    <div class="stats-grid">
-        <div class="stat-card">
-            <div class="stat-icon attendance">
-                <i class="fas fa-users"></i>
+    <!-- Schedule Section with Tabs -->
+    <div class="schedule-section">
+        <div class="section-header">
+            <h5 class="section-title">Schedule View</h5>
+            @if (isRefreshing)
+            {
+                <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+            }
+            else
+            {
+                <button class="refresh-mini-btn" @onclick="LoadTeacherSchedule">
+                    <i class="fas fa-sync-alt"></i>
+                </button>
+            }
+        </div>
+
+        <!-- Custom Tabs -->
+        <div class="tabs-container">
+            <div class="tab-item @(activeTab == "today" ? "active" : "")" @onclick='() => SetTab("today")'>
+                <span>Today</span>
+                @if (todayClasses?.Any() == true)
+                {
+                    <span class="tab-badge">@todayClasses.Count</span>
+                }
             </div>
-            <div class="stat-info">
-                <span class="stat-value">Attendance</span>
-                <span class="stat-label">Monitor students</span>
+            <div class="tab-item @(activeTab == "weekly" ? "active" : "")" @onclick='() => SetTab("weekly")'>
+                <span>Weekly</span>
             </div>
-            <i class="fas fa-chevron-right ms-auto text-muted"></i>
+        </div>
+
+        <div class="schedule-list">
+            @if (activeTab == "today")
+            {
+                @if (todayClasses == null || !todayClasses.Any())
+                {
+                    <div class="empty-schedule">
+                        <div class="empty-icon">
+                            <i class="fas fa-calendar-day"></i>
+                        </div>
+                        <h6>No classes today</h6>
+                        <p>Relax! You have no scheduled classes for today.</p>
+                        <button class="btn-outline-custom mt-2" @onclick='() => SetTab("weekly")'>
+                            View Weekly Schedule
+                        </button>
+                    </div>
+                }
+                else
+                {
+                    @foreach (var cls in todayClasses)
+                    {
+                        bool isActive = IsClassActive(cls);
+                        <div class="schedule-card @(isActive ? "active-session" : "")">
+                            <div class="time-slot">
+                                <span class="time-start">@FormatTimeSpan(cls.ScheduleStart)</span>
+                                <span class="time-end">@FormatTimeSpan(cls.ScheduleEnd)</span>
+                            </div>
+                            <div class="class-info">
+                                <span class="subject-name">@cls.SubjectName</span>
+                                <div class="class-meta">
+                                    <span class="section"><i class="fas fa-users me-1"></i>@cls.Section</span>
+                                    <span class="grade"><i class="fas fa-graduation-cap me-1"></i>G@cls.GradeLevel @cls.Strand</span>
+                                </div>
+                            </div>
+                            <div class="class-action">
+                                @if (isActive)
+                                {
+                                    <button class="scan-btn pulse" @onclick="() => GoToScanner()">
+                                        <i class="fas fa-qrcode"></i>
+                                        <span>SCAN</span>
+                                    </button>
+                                }
+                                else if (cls.ScheduleStart > DateTime.Now.TimeOfDay)
+                                {
+                                    <span class="upcoming-tag">UPCOMING</span>
+                                }
+                                else
+                                {
+                                    <i class="fas fa-check-circle text-success opacity-50"></i>
+                                }
+                            </div>
+                        </div>
+                    }
+                }
+            }
+            else // Weekly Tab
+            {
+                @if (allClasses == null || !allClasses.Any())
+                {
+                    <div class="empty-schedule">
+                        <div class="empty-icon">
+                            <i class="fas fa-book-open"></i>
+                        </div>
+                        <h6>No subjects assigned</h6>
+                        <p>You haven't joined any classes yet.</p>
+                        <button class="btn-primary-custom mt-2" @onclick='() => Navigation.NavigateTo("/teacher/subject-selection")'>
+                            Join Classes
+                        </button>
+                    </div>
+                }
+                else
+                {
+                    @foreach (var cls in allClasses)
+                    {
+                        <div class="schedule-card weekly-card">
+                            <div class="day-indicator">
+                                @foreach (var day in GetShortDays(cls.DayOfWeek))
+                                {
+                                    <span class="day-chip @(IsDayToday(day) ? "today" : "")">@day</span>
+                                }
+                            </div>
+                            <div class="class-info">
+                                <span class="subject-name">@cls.SubjectName</span>
+                                <div class="class-meta">
+                                    <span class="time"><i class="far fa-clock me-1"></i>@FormatTimeSpan(cls.ScheduleStart) - @FormatTimeSpan(cls.ScheduleEnd)</span>
+                                    <span class="section"><i class="fas fa-users me-1"></i>@cls.Section</span>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                }
+            }
         </div>
     </div>
 
-    <!-- Main Actions -->
-    <div class="actions-section mt-4">
-        <h5 class="section-title">Quick Actions</h5>
-        <div class="action-buttons-grid">
-            <button class="action-card scanner" @onclick="GoToScanner">
-                <div class="action-icon">
-                    <i class="fas fa-qrcode"></i>
-                </div>
-                <span class="action-text">Open Scanner</span>
-            </button>
-            
-            <button class="action-card subjects" @onclick='() => Navigation.NavigateTo("/teacher/subject-selection")'>
-                <div class="action-icon">
-                    <i class="fas fa-book-medical"></i>
-                </div>
-                <span class="action-text">Join Classes</span>
-            </button>
-            
-            <button class="action-card load" @onclick="() => Navigation.NavigateTo(Navigation.Uri)">
-                <div class="action-icon">
-                    <i class="fas fa-sync"></i>
-                </div>
-                <span class="action-text">Refresh Data</span>
-            </button>
+    <!-- Offline Records Card -->
+    @if (offlineRecordCount > 0)
+    {
+        <div class="offline-alert-card mt-4" @onclick="GoToScanner">
+            <div class="alert-icon">
+                <i class="fas fa-cloud-upload-alt"></i>
+            </div>
+            <div class="alert-content">
+                <span class="alert-title">Pending Sync</span>
+                <span class="alert-text">You have @offlineRecordCount unsynced records.</span>
+            </div>
+            <i class="fas fa-chevron-right ms-auto"></i>
         </div>
-    </div>
+    }
 </div>
 
 @code {
     private string teacherName = "Subject Teacher";
+    private List<ClassOffering>? todayClasses;
+    private List<ClassOffering>? allClasses;
+    private AttrackSharedClass.Models.UserInfo currentTeacher;
+    private bool isRefreshing = false;
+    private int offlineRecordCount = 0;
+    private string activeTab = "today";
 
     protected override async Task OnInitializedAsync()
     {
         var user = await AuthService.GetCurrentUserAsync();
         if (user != null)
         {
-            teacherName = user.Username;
+            teacherName = user.FullName ?? user.Username;
+            currentTeacher = user;
+            await LoadTeacherSchedule();
+            await LoadOfflineRecordCount();
         }
     }
+
+    private void SetTab(string tab) => activeTab = tab;
+
+    private async Task LoadOfflineRecordCount()
+    {
+        offlineRecordCount = await OfflineDataService.GetUnsyncedCountAsync(currentTeacher?.TeacherId);
+    }
+
+    private async Task LoadTeacherSchedule()
+    {
+        try
+        {
+            isRefreshing = true;
+            if (currentTeacher == null || string.IsNullOrEmpty(currentTeacher.TeacherId)) return;
+
+            List<ClassOffering>? result = null;
+            try 
+            {
+                var httpClient = HttpClientFactory.CreateClient("AttrakAPI");
+                result = await httpClient.GetFromJsonAsync<List<ClassOffering>>($"api/ClassOffering/teacher/{currentTeacher.TeacherId}");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Online schedule load failed: {ex.Message}");
+            }
+            
+            if (result == null || !result.Any())
+            {
+                result = await OfflineDataService.GetClassOfferingsOfflineAsync(currentTeacher.TeacherId);
+            }
+            
+            if (result != null)
+            {
+                allClasses = result.OrderBy(c => c.ScheduleStart).ToList();
+                todayClasses = result.Where(c => MatchesToday(c.DayOfWeek))
+                                       .OrderBy(c => c.ScheduleStart)
+                                       .ToList();
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Error loading teacher schedule: {ex.Message}");
+        }
+        finally
+        {
+            isRefreshing = false;
+            StateHasChanged();
+        }
+    }
+
+    private bool IsClassActive(ClassOffering cls)
+    {
+        if (!MatchesToday(cls.DayOfWeek)) return false;
+        
+        var now = DateTime.Now.TimeOfDay;
+        var bufferBefore = TimeSpan.FromMinutes(15);
+        var bufferAfter = TimeSpan.FromMinutes(30);
+        
+        return now >= cls.ScheduleStart.Subtract(bufferBefore) && now <= cls.ScheduleEnd.Add(bufferAfter);
+    }
+
+    private bool MatchesToday(string dbDays)
+    {
+        if (string.IsNullOrEmpty(dbDays)) return false;
+        
+        var today = DateTime.Now.DayOfWeek;
+        var dayNames = dbDays.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(d => d.Trim().ToLower());
+        
+        foreach (var d in dayNames)
+        {
+            if (d == "monday" || d == "mon" || d == "m") { if (today == DayOfWeek.Monday) return true; continue; }
+            if (d == "tuesday" || d == "tue" || d == "t") { if (today == DayOfWeek.Tuesday) return true; continue; }
+            if (d == "wednesday" || d == "wed" || d == "w") { if (today == DayOfWeek.Wednesday) return true; continue; }
+            if (d == "thursday" || d == "thu" || d == "th") { if (today == DayOfWeek.Thursday) return true; continue; }
+            if (d == "friday" || d == "fri" || d == "f") { if (today == DayOfWeek.Friday) return true; continue; }
+            if (d == "saturday" || d == "sat" || d == "s") { if (today == DayOfWeek.Saturday) return true; continue; }
+            if (d == "sunday" || d == "sun" || d == "su") { if (today == DayOfWeek.Sunday) return true; continue; }
+        }
+        return false;
+    }
+
+    private List<string> GetShortDays(string dbDays)
+    {
+        if (string.IsNullOrEmpty(dbDays)) return new List<string>();
+        return dbDays.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                    .Select(d => d.Trim().Substring(0, 3).ToUpper())
+                    .ToList();
+    }
+
+    private bool IsDayToday(string shortDay)
+    {
+        var todayShort = DateTime.Now.DayOfWeek.ToString().Substring(0, 3).ToUpper();
+        return shortDay == todayShort;
+    }
+
+    private string FormatTimeSpan(TimeSpan ts) => DateTime.Today.Add(ts).ToString("h:mm tt");
 
     private void GoToScanner() => Navigation.NavigateTo("/qr-scanner");
 }
 
 <style>
     .dashboard-container {
-        padding: 0; /* No padding at top level */
+        padding: 0;
     }
 
-    .welcome-banner {
-        margin-top: 0;
-        margin-bottom: 0.75rem;
-        padding: 0.5rem 1rem 0.25rem; /* Horizontal padding only */
-    }
 
-    .welcome-banner h2 {
-        font-weight: 800;
-        color: #2c3e50;
-        font-size: 1.2rem;
-        margin-top: 0;
-    }
 
-    /* Stats Grid */
-    .stats-grid {
+    /* Tabs Styling */
+    .tabs-container {
         display: flex;
-        flex-direction: column;
-        gap: 0.75rem;
+        background: #f1f5f9;
+        padding: 4px;
+        border-radius: 12px;
+        margin-bottom: 1.5rem;
     }
 
-    .stat-card {
-        background: white;
-        padding: 1rem; /* Tighter padding */
-        border-radius: 12px;
-        display: flex;
-        align-items: center;
-        gap: 0.75rem;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.03);
-        border: 1px solid #edf2f7;
-    }
-
-    .stat-icon {
-        width: 50px;
-        height: 50px;
-        border-radius: 12px;
+    .tab-item {
+        flex: 1;
+        padding: 10px;
+        text-align: center;
+        font-size: 0.85rem;
+        font-weight: 700;
+        color: #64748b;
+        cursor: pointer;
+        border-radius: 9px;
+        transition: all 0.2s ease;
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 1.5rem;
+        gap: 8px;
     }
 
-    .stat-icon.attendance {
-        background: rgba(78, 115, 223, 0.1);
-        color: #4e73df;
+    .tab-item.active {
+        background: white;
+        color: #6366f1;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
     }
 
-    .stat-info {
+    .tab-badge {
+        background: #6366f1;
+        color: white;
+        font-size: 0.7rem;
+        padding: 1px 6px;
+        border-radius: 100px;
+        font-weight: 800;
+    }
+
+    /* Schedule Section */
+    .schedule-section {
+        padding: 1rem;
+    }
+
+    .section-header {
         display: flex;
-        flex-direction: column;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
     }
 
-    .stat-value {
-        font-weight: 700;
-        font-size: 1.1rem;
-        color: #2d3748;
-    }
-
-    .stat-label {
-        font-size: 0.85rem;
-        color: #718096;
-    }
-
-    /* Actions Grid */
     .section-title {
         font-weight: 700;
-        color: #4a5568;
-        margin-bottom: 1rem;
-        font-size: 1rem;
+        color: #64748b;
+        font-size: 0.85rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin: 0;
     }
 
-    .action-buttons-grid {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
+    .refresh-mini-btn {
+        background: transparent;
+        border: none;
+        color: #94a3b8;
+        font-size: 0.9rem;
+        padding: 4px;
+        cursor: pointer;
+    }
+
+    .schedule-list {
+        display: flex;
+        flex-direction: column;
         gap: 1rem;
     }
 
-    .action-card {
+    .schedule-card {
         background: white;
-        border: 1px solid #edf2f7;
-        border-radius: 18px;
-        padding: 1.5rem 1rem;
+        border: 1px solid #f1f5f9;
+        border-radius: 20px;
+        padding: 1.25rem;
+        display: flex;
+        align-items: center;
+        gap: 1.25rem;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        transition: all 0.2s ease;
+    }
+
+    .schedule-card.active-session {
+        border-color: #c7d2fe;
+        background: #f7faff;
+        border-left: 5px solid #6366f1;
+    }
+
+    .time-slot {
         display: flex;
         flex-direction: column;
+        min-width: 65px;
+        text-align: right;
+    }
+
+    .time-start {
+        font-weight: 800;
+        font-size: 0.85rem;
+        color: #1e293b;
+    }
+
+    .time-end {
+        font-size: 0.75rem;
+        color: #64748b;
+    }
+
+    .class-info {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .subject-name {
+        font-weight: 700;
+        color: #1e293b;
+        font-size: 1rem;
+        line-height: 1.2;
+    }
+
+    .class-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 12px;
+        font-size: 0.75rem;
+        color: #64748b;
+        font-weight: 500;
+    }
+
+    .upcoming-tag {
+        font-size: 0.65rem;
+        font-weight: 800;
+        color: #6366f1;
+        background: #eef2ff;
+        padding: 4px 8px;
+        border-radius: 6px;
+        letter-spacing: 0.02em;
+    }
+
+    /* Weekly Card Specials */
+    .weekly-card {
+        padding: 1rem 1.25rem;
+    }
+
+    .day-indicator {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        min-width: 45px;
+    }
+
+    .day-chip {
+        font-size: 0.65rem;
+        font-weight: 800;
+        color: #94a3b8;
+        background: #f8fafc;
+        padding: 2px 4px;
+        border-radius: 4px;
+        text-align: center;
+        border: 1px solid #f1f5f9;
+    }
+
+    .day-chip.today {
+        background: #6366f1;
+        color: white;
+        border-color: #6366f1;
+    }
+
+    .scan-btn {
+        background: linear-gradient(135deg, #6366f1 0%, #4338ca 100%);
+        color: white;
+        border: none;
+        padding: 10px 14px;
+        border-radius: 12px;
+        font-weight: 800;
+        font-size: 0.75rem;
+        display: flex;
         align-items: center;
-        gap: 0.75rem;
-        transition: transform 0.2s;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.04);
+        gap: 6px;
+        box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
     }
 
-    .action-card:active {
-        transform: scale(0.95);
+    .pulse {
+        animation: pulse-animation 2s infinite;
     }
 
-    .action-icon {
-        width: 60px;
-        height: 60px;
-        border-radius: 50%;
+    @@keyframes pulse-animation {
+        0% { transform: scale(1); box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3); }
+        50% { transform: scale(1.05); box-shadow: 0 4px 20px rgba(99, 102, 241, 0.5); }
+        100% { transform: scale(1); box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3); }
+    }
+
+    .empty-schedule {
+        padding: 3rem 1rem;
+        text-align: center;
+        background: #f8fafc;
+        border-radius: 20px;
+        border: 2px dashed #e2e8f0;
+    }
+
+    .empty-icon {
+        font-size: 2.5rem;
+        color: #94a3b8;
+        margin-bottom: 1rem;
+    }
+
+    .empty-schedule h6 {
+        font-weight: 700;
+        color: #64748b;
+        margin-bottom: 4px;
+    }
+
+    .empty-schedule p {
+        font-size: 0.85rem;
+        color: #94a3b8;
+        margin-bottom: 1.5rem;
+    }
+
+    .btn-primary-custom {
+        background: #6366f1;
+        color: white;
+        border: none;
+        padding: 10px 24px;
+        border-radius: 12px;
+        font-weight: 700;
+        font-size: 0.9rem;
+        box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
+    }
+
+    .btn-outline-custom {
+        background: white;
+        color: #6366f1;
+        border: 1.5px solid #e0e7ff;
+        padding: 8px 20px;
+        border-radius: 12px;
+        font-weight: 700;
+        font-size: 0.85rem;
+    }
+
+    .offline-alert-card {
+        margin: 0 1rem;
+        background: #fffbeb;
+        border: 1px solid #fef3c7;
+        padding: 1rem;
+        border-radius: 16px;
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        cursor: pointer;
+    }
+
+    .alert-icon {
+        width: 40px;
+        height: 40px;
+        background: #fef3c7;
+        color: #d97706;
+        border-radius: 10px;
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 1.8rem;
+        font-size: 1.2rem;
     }
 
-    .action-card.scanner .action-icon {
-        background: linear-gradient(135deg, #4e73df 0%, #224abe 100%);
-        color: white;
+    .alert-content {
+        display: flex;
+        flex-direction: column;
     }
 
-    .action-card.subjects .action-icon {
-        background: linear-gradient(135deg, #f6c23e 0%, #dda20a 100%);
-        color: white;
-    }
-
-    .action-card.load .action-icon {
-        background: linear-gradient(135deg, #1cc88a 0%, #13855c 100%);
-        color: white;
-    }
-
-    .action-text {
+    .alert-title {
         font-weight: 700;
-        color: #2d3748;
+        color: #92400e;
         font-size: 0.9rem;
+    }
+
+    .alert-text {
+        font-size: 0.75rem;
+        color: #b45309;
     }
 </style>

@@ -73,5 +73,20 @@ namespace ServerAtrrak.Controllers
                 return StatusCode(500, new List<SubjectAttendanceRecord>());
             }
         }
+
+        [HttpGet("teacher/{teacherId}/history")]
+        public async Task<ActionResult<List<SubjectAttendanceRecord>>> GetByTeacher(string teacherId, [FromQuery] int days = 30)
+        {
+            try
+            {
+                var list = await _service.GetTeacherHistoryAsync(teacherId, days);
+                return Ok(list);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting teacher subject attendance history");
+                return StatusCode(500, new List<SubjectAttendanceRecord>());
+            }
+        }
     }
 }

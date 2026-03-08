@@ -13,29 +13,28 @@
 @using Microsoft.Maui.ApplicationModel.DataTransfer
 
 <style>
-    .confirm-modal {
-        max-width: 350px;
-        border-radius: 15px;
-        border: none;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    :root {
+        --scanner-primary: #4338ca;
+        --scanner-success: #10b981;
+        --scanner-danger: #ef4444;
+        --scanner-warning: #f59e0b;
+        --scanner-slate: #64748b;
+        --radius-lg: 16px;
+        --radius-md: 12px;
     }
-    .btn-xs {
-        padding: 1px 5px;
-        font-size: 10px;
-        line-height: 1.5;
-        border-radius: 3px;
-    }
+
     .scanner-container {
         display: flex;
         flex-direction: column;
         min-height: 100%;
-        background-color: #f8f9fa;
+        background-color: #f8fafc;
+        font-family: 'Inter', system-ui, sans-serif;
     }
 
     .header-section {
         background-color: white;
-        padding: 5px 15px;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        padding: 0.75rem 1.25rem;
+        border-bottom: 1px solid #e2e8f0;
         z-index: 10;
         display: flex;
         justify-content: space-between;
@@ -43,42 +42,42 @@
     }
 
     .header-title {
-        font-size: 18px;
-        font-weight: bold;
-        color: #333;
+        font-size: 1.1rem;
+        font-weight: 800;
+        color: #1e293b;
         margin: 0;
+        letter-spacing: -0.01em;
     }
 
     .header-actions {
         display: flex;
-        gap: 10px;
+        gap: 0.75rem;
+        align-items: center;
     }
 
-    /* Connection Status Styles */
+    /* Connection Status */
     .connection-badge {
         display: flex;
         align-items: center;
-        gap: 5px;
-        padding: 5px 10px;
-        border-radius: 20px;
-        font-size: 12px;
-        font-weight: 600;
-        transition: all 0.3s ease;
+        gap: 6px;
+        padding: 6px 12px;
+        border-radius: 100px;
+        font-size: 0.75rem;
+        font-weight: 700;
+        transition: all 0.2s ease;
+        border: 1px solid transparent;
     }
 
     .connection-badge.online {
-        background-color: #d1e7dd;
-        color: #0f5132;
+        background-color: #ecfdf5;
+        color: #059669;
+        border-color: #a7f3d0;
     }
 
     .connection-badge.offline {
-        background-color: #f8d7da;
-        color: #842029;
-    }
-
-    .connection-badge.checking {
-        background-color: #fff3cd;
-        color: #664d03;
+        background-color: #fef2f2;
+        color: #dc2626;
+        border-color: #fecaca;
     }
 
     .connection-dot {
@@ -87,490 +86,182 @@
         border-radius: 50%;
     }
 
-    .online .connection-dot { background-color: #198754; }
-    .offline .connection-dot { background-color: #dc3545; }
-    .checking .connection-dot { background-color: #ffc107; }
+    .online .connection-dot { background-color: #10b981; }
+    .offline .connection-dot { background-color: #ef4444; }
 
-    /* Offline Count Badge */
     .offline-count-badge {
-        background-color: #fd7e14;
+        background-color: #f59e0b;
         color: white;
         padding: 2px 8px;
-        border-radius: 10px;
-        font-size: 11px;
-        margin-left: 5px;
+        border-radius: 100px;
+        font-size: 0.7rem;
+        font-weight: 800;
+        margin-left: 4px;
     }
 
-    .main-content {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        overflow: hidden;
-        position: relative;
-    }
-
-    /* Scanner Area */
-    .scanner-area {
-        flex: 1;
-        background-color: #000;
-        position: relative;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        overflow: hidden;
-    }
-    
-    .scanner-overlay {
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        z-index: 5;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        align-items: center;
-        pointer-events: none;
-    }
-    
-    .scanner-frame {
-        width: 70%;
-        max-width: 300px;
-        aspect-ratio: 1/1;
-        border: 2px solid rgba(255, 255, 255, 0.5);
-        border-radius: 20px;
-        position: relative;
-        box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5);
-    }
-    
-    .scanner-corner {
-        position: absolute;
-        width: 40px;
-        height: 40px;
-        border-color: #0d6efd;
-        border-style: solid;
-    }
-    
-    .top-left { top: -2px; left: -2px; border-width: 4px 0 0 4px; border-radius: 20px 0 0 0; }
-    .top-right { top: -2px; right: -2px; border-width: 4px 4px 0 0; border-radius: 0 20px 0 0; }
-    .bottom-left { bottom: -2px; left: -2px; border-width: 0 0 4px 4px; border-radius: 0 0 0 20px; }
-    .bottom-right { bottom: -2px; right: -2px; border-width: 0 4px 4px 0; border-radius: 0 0 20px 0; }
-
-    .scanner-text {
-        color: white;
-        margin-top: 20px;
-        font-size: 14px;
-        text-align: center;
-        text-shadow: 0 2px 4px rgba(0,0,0,0.5);
-    }
-
-    /* Action Buttons Area */
+    /* Action Buttons */
     .action-area {
         background-color: white;
-        padding: 15px 20px 25px; /* Lifted bottom padding */
-        border-radius: 20px 20px 0 0;
-        box-shadow: 0 -5px 20px rgba(0,0,0,0.1);
+        padding: 1.5rem 1.25rem;
+        border-radius: 24px 24px 0 0;
+        box-shadow: 0 -10px 25px -5px rgba(0, 0, 0, 0.05);
         z-index: 20;
-        margin-bottom: env(safe-area-inset-bottom, 10px); /* Lift for home indicator */
     }
     
-    .scan-buttons-container {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 15px;
-        margin-bottom: 20px;
-    }
-    
-    .scan-btn {
-        padding: 15px;
+    .btn-continuous {
+        padding: 1rem;
         border: none;
-        border-radius: 12px;
-        font-weight: 600;
-        font-size: 16px;
+        border-radius: var(--radius-lg);
+        font-weight: 700;
         display: flex;
-        flex-direction: column;
         align-items: center;
         justify-content: center;
-        gap: 8px;
-        transition: transform 0.2s, box-shadow 0.2s;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        gap: 12px;
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        color: white;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
     }
-    
-    .scan-btn:active {
-        transform: scale(0.98);
+
+    .btn-continuous:active {
+        transform: translateY(2px);
+        box-shadow: none;
     }
 
     .btn-timein {
-        background: linear-gradient(135deg, #198754 0%, #20c997 100%);
-        color: white;
+        background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%);
     }
 
     .btn-timeout {
-        background: linear-gradient(135deg, #dc3545 0%, #ffc107 100%);
-        color: white;
-    }
-
-    .btn-icon {
-        font-size: 24px;
-    }
-
-    /* Continuous Scanning Mode */
-    .setup-actions {
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-    }
-
-    .btn-continuous {
-        background: linear-gradient(135deg, #0d6efd 0%, #0dcaf0 100%);
-        color: white;
-        padding: 15px;
-        border: none;
-        border-radius: 12px;
-        font-weight: 600;
-        font-size: 16px;
-        width: 100%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 10px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
     }
 
     .mode-badge {
-        background-color: rgba(255,255,255,0.2);
-        padding: 2px 6px;
-        border-radius: 4px;
-        font-size: 12px;
+        background-color: rgba(255,255,255,0.15);
+        padding: 2px 8px;
+        border-radius: 6px;
+        font-size: 0.65rem;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
     }
 
-    /* Result Cards */
-    .result-overlay {
-        position: absolute;
-        bottom: 20px;
-        left: 20px;
-        right: 20px;
-        z-index: 30;
-    }
-
-    .result-card {
-        background: white;
-        border-radius: 12px;
-        padding: 15px;
-        box-shadow: 0 5px 15px rgba(0,0,0,0.2);
-        display: flex;
-        align-items: center;
-        gap: 15px;
-        animation: slideUp 0.3s ease-out;
-    }
-
-    .result-icon {
-        width: 50px;
-        height: 50px;
-        border-radius: 50%;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        font-size: 24px;
-        flex-shrink: 0;
-    }
-
-    .result-success {
-        background-color: #d1e7dd;
-        color: #198754;
-    }
-
-    .result-error {
-        background-color: #f8d7da;
-        color: #dc3545;
-    }
-
-    .result-content {
-        flex: 1;
-    }
-
-    .result-title {
-        font-weight: bold;
-        font-size: 16px;
-        margin-bottom: 2px;
-    }
-
-    .result-message {
-        font-size: 13px;
-        color: #666;
-    }
-
-    @@keyframes slideUp {
-        from { transform: translateY(100%); opacity: 0; }
-        to { transform: translateY(0); opacity: 1; }
-    }
-    
     /* Attendance List */
     .attendance-list-container {
         flex: 1;
         overflow-y: auto;
-        padding: 15px;
-        background-color: #f8f9fa;
+        padding: 1.25rem;
+        background-color: #f8fafc;
     }
     
     .list-header {
-        font-size: 14px;
-        font-weight: 600;
-        color: #666;
-        margin-bottom: 10px;
+        font-size: 0.75rem;
+        font-weight: 700;
+        color: #94a3b8;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 1rem;
         display: flex;
         justify-content: space-between;
+        align-items: center;
     }
     
     .attendance-card {
         background: white;
-        border-radius: 10px;
-        padding: 12px;
-        margin-bottom: 10px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        border-radius: var(--radius-md);
+        padding: 1rem;
+        margin-bottom: 0.75rem;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
         display: flex;
         justify-content: space-between;
         align-items: center;
-        border-left: 4px solid transparent;
+        border-left: 4px solid #e2e8f0;
+        transition: transform 0.2s;
+    }
+
+    .attendance-card:active {
+        transform: scale(0.98);
     }
     
-    .attendance-card.timein { border-left-color: #198754; }
-    .attendance-card.timeout { border-left-color: #dc3545; }
-    .attendance-card.both { border-left-color: #0d6efd; }
-    .attendance-card.present { border-left-color: #4e73df; }
-    
-    .student-info {
-        display: flex;
-        flex-direction: column;
-    }
+    .attendance-card.timein { border-left-color: #10b981; }
+    .attendance-card.timeout { border-left-color: #f59e0b; }
+    .attendance-card.both { border-left-color: #4f46e5; }
     
     .student-name {
-        font-weight: bold;
-        font-size: 14px;
-        color: #333;
+        font-weight: 700;
+        font-size: 0.95rem;
+        color: #1e293b;
+        display: block;
+        margin-bottom: 2px;
     }
     
     .student-id {
-        font-size: 11px;
-        color: #888;
-    }
-    
-    .time-info {
-        text-align: right;
-        display: flex;
-        flex-direction: column;
-        align-items: flex-end;
+        font-size: 0.75rem;
+        color: #64748b;
+        font-weight: 500;
     }
     
     .time-badge {
-        font-size: 11px;
-        padding: 2px 6px;
-        border-radius: 4px;
-        margin-bottom: 2px;
-        display: inline-block;
-    }
-    
-    .badge-in { background-color: #e8f5e9; color: #1b5e20; }
-    .badge-out { background-color: #ffebee; color: #b71c1c; }
-    
-    .offline-indicator {
-        font-size: 10px;
-        color: #fd7e14;
-        font-weight: bold;
-    }
-    
-    /* Loading Overlay */
-    .loading-overlay {
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background-color: rgba(255,255,255,0.8);
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        align-items: center;
-        z-index: 100;
-    }
-    
-    .spinner {
-        width: 40px;
-        height: 40px;
-        border: 4px solid #f3f3f3;
-        border-top: 4px solid #0d6efd;
-        border-radius: 50%;
-        animation: spin 1s linear infinite;
-        margin-bottom: 10px;
-    }
-    
-    @@keyframes spin {
-        0% { transform: rotate(0deg); }
-        100% { transform: rotate(360deg); }
-    }
-
-    /* Modal Styles */
-    .modal-backdrop {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background-color: rgba(0, 0, 0, 0.5);
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        z-index: 1000;
-    }
-
-    .modal-content {
-        background-color: white;
-        padding: 20px;
-        border-radius: 10px;
-        width: 90%;
-        max-width: 500px;
-        max-height: 80vh;
-        overflow-y: auto;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-    }
-
-    .modal-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 15px;
-        border-bottom: 1px solid #eee;
-        padding-bottom: 10px;
-    }
-
-    .modal-title {
-        font-size: 18px;
-        font-weight: bold;
-        margin: 0;
-    }
-
-    .close-btn {
-        background: none;
-        border: none;
-        font-size: 24px;
-        cursor: pointer;
-        color: #666;
-    }
-
-    .modal-body {
-        max-height: 60vh;
-        overflow-y: auto;
-    }
-
-    .debug-info {
-        background-color: #f8f9fa;
-        padding: 10px;
-        border-radius: 5px;
-        font-family: monospace;
-        font-size: 12px;
-        white-space: pre-wrap;
-        margin-top: 10px;
-    }
-
-    /* Toast Notification */
-    .toast-notification {
-        position: fixed;
-        bottom: 80px;
-        left: 50%;
-        transform: translateX(-50%);
-        background-color: rgba(50, 50, 50, 0.9);
-        color: white;
-        padding: 12px 24px;
-        border-radius: 30px;
-        font-size: 14px;
-        z-index: 2000;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.2);
-        animation: fadeInOut 3s ease forwards;
-        pointer-events: none;
-    }
-
-    @@keyframes fadeInOut {
-        0% { opacity: 0; transform: translate(-50%, 20px); }
-        10% { opacity: 1; transform: translate(-50%, 0); }
-        90% { opacity: 1; transform: translate(-50%, 0); }
-        100% { opacity: 0; transform: translate(-50%, -20px); }
-    }
-    .hid-scanner-proxy {
-        position: fixed;
-        bottom: 20px;
-        right: 20px;
-        z-index: 1000;
-        background: rgba(30, 41, 59, 0.9);
-        padding: 10px;
+        font-size: 0.7rem;
+        font-weight: 800;
+        padding: 4px 8px;
         border-radius: 8px;
-        border: 1px solid #38bdf8;
+        margin-bottom: 4px;
+        display: block;
+        text-align: center;
     }
-    .hid-input {
-        background: transparent;
-        border: none;
-        color: #38bdf8;
-        font-family: inherit;
-        outline: none;
-        width: 250px;
-    }
-    /* ─── My Schedule Today ─── */
+    
+    .badge-in { background-color: #ecfdf5; color: #059669; }
+    .badge-out { background-color: #fffbeb; color: #d97706; }
+
+    /* Schedule Selector */
     .schedule-wrapper {
         background: white;
-        border-bottom: 1px solid #e8ecf4;
-        padding: 12px 16px;
+        padding: 1.25rem;
+        border-bottom: 1px solid #e2e8f0;
     }
-    .schedule-header-row {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 10px;
-    }
+
     .schedule-title {
-        font-size: 11px;
+        font-size: 0.7rem;
         font-weight: 800;
-        color: #4e73df;
+        color: #6366f1;
         text-transform: uppercase;
-        letter-spacing: 1px;
+        letter-spacing: 0.05em;
         display: flex;
         align-items: center;
         gap: 6px;
-        margin-bottom: 0;
+        margin-bottom: 0.75rem;
     }
+
     .class-selector-dropdown {
         width: 100%;
-        padding: 10px 12px;
-        border-radius: 10px;
-        border: 1.5px solid #d1d3e2;
-        background-color: #f8f9fc;
-        font-size: 13px;
-        color: #4e73df;
+        padding: 0.875rem 1rem;
+        border-radius: var(--radius-md);
+        border: 2px solid #f1f5f9;
+        background-color: #f8fafc;
+        font-size: 0.9rem;
+        color: #1e293b;
         font-weight: 600;
         outline: none;
-        transition: all 0.2s;
+        transition: border-color 0.2s;
         appearance: none;
-        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%234e73df' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
         background-repeat: no-repeat;
-        background-position: right 12px center;
-        background-size: 16px;
+        background-position: right 1rem center;
+        background-size: 1.25rem;
     }
+
     .class-selector-dropdown:focus {
-        border-color: #4e73df;
-        box-shadow: 0 0 0 0.2rem rgba(78, 115, 223, 0.1);
+        border-color: #6366f1;
     }
-    .active-option {
-        font-weight: bold;
-        color: #1cc88a;
+
+    .status-now {
+        background: #10b981;
+        color: white;
+        padding: 2px 8px;
+        border-radius: 100px;
+        font-size: 0.65rem;
+        font-weight: 800;
     }
-    .status-indicator-mini {
-        font-size: 9px;
-        padding: 2px 6px;
-        border-radius: 10px;
-        font-weight: 700;
-        margin-left: 5px;
-    }
-    .status-now { background: #1cc88a; color: white; }
-    .status-locked { background: #f8f9fc; color: #858796; border: 1px solid #d1d3e2; }
 </style>
 
 <div class="scanner-container">

@@ -9,6 +9,7 @@ namespace AttrackSharedClass.Models
         public string? ClassOfferingId { get; set; }
         public string StudentId { get; set; } = "";
         public string StudentName { get; set; } = "";
+        public string? SubjectName { get; set; }
         public DateTime Date { get; set; }
         public DateTime? TimeIn { get; set; }
         public DateTime? TimeOut { get; set; }

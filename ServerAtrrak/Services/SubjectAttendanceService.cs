@@ -301,5 +301,58 @@ namespace ServerAtrrak.Services
             }
             return list;
         }
+
+        public async Task<List<SubjectAttendanceRecord>> GetTeacherHistoryAsync(string teacherId, int daysCount = 30)
+        {
+            var list = new List<SubjectAttendanceRecord>();
+            try
+            {
+                using var connection = new MySqlConnection(_dbConnection.GetConnection());
+                await connection.OpenAsync();
+                var fromDate = DateTime.Today.AddDays(-daysCount);
+                
+                // We join with student to get StudentName 
+                // and join with class_offering + subject to get SubjectName
+                var query = @"
+                    SELECT sa.SubjectAttendanceId, sa.StudentId, st.FullName as StudentName,
+                           sa.Date, sa.Status, sa.Remarks, sa.CreatedAt, sa.UpdatedAt, sa.TimeIn, sa.TimeOut, 
+                           sa.ClassOfferingId, sub.SubjectName
+                    FROM subject_attendance sa
+                    INNER JOIN student st ON sa.StudentId = st.StudentId
+                    INNER JOIN class_offering co ON sa.ClassOfferingId = co.ClassOfferingId
+                    INNER JOIN subject sub ON co.SubjectId = sub.SubjectId
+                    WHERE co.TeacherId = @TeacherId AND sa.Date >= @FromDate
+                    ORDER BY sa.Date DESC, sa.UpdatedAt DESC";
+
+                using var cmd = new MySqlCommand(query, connection);
+                cmd.Parameters.AddWithValue("@TeacherId", teacherId);
+                cmd.Parameters.AddWithValue("@FromDate", fromDate);
+                
+                using var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    list.Add(new SubjectAttendanceRecord
+                    {
+                        SubjectAttendanceId = reader.GetString(0),
+                        StudentId = reader.GetString(1),
+                        StudentName = reader.GetString(2),
+                        Date = reader.GetDateTime(3),
+                        Status = reader.GetString(4),
+                        Remarks = reader.IsDBNull(5) ? null : reader.GetString(5),
+                        CreatedAt = reader.GetDateTime(6),
+                        UpdatedAt = reader.GetDateTime(7),
+                        TimeIn = reader.IsDBNull(8) ? null : reader.GetDateTime(8),
+                        TimeOut = reader.IsDBNull(9) ? null : reader.GetDateTime(9),
+                        ClassOfferingId = reader.IsDBNull(10) ? null : reader.GetString(10),
+                        SubjectName = reader.IsDBNull(11) ? "Subject" : reader.GetString(11)
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting teacher subject attendance history. TeacherId: {Id}", teacherId);
+            }
+            return list;
+        }
     }
 }

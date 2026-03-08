@@ -805,6 +805,116 @@ namespace NewscannerMAUI.Services
             }
         }
 
+        public async Task<List<OfflineAttendanceRecord>> GetAllAttendanceRecordsAsync(string teacherId)
+        {
+            var records = new List<OfflineAttendanceRecord>();
+            try
+            {
+                using var connection = new SqliteConnection(_connectionString);
+                await connection.OpenAsync();
+
+                // 1. Get SUBJECT-SPECIFIC attendance
+                var querySubject = @"SELECT a.attendance_id, a.student_id, a.subject_id, a.timestamp, a.attendance_type, a.status, a.device_id, a.is_synced, a.created_at, a.remarks, a.teacher_id,
+                             COALESCE(n.student_name, '') as student_name,
+                             COALESCE(c.subject_name, '') as subject_name
+                      FROM offline_attendance a
+                      LEFT JOIN student_names_cache n ON a.student_id = n.student_id
+                      LEFT JOIN class_offerings_cache c ON a.subject_id = c.class_offering_id
+                      WHERE a.teacher_id = @teacherId OR (a.teacher_id IS NULL AND @teacherId IS NOT NULL)
+                      ORDER BY a.timestamp DESC";
+
+                using var commandSubject = new SqliteCommand(querySubject, connection);
+                commandSubject.Parameters.AddWithValue("@teacherId", teacherId ?? (object)DBNull.Value);
+                
+                using var readerSubject = await commandSubject.ExecuteReaderAsync();
+                while (await readerSubject.ReadAsync())
+                {
+                    records.Add(new OfflineAttendanceRecord
+                    {
+                        Id = readerSubject.GetString(readerSubject.GetOrdinal("attendance_id")),
+                        StudentId = readerSubject.GetString(readerSubject.GetOrdinal("student_id")),
+                        StudentName = readerSubject.GetString(readerSubject.GetOrdinal("student_name")),
+                        SubjectId = readerSubject.IsDBNull(readerSubject.GetOrdinal("subject_id")) ? "" : readerSubject.GetString(readerSubject.GetOrdinal("subject_id")),
+                        SubjectName = readerSubject.IsDBNull(readerSubject.GetOrdinal("subject_name")) ? "Subject Scan" : readerSubject.GetString(readerSubject.GetOrdinal("subject_name")),
+                        AttendanceType = readerSubject.GetString(readerSubject.GetOrdinal("attendance_type")),
+                        ScanTime = readerSubject.GetDateTime(readerSubject.GetOrdinal("timestamp")),
+                        DeviceId = readerSubject.IsDBNull(readerSubject.GetOrdinal("device_id")) ? "" : readerSubject.GetString(readerSubject.GetOrdinal("device_id")),
+                        IsSynced = readerSubject.GetInt32(readerSubject.GetOrdinal("is_synced")) == 1,
+                        SyncStatus = readerSubject.GetInt32(readerSubject.GetOrdinal("is_synced")),
+                        Remarks = readerSubject.IsDBNull(readerSubject.GetOrdinal("remarks")) ? "" : readerSubject.GetString(readerSubject.GetOrdinal("remarks")),
+                        CreatedAt = readerSubject.GetDateTime(readerSubject.GetOrdinal("created_at")),
+                        Status = readerSubject.IsDBNull(readerSubject.GetOrdinal("status")) ? "Present" : readerSubject.GetString(readerSubject.GetOrdinal("status")),
+                        TeacherId = teacherId
+                    });
+                }
+                readerSubject.Close();
+
+                // 2. Get SCHOOL-WIDE (Daily) attendance
+                var queryDaily = @"SELECT a.attendance_id, a.student_id, a.date, a.time_in, a.time_out, a.status, a.device_id, a.is_synced, a.created_at, a.attendance_type, a.remarks, a.teacher_id,
+                             COALESCE(n.student_name, '') as student_name
+                      FROM offline_daily_attendance a
+                      LEFT JOIN student_names_cache n ON a.student_id = n.student_id
+                      WHERE a.teacher_id = @teacherId OR (a.teacher_id IS NULL AND @teacherId IS NOT NULL)
+                      ORDER BY a.created_at DESC";
+
+                using var commandDaily = new SqliteCommand(queryDaily, connection);
+                commandDaily.Parameters.AddWithValue("@teacherId", teacherId ?? (object)DBNull.Value);
+                
+                using var readerDaily = await commandDaily.ExecuteReaderAsync();
+                while (await readerDaily.ReadAsync())
+                {
+                    var dateStr = readerDaily.GetString(readerDaily.GetOrdinal("date"));
+                    var timeInStr = readerDaily.IsDBNull(readerDaily.GetOrdinal("time_in")) ? null : readerDaily.GetString(readerDaily.GetOrdinal("time_in"));
+                    var timeOutStr = readerDaily.IsDBNull(readerDaily.GetOrdinal("time_out")) ? null : readerDaily.GetString(readerDaily.GetOrdinal("time_out"));
+                    
+                    DateTime scanTime = DateTime.TryParse(dateStr, out var dt) ? dt : DateTime.Today;
+                    var timeStr = timeInStr ?? timeOutStr;
+                    if (!string.IsNullOrEmpty(timeStr) && TimeSpan.TryParse(timeStr, out var ts))
+                    {
+                        scanTime = scanTime.Date.Add(ts);
+                    }
+
+                    records.Add(new OfflineAttendanceRecord
+                    {
+                        Id = readerDaily.GetString(readerDaily.GetOrdinal("attendance_id")),
+                        StudentId = readerDaily.GetString(readerDaily.GetOrdinal("student_id")),
+                        StudentName = readerDaily.GetString(readerDaily.GetOrdinal("student_name")),
+                        SubjectId = "DAILY",
+                        SubjectName = "School Attendance",
+                        AttendanceType = readerDaily.IsDBNull(readerDaily.GetOrdinal("attendance_type")) ? "Daily" : readerDaily.GetString(readerDaily.GetOrdinal("attendance_type")),
+                        ScanTime = scanTime,
+                        DeviceId = readerDaily.IsDBNull(readerDaily.GetOrdinal("device_id")) ? "" : readerDaily.GetString(readerDaily.GetOrdinal("device_id")),
+                        IsSynced = readerDaily.GetInt32(readerDaily.GetOrdinal("is_synced")) == 1,
+                        SyncStatus = readerDaily.GetInt32(readerDaily.GetOrdinal("is_synced")),
+                        Remarks = readerDaily.IsDBNull(readerDaily.GetOrdinal("remarks")) ? "" : readerDaily.GetString(readerDaily.GetOrdinal("remarks")),
+                        CreatedAt = readerDaily.GetDateTime(readerDaily.GetOrdinal("created_at")),
+                        Status = readerDaily.IsDBNull(readerDaily.GetOrdinal("status")) ? "Present" : readerDaily.GetString(readerDaily.GetOrdinal("status")),
+                        TeacherId = teacherId
+                    });
+                }
+
+                // 3. Resolve "Student X" if names are still blank or generically named
+                var unknownIds = await GetUnknownStudentIdsAsync(teacherId);
+                foreach (var record in records)
+                {
+                    if (string.IsNullOrEmpty(record.StudentName) || record.StudentName.StartsWith("Student "))
+                    {
+                        var index = unknownIds.IndexOf(record.StudentId);
+                        record.StudentName = $"Student {(index == -1 ? unknownIds.Count + 1 : index + 1)}";
+                    }
+                }
+
+                // 4. Final sort by scan time
+                records = records.OrderByDescending(r => r.ScanTime).ToList();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error getting all attendance records: {ex.Message}");
+            }
+
+            return records;
+        }
+
         public async Task<List<OfflineAttendanceRecord>> GetUnsyncedAttendanceAsync(string? teacherId = null)
         {
             var records = new List<OfflineAttendanceRecord>();
@@ -2623,6 +2733,7 @@ namespace NewscannerMAUI.Services
         public string StudentId { get; set; } = string.Empty;
         public string StudentName { get; set; } = string.Empty; // Resolved from student_names_cache
         public string SubjectId { get; set; } = string.Empty; // The class offering ID for subject attendance
+        public string SubjectName { get; set; } = string.Empty; // Resolved from class_offerings_cache
         public string AttendanceType { get; set; } = string.Empty;
         public DateTime ScanTime { get; set; }
         public string DeviceId { get; set; } = string.Empty;

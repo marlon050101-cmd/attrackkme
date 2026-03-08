@@ -1,0 +1,463 @@
+@page "/teacher/history"
+@layout TeacherLayout
+@using NewscannerMAUI.Services
+@using AttrackSharedClass.Models
+@using System.Globalization
+@inject AuthService AuthService
+@inject NavigationManager Navigation
+@inject OfflineDataService OfflineDataService
+@inject ConnectionStatusService ConnectionStatusService
+@inject HttpClient HttpClient
+
+<div class="history-container">
+    <div class="history-header">
+        <h2 class="page-title">Attendance History</h2>
+        <div class="filter-controls">
+            <div class="week-selector">
+                <button class="week-nav-btn" @onclick="PrevWeek">
+                    <i class="fas fa-chevron-left"></i>
+                </button>
+                <div class="current-week">
+                    <span class="week-label">@WeekDisplay</span>
+                </div>
+                <button class="week-nav-btn" @onclick="NextWeek">
+                    <i class="fas fa-chevron-right"></i>
+                </button>
+            </div>
+            <button class="reset-btn" @onclick="ResetToCurrentWeek">Today's Week</button>
+        </div>
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="loading-state">
+            <div class="spinner-border text-primary" role="status"></div>
+            <p>Loading attendance records...</p>
+        </div>
+    }
+    else if (groupedRecords == null || !groupedRecords.Any())
+    {
+        <div class="empty-state">
+            <div class="empty-icon">
+                <i class="fas fa-history"></i>
+            </div>
+            <h6>No records found</h6>
+            <p>There are no attendance records for this week.</p>
+        </div>
+    }
+    else
+    {
+        <div class="history-list">
+            @foreach (var dayGroup in groupedRecords)
+            {
+                <div class="day-group">
+                    <div class="day-header">
+                        <span class="day-name">@dayGroup.Key.ToString("dddd")</span>
+                        <span class="day-date">@dayGroup.Key.ToString("MMMM dd, yyyy")</span>
+                        <div class="day-badge">@dayGroup.Value.Count records</div>
+                    </div>
+                    <div class="records-grid">
+                        @foreach (var record in dayGroup.Value)
+                        {
+                            <div class="history-card">
+                                <div class="card-left">
+                                    <span class="scan-time">@record.ScanTime.ToString("h:mm tt")</span>
+                                    <span class="attendance-type @record.AttendanceType.ToLower()">@record.AttendanceType</span>
+                                </div>
+                                <div class="card-body">
+                                    <span class="student-name">@record.StudentName</span>
+                                    <div class="card-meta">
+                                        <span class="subject-name">
+                                            <i class="fas fa-book-open me-1"></i> @record.SubjectName
+                                        </span>
+                                    </div>
+                                </div>
+                                <div class="card-right">
+                                    <span class="status-badge @record.Status.ToLower()">@record.Status</span>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private bool isLoading = true;
+    private string? teacherId;
+    private List<OfflineAttendanceRecord> allRecords = new();
+    private Dictionary<DateTime, List<OfflineAttendanceRecord>> groupedRecords = new();
+    private DateTime selectedWeekStart;
+
+    private string WeekDisplay => $"{selectedWeekStart.ToString("MMM dd")} - {selectedWeekStart.AddDays(6).ToString("MMM dd")}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var user = await AuthService.GetCurrentUserAsync();
+        if (user != null)
+        {
+            teacherId = user.TeacherId;
+            ResetToCurrentWeek();
+            await LoadHistory();
+        }
+        else
+        {
+            Navigation.NavigateTo("/");
+        }
+    }
+
+    private void ResetToCurrentWeek()
+    {
+        var today = DateTime.Today;
+        int diff = (7 + (today.DayOfWeek - DayOfWeek.Monday)) % 7;
+        selectedWeekStart = today.AddDays(-1 * diff).Date;
+        if (!isLoading) _ = ApplyFilter();
+    }
+
+    private void PrevWeek()
+    {
+        selectedWeekStart = selectedWeekStart.AddDays(-7);
+        _ = ApplyFilter();
+    }
+
+    private void NextWeek()
+    {
+        selectedWeekStart = selectedWeekStart.AddDays(7);
+        _ = ApplyFilter();
+    }
+
+    private async Task LoadHistory()
+    {
+        try
+        {
+            isLoading = true;
+            StateHasChanged();
+
+            var currentUser = await AuthService.GetCurrentUserAsync();
+            if (currentUser == null) return;
+
+            List<OfflineAttendanceRecord> mergedRecords = new();
+
+            // 1. Try fetching from SERVER if online
+            if (ConnectionStatusService.IsOnline)
+            {
+                try
+                {
+                    var teacherId = currentUser.TeacherId;
+                    var serverRecords = await HttpClient.GetFromJsonAsync<List<SubjectAttendanceRecord>>(
+                        $"{ApiConfig.BaseUrlNoTrailingSlash}/api/SubjectAttendance/teacher/{teacherId}/history?days=30");
+                    
+                    if (serverRecords != null)
+                    {
+                        foreach (var sr in serverRecords)
+                        {
+                            mergedRecords.Add(new OfflineAttendanceRecord
+                            {
+                                Id = sr.SubjectAttendanceId,
+                                StudentId = sr.StudentId,
+                                StudentName = sr.StudentName,
+                                SubjectName = sr.SubjectName ?? "Subject",
+                                ScanTime = sr.Date.Date.Add((sr.TimeIn ?? sr.TimeOut ?? sr.CreatedAt).TimeOfDay),
+                                AttendanceType = (sr.TimeIn != null && sr.TimeOut != null) ? "Both" : (sr.TimeIn != null ? "TimeIn" : "TimeOut"),
+                                Status = sr.Status,
+                                IsSynced = true
+                            });
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Failed to fetch history from server: {ex.Message}");
+                }
+            }
+
+            // 2. Fetch from OFFLINE (for unsynced records or if server failed)
+            var offlineRecords = await OfflineDataService.GetAllAttendanceRecordsAsync(currentUser.TeacherId);
+            
+            // 3. Merge and De-duplicate
+            foreach (var offRec in offlineRecords)
+            {
+                if (!mergedRecords.Any(r => r.Id == offRec.Id))
+                {
+                    mergedRecords.Add(offRec);
+                }
+            }
+
+            allRecords = mergedRecords;
+            await ApplyFilter();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Error loading history: {ex.Message}");
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ApplyFilter()
+    {
+        var weekEnd = selectedWeekStart.AddDays(7);
+        groupedRecords = allRecords
+            .Where(r => r.ScanTime.Date >= selectedWeekStart && r.ScanTime.Date < weekEnd)
+            .GroupBy(r => r.ScanTime.Date)
+            .OrderByDescending(g => g.Key)
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(r => r.ScanTime).ToList());
+        
+        StateHasChanged();
+        await Task.CompletedTask;
+    }
+}
+
+<style>
+    .history-container {
+        padding: 0;
+        max-width: 800px;
+        margin: 0 auto;
+    }
+
+    .history-header {
+        padding: 1.5rem 1rem;
+        background: white;
+        border-bottom: 1px solid #e2e8f0;
+        margin-bottom: 1rem;
+        position: sticky;
+        top: 0;
+        z-index: 10;
+    }
+
+    .page-title {
+        font-weight: 800;
+        color: #1e293b;
+        font-size: 1.5rem;
+        margin-bottom: 1rem;
+        letter-spacing: -0.025em;
+    }
+
+    .filter-controls {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+    }
+
+    .week-selector {
+        display: flex;
+        align-items: center;
+        background: #f1f5f9;
+        padding: 4px;
+        border-radius: 12px;
+        flex: 1;
+    }
+
+    .week-nav-btn {
+        background: white;
+        border: none;
+        width: 36px;
+        height: 36px;
+        border-radius: 9px;
+        color: #6366f1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        transition: all 0.2s;
+    }
+
+    .week-nav-btn:hover {
+        background: #f8fafc;
+        transform: scale(1.05);
+    }
+
+    .current-week {
+        flex: 1;
+        text-align: center;
+    }
+
+    .week-label {
+        font-weight: 700;
+        color: #475569;
+        font-size: 0.9rem;
+    }
+
+    .reset-btn {
+        background: transparent;
+        border: 1.5px solid #e2e8f0;
+        color: #64748b;
+        padding: 0 12px;
+        height: 44px;
+        border-radius: 12px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .reset-btn:hover {
+        background: #f8fafc;
+        border-color: #cbd5e1;
+    }
+
+    .history-list {
+        padding: 0 1rem 2rem 1rem;
+    }
+
+    .day-group {
+        margin-bottom: 2rem;
+    }
+
+    .day-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 1rem;
+        padding-bottom: 8px;
+        border-bottom: 2px solid #f1f5f9;
+    }
+
+    .day-name {
+        font-weight: 800;
+        color: #1e293b;
+        font-size: 1.1rem;
+    }
+
+    .day-date {
+        color: #94a3b8;
+        font-size: 0.9rem;
+        font-weight: 500;
+    }
+
+    .day-badge {
+        margin-left: auto;
+        background: #eef2ff;
+        color: #6366f1;
+        font-size: 0.75rem;
+        font-weight: 700;
+        padding: 2px 8px;
+        border-radius: 100px;
+    }
+
+    .records-grid {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .history-card {
+        background: white;
+        border-radius: 20px;
+        padding: 1.25rem;
+        display: flex;
+        align-items: center;
+        gap: 1.25rem;
+        border: 1px solid #f1f5f9;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+        transition: transform 0.2s;
+    }
+
+    .history-card:active {
+        transform: scale(0.98);
+    }
+
+    .card-left {
+        display: flex;
+        flex-direction: column;
+        min-width: 65px;
+        text-align: center;
+    }
+
+    .scan-time {
+        font-weight: 800;
+        font-size: 0.85rem;
+        color: #1e293b;
+    }
+
+    .attendance-type {
+        font-size: 0.65rem;
+        font-weight: 800;
+        padding: 2px 4px;
+        border-radius: 4px;
+        text-transform: uppercase;
+        margin-top: 4px;
+    }
+
+    .attendance-type.timein { background: #dcfce7; color: #166534; }
+    .attendance-type.timeout { background: #fee2e2; color: #991b1b; }
+
+    .card-body {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+
+    .student-name {
+        font-weight: 800;
+        color: #1e293b;
+        font-size: 1.1rem;
+        letter-spacing: -0.01em;
+    }
+
+    .card-meta {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 2px;
+    }
+
+    .subject-name {
+        font-size: 0.85rem;
+        color: #64748b;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+    }
+
+    .card-right {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .status-badge {
+        font-size: 0.7rem;
+        font-weight: 800;
+        padding: 4px 10px;
+        border-radius: 100px;
+    }
+
+    .status-badge.present { background: #ecfdf5; color: #059669; }
+    .status-badge.late { background: #fffbeb; color: #d97706; }
+    .status-badge.absent { background: #fef2f2; color: #ef4444; }
+
+    .unsynced-icon {
+        color: #f59e0b;
+        font-size: 1rem;
+    }
+
+    .loading-state, .empty-state {
+        padding: 4rem 2rem;
+        text-align: center;
+    }
+
+    .empty-icon {
+        font-size: 3rem;
+        color: #e2e8f0;
+        margin-bottom: 1rem;
+    }
+
+    .empty-state h6 {
+        font-weight: 700;
+        color: #475569;
+        margin-bottom: 0.5rem;
+    }
+
+    .empty-state p {
+        color: #94a3b8;
+    }
+</style>
