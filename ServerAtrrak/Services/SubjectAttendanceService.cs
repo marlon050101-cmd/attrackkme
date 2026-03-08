@@ -137,8 +137,8 @@ namespace ServerAtrrak.Services
                         using var sReader = await sCmd.ExecuteReaderAsync();
                         if (await sReader.ReadAsync())
                         {
-                            var name = sReader.GetString("FullName");
-                            var phone = sReader.IsDBNull("ParentsNumber") ? null : sReader.GetString("ParentsNumber");
+                            var name = sReader.GetString(0);
+                            var phone = sReader.IsDBNull(1) ? null : sReader.GetString(1);
                             
                             if (!string.IsNullOrEmpty(phone))
                             {
