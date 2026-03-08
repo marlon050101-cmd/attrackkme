@@ -856,120 +856,177 @@ namespace ServerAtrrak.Services
                 return false;
             }
         }
-        public async Task<HeadStatsResponse> GetHeadStatsAsync(string schoolId)
+            public async Task<HeadStatsResponse> GetHeadStatsAsync(string schoolId)
+    {
+        try
         {
-            try
+            if (string.IsNullOrEmpty(schoolId)) return new HeadStatsResponse();
+
+            using var connection = await _dbConnection.GetConnectionAsync();
+            
+            // 1. Get Teacher Counts and Roles
+            // Determine role by priority: User record > Teacher record (Section presence)
+            var teachersQuery = @"
+                SELECT 
+                    CASE 
+                        WHEN u.UserType IS NOT NULL THEN u.UserType
+                        WHEN t.Section IS NOT NULL AND t.Section != '' THEN 'Adviser'
+                        ELSE 'SubjectTeacher'
+                    END as UserType,
+                    t.TeacherId
+                FROM teacher t
+                LEFT JOIN user u ON t.TeacherId = u.TeacherId
+                WHERE UPPER(TRIM(t.SchoolId)) = UPPER(TRIM(@schoolId)) 
+                AND (u.IsActive IS NULL OR u.IsActive = 1)";
+            
+            int advisersCount = 0;
+            int subjectTeachersCount = 0;
+            int totalTeacherStaff = 0;
+            var teacherIds = new List<string>();
+
+            using (var cmd = new MySqlCommand(teachersQuery, connection))
             {
-                using var connection = await _dbConnection.GetConnectionAsync();
-                
-                // Detailed Teacher Counts
-                var detailedTeachersQuery = @"
-                    SELECT 
-                        u.UserType,
-                        (SELECT COUNT(*) FROM class_offering co WHERE co.TeacherId = u.TeacherId) as OfferingCount
-                    FROM user u 
-                    INNER JOIN teacher t ON u.TeacherId = t.TeacherId
-                    WHERE t.SchoolId = @schoolId 
-                    AND u.IsActive = 1 
-                    AND u.UserType IN ('Teacher', 'SubjectTeacher', 'Adviser', 'Advisor')";
-                
-                int advisersCount = 0;
-                int subjectTeachersCount = 0;
-                int noSubjectsCount = 0;
-                int totalActiveTeachers = 0;
-
-                using (var cmd = new MySqlCommand(detailedTeachersQuery, connection))
+                cmd.Parameters.AddWithValue("@schoolId", schoolId.Trim());
+                using var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
                 {
-                    cmd.Parameters.AddWithValue("@schoolId", schoolId);
-                    using var reader = await cmd.ExecuteReaderAsync();
-                    while (await reader.ReadAsync())
+                    var userType = reader.GetString("UserType");
+                    var tId = reader.GetString("TeacherId");
+                    
+                    // Count only teaching staff (Advisers and Subject Teachers)
+                    bool isAdviser = userType.Equals("Adviser", StringComparison.OrdinalIgnoreCase) || 
+                                     userType.Equals("Advisor", StringComparison.OrdinalIgnoreCase);
+                    
+                    bool isSubjectTeacher = userType.Equals("SubjectTeacher", StringComparison.OrdinalIgnoreCase) || 
+                                            userType.Equals("Teacher", StringComparison.OrdinalIgnoreCase);
+
+                    if (isAdviser)
                     {
-                        totalActiveTeachers++;
-                        var userType = reader.GetString("UserType");
-                        var offeringCount = reader.GetInt32("OfferingCount");
-
-                        if (userType == "Adviser" || userType == "Advisor") advisersCount++;
-                        else subjectTeachersCount++;
-
-                        if (offeringCount == 0) noSubjectsCount++;
+                        advisersCount++;
+                        totalTeacherStaff++;
+                        teacherIds.Add(tId);
+                    }
+                    else if (isSubjectTeacher)
+                    {
+                        subjectTeachersCount++;
+                        totalTeacherStaff++;
+                        teacherIds.Add(tId);
                     }
                 }
+            }
 
-                // Pending Approvals
-                var pendingQuery = @"
-                    SELECT COUNT(*) 
-                    FROM user u 
-                    LEFT JOIN teacher t ON u.TeacherId = t.TeacherId
-                    WHERE t.SchoolId = @schoolId 
-                    AND u.IsApproved = 0 
-                    AND u.UserType IN ('Teacher', 'SubjectTeacher', 'Adviser', 'Advisor')";
-                using var pendingCommand = new MySqlCommand(pendingQuery, connection);
-                pendingCommand.Parameters.AddWithValue("@schoolId", schoolId);
-                var pendingApprovals = Convert.ToInt32(await pendingCommand.ExecuteScalarAsync());
+            // 2. Count With/No Subjects among these specific teachers
+            int noSubjectsCount = 0;
+            if (teacherIds.Any())
+            {
+                // Find teacher IDs that HAVE at least one class offering
+                // Split into batches if too many to avoid SQL parameter limits
+                var assignedTeacherIds = new HashSet<string>();
+                var batches = teacherIds.Select((item, index) => new { item, index })
+                                       .GroupBy(x => x.index / 100)
+                                       .Select(g => g.Select(x => x.item).ToList())
+                                       .ToList();
 
-                // Subject Assignment Progress
-                var totalOfferingsQuery = @"
-                    SELECT COUNT(*) FROM class_offering co 
-                    JOIN teacher t ON co.AdvisorId = t.TeacherId 
-                    WHERE t.SchoolId = @schoolId";
-                using var totalOfferingsCmd = new MySqlCommand(totalOfferingsQuery, connection);
-                totalOfferingsCmd.Parameters.AddWithValue("@schoolId", schoolId);
-                int totalClassOfferings = Convert.ToInt32(await totalOfferingsCmd.ExecuteScalarAsync());
-
-                var assignedOfferingsQuery = @"
-                    SELECT COUNT(*) FROM class_offering co 
-                    JOIN teacher t ON co.AdvisorId = t.TeacherId 
-                    WHERE t.SchoolId = @schoolId AND co.TeacherId IS NOT NULL";
-                using var assignedOfferingsCmd = new MySqlCommand(assignedOfferingsQuery, connection);
-                assignedOfferingsCmd.Parameters.AddWithValue("@schoolId", schoolId);
-                int assignedClassOfferings = Convert.ToInt32(await assignedOfferingsCmd.ExecuteScalarAsync());
-
-                // Active Today
-                var activeToday = new List<TeacherActivityInfo>();
-                var activeTodayQuery = @"
-                    SELECT DISTINCT t.FullName, u.TeacherId, MAX(sa.UpdatedAt) as LastSync
-                    FROM subject_attendance sa
-                    INNER JOIN class_offering co ON sa.ClassOfferingId = co.ClassOfferingId
-                    INNER JOIN teacher t ON co.TeacherId = t.TeacherId
-                    INNER JOIN user u ON t.TeacherId = u.TeacherId
-                    WHERE t.SchoolId = @schoolId AND sa.Date = CURDATE()
-                    GROUP BY t.TeacherId, t.FullName, u.TeacherId
-                    ORDER BY LastSync DESC";
-                
-                using (var activeTodayCmd = new MySqlCommand(activeTodayQuery, connection))
+                foreach (var batch in batches)
                 {
-                    activeTodayCmd.Parameters.AddWithValue("@schoolId", schoolId);
-                    using var activeReader = await activeTodayCmd.ExecuteReaderAsync();
-                    while (await activeReader.ReadAsync())
+                    var sqlParams = string.Join(",", batch.Select((_, i) => $"@t{i}"));
+                    var assignedTeachersQuery = $@"
+                        SELECT DISTINCT TeacherId 
+                        FROM class_offering 
+                        WHERE TeacherId IN ({sqlParams})";
+                    
+                    using (var cmd = new MySqlCommand(assignedTeachersQuery, connection))
                     {
-                        activeToday.Add(new TeacherActivityInfo
-                        {
-                            FullName = activeReader.GetString("FullName"),
-                            TeacherId = activeReader.GetString("TeacherId"),
-                            LastSync = activeReader.GetDateTime("LastSync")
-                        });
+                        for (int i = 0; i < batch.Count; i++)
+                            cmd.Parameters.AddWithValue($"@t{i}", batch[i]);
+                        
+                        using var reader = await cmd.ExecuteReaderAsync();
+                        while (await reader.ReadAsync())
+                            assignedTeacherIds.Add(reader.GetString(0));
                     }
                 }
+                
+                noSubjectsCount = totalTeacherStaff - assignedTeacherIds.Count;
+            }
 
-                return new HeadStatsResponse
-                {
-                    ActiveTeachers = totalActiveTeachers,
-                    PendingApprovals = pendingApprovals,
-                    NoSubjectsCount = noSubjectsCount,
-                    WithSubjectsCount = totalActiveTeachers - noSubjectsCount,
-                    AdvisersCount = advisersCount,
-                    SubjectTeachersCount = subjectTeachersCount,
-                    TotalClassOfferings = totalClassOfferings,
-                    AssignedClassOfferings = assignedClassOfferings,
-                    ActiveToday = activeToday
-                };
-            }
-            catch (Exception ex)
+            // 3. Pending Approvals (User logic)
+            var pendingQuery = @"
+                SELECT COUNT(*) 
+                FROM user u 
+                LEFT JOIN teacher t ON u.TeacherId = t.TeacherId
+                WHERE TRIM(t.SchoolId) = TRIM(@schoolId) 
+                AND u.IsApproved = 0 
+                AND u.UserType IN ('Teacher', 'SubjectTeacher', 'Adviser', 'Advisor')";
+            using var pendingCommand = new MySqlCommand(pendingQuery, connection);
+            pendingCommand.Parameters.AddWithValue("@schoolId", schoolId.Trim());
+            var pendingApprovals = Convert.ToInt32(await pendingCommand.ExecuteScalarAsync());
+
+            // 4. Subject Assignment Progress (Offering logic)
+            // Total offerings for this school
+            // Note: class_offering AdvisorId or TeacherId might link to the school
+            var totalOfferingsQuery = @"
+                SELECT COUNT(*) FROM class_offering co 
+                INNER JOIN teacher t ON co.AdvisorId = t.TeacherId 
+                WHERE TRIM(t.SchoolId) = TRIM(@schoolId)";
+            using var totalOfferingsCmd = new MySqlCommand(totalOfferingsQuery, connection);
+            totalOfferingsCmd.Parameters.AddWithValue("@schoolId", schoolId.Trim());
+            int totalClassOfferings = Convert.ToInt32(await totalOfferingsCmd.ExecuteScalarAsync());
+
+            // Assigned offerings (where TeacherId column is filled)
+            var assignedOfferingsQuery = @"
+                SELECT COUNT(*) FROM class_offering co 
+                INNER JOIN teacher t ON co.AdvisorId = t.TeacherId 
+                WHERE TRIM(t.SchoolId) = TRIM(@schoolId) AND co.TeacherId IS NOT NULL AND co.TeacherId != ''";
+            using var assignedOfferingsCmd = new MySqlCommand(assignedOfferingsQuery, connection);
+            assignedOfferingsCmd.Parameters.AddWithValue("@schoolId", schoolId.Trim());
+            int assignedClassOfferings = Convert.ToInt32(await assignedOfferingsCmd.ExecuteScalarAsync());
+
+            // 5. Active Today (Activity logic)
+            var activeToday = new List<TeacherActivityInfo>();
+            var activeTodayQuery = @"
+                SELECT DISTINCT t.FullName, u.TeacherId, MAX(sa.UpdatedAt) as MaxUpdatedAt
+                FROM subject_attendance sa
+                INNER JOIN class_offering co ON sa.ClassOfferingId = co.ClassOfferingId
+                INNER JOIN teacher t ON co.TeacherId = t.TeacherId
+                INNER JOIN user u ON t.TeacherId = u.TeacherId
+                WHERE TRIM(t.SchoolId) = TRIM(@schoolId) AND sa.Date = CURDATE()
+                GROUP BY t.TeacherId, t.FullName, u.TeacherId
+                ORDER BY MaxUpdatedAt DESC";
+            
+            using (var activeTodayCmd = new MySqlCommand(activeTodayQuery, connection))
             {
-                Console.WriteLine($"Error in GetHeadStatsAsync: {ex.Message}");
-                return new HeadStatsResponse();
+                activeTodayCmd.Parameters.AddWithValue("@schoolId", schoolId.Trim());
+                using var activeReader = await activeTodayCmd.ExecuteReaderAsync();
+                while (await activeReader.ReadAsync())
+                {
+                    activeToday.Add(new TeacherActivityInfo
+                    {
+                        FullName = activeReader.GetString("FullName"),
+                        TeacherId = activeReader.GetString("TeacherId"),
+                        LastSync = activeReader.GetDateTime("MaxUpdatedAt")
+                    });
+                }
             }
+
+            return new HeadStatsResponse
+            {
+                ActiveTeachers = totalTeacherStaff,
+                PendingApprovals = pendingApprovals,
+                NoSubjectsCount = noSubjectsCount,
+                WithSubjectsCount = totalTeacherStaff - noSubjectsCount,
+                AdvisersCount = advisersCount,
+                SubjectTeachersCount = subjectTeachersCount,
+                TotalClassOfferings = totalClassOfferings,
+                AssignedClassOfferings = assignedClassOfferings,
+                ActiveToday = activeToday
+            };
         }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error in GetHeadStatsAsync: {ex.Message}");
+            return new HeadStatsResponse();
+        }
+    }        
         public async Task<object> GetTeacherApprovalDiagnosticsAsync(string schoolId)
         {
             try
