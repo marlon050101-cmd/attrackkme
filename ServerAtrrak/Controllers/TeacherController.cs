@@ -311,6 +311,21 @@ namespace ServerAtrrak.Controllers
         }
     }
 
+        [HttpGet("assignments/{schoolId}")]
+        public async Task<ActionResult<IEnumerable<dynamic>>> GetTeachersWithAssignments(string schoolId, [FromQuery] bool onlyUnassigned = false)
+        {
+            try
+            {
+                var teachers = await _teacherService.GetTeachersWithAssignmentsAsync(schoolId, onlyUnassigned);
+                return Ok(teachers);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Internal server error", error = ex.Message });
+            }
+        }
+    }
+
     public class UpdateFullNameRequest
     {
         public string FullName { get; set; } = string.Empty;

@@ -138,9 +138,9 @@
             var currentUser = await AuthService.GetCurrentUserAsync();
             if (currentUser == null) return;
 
-            List<OfflineAttendanceRecord> mergedRecords = new();
+            List<OfflineAttendanceRecord> serverHistory = new();
 
-            // 1. Try fetching from SERVER if online
+            // 1. Fetch ONLY from SERVER
             if (ConnectionStatusService.IsOnline)
             {
                 try
@@ -153,7 +153,7 @@
                     {
                         foreach (var sr in serverRecords)
                         {
-                            mergedRecords.Add(new OfflineAttendanceRecord
+                            serverHistory.Add(new OfflineAttendanceRecord
                             {
                                 Id = sr.SubjectAttendanceId,
                                 StudentId = sr.StudentId,
@@ -172,20 +172,13 @@
                     System.Diagnostics.Debug.WriteLine($"Failed to fetch history from server: {ex.Message}");
                 }
             }
-
-            // 2. Fetch from OFFLINE (for unsynced records or if server failed)
-            var offlineRecords = await OfflineDataService.GetAllAttendanceRecordsAsync(currentUser.TeacherId);
-            
-            // 3. Merge and De-duplicate
-            foreach (var offRec in offlineRecords)
+            else
             {
-                if (!mergedRecords.Any(r => r.Id == offRec.Id))
-                {
-                    mergedRecords.Add(offRec);
-                }
+                // If offline, we can't show history as per user request (server-only)
+                // Maybe a notice to the user or just keep it empty
             }
 
-            allRecords = mergedRecords;
+            allRecords = serverHistory;
             await ApplyFilter();
         }
         catch (Exception ex)

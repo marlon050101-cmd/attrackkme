@@ -862,44 +862,55 @@ namespace ServerAtrrak.Services
             {
                 using var connection = await _dbConnection.GetConnectionAsync();
                 
-                // Active Teachers
-                var teachersQuery = @"
-                    SELECT COUNT(*) 
+                // Detailed Teacher Counts
+                var detailedTeachersQuery = @"
+                    SELECT 
+                        u.UserType,
+                        (SELECT COUNT(*) FROM class_offering co WHERE co.TeacherId = u.TeacherId) as OfferingCount
                     FROM user u 
-                    LEFT JOIN teacher t ON u.TeacherId = t.TeacherId 
-                    WHERE t.SchoolId = @schoolId 
+                    WHERE u.SchoolId = @schoolId 
                     AND u.IsActive = 1 
-                    AND (u.UserType = 'Teacher' OR u.UserType = 'SubjectTeacher')";
-                using var teacherCommand = new MySqlCommand(teachersQuery, connection);
-                teacherCommand.Parameters.AddWithValue("@schoolId", schoolId);
-                var activeTeachers = Convert.ToInt32(await teacherCommand.ExecuteScalarAsync());
+                    AND (u.UserType = 'Teacher' OR u.UserType = 'SubjectTeacher' OR u.UserType = 'Adviser')";
+                
+                int advisersCount = 0;
+                int subjectTeachersCount = 0;
+                int noSubjectsCount = 0;
+                int totalActiveTeachers = 0;
 
-                // Active Students
-                var studentsQuery = @"
-                    SELECT COUNT(*) 
-                    FROM student 
-                    WHERE SchoolId = @schoolId AND IsActive = 1";
-                using var studentCommand = new MySqlCommand(studentsQuery, connection);
-                studentCommand.Parameters.AddWithValue("@schoolId", schoolId);
-                var activeStudents = Convert.ToInt32(await studentCommand.ExecuteScalarAsync());
+                using (var cmd = new MySqlCommand(detailedTeachersQuery, connection))
+                {
+                    cmd.Parameters.AddWithValue("@schoolId", schoolId);
+                    using var reader = await cmd.ExecuteReaderAsync();
+                    while (await reader.ReadAsync())
+                    {
+                        totalActiveTeachers++;
+                        var userType = reader.GetString("UserType");
+                        var offeringCount = reader.GetInt32("OfferingCount");
+
+                        if (userType == "Adviser") advisersCount++;
+                        else subjectTeachersCount++;
+
+                        if (offeringCount == 0) noSubjectsCount++;
+                    }
+                }
 
                 // Pending Approvals
                 var pendingQuery = @"
                     SELECT COUNT(*) 
                     FROM user u 
-                    LEFT JOIN teacher t ON u.TeacherId = t.TeacherId 
-                    WHERE t.SchoolId = @schoolId 
+                    WHERE u.SchoolId = @schoolId 
                     AND u.IsApproved = 0 
-                    AND (u.UserType = 'Teacher' OR u.UserType = 'SubjectTeacher')";
+                    AND (u.UserType = 'Teacher' OR u.UserType = 'SubjectTeacher' OR u.UserType = 'Adviser')";
                 using var pendingCommand = new MySqlCommand(pendingQuery, connection);
                 pendingCommand.Parameters.AddWithValue("@schoolId", schoolId);
                 var pendingApprovals = Convert.ToInt32(await pendingCommand.ExecuteScalarAsync());
 
                 return new
                 {
-                    ActiveTeachers = activeTeachers,
-                    ActiveStudents = activeStudents,
-                    PendingApprovals = pendingApprovals
+                    ActiveTeachers = totalActiveTeachers,
+                    PendingApprovals = pendingApprovals,
+                    NoSubjectsCount = noSubjectsCount,
+                    WithSubjectsCount = totalActiveTeachers - noSubjectsCount
                 };
             }
             catch (Exception ex)
@@ -1120,6 +1131,59 @@ namespace ServerAtrrak.Services
             {
                 Console.WriteLine($"DEBUG: EXCEPTION in DeleteTeacherAsync: {ex.Message}");
                 return (false, $"Database error: {ex.Message}");
+            }
+        public async Task<IEnumerable<dynamic>> GetTeachersWithAssignmentsAsync(string schoolId, bool onlyUnassigned)
+        {
+            try
+            {
+                using var connection = await _dbConnection.GetConnectionAsync();
+                
+                // Get teachers and their offering count
+                // Also get the list of subject names if they have any
+                string query = @"
+                    SELECT 
+                        u.TeacherId,
+                        u.FullName,
+                        u.UserType,
+                        u.Username,
+                        (SELECT COUNT(*) FROM class_offering co WHERE co.TeacherId = u.TeacherId) as OfferingCount,
+                        (SELECT GROUP_CONCAT(co.SubjectName SEPARATOR ', ') FROM class_offering co WHERE co.TeacherId = u.TeacherId) as Subjects
+                    FROM user u 
+                    WHERE u.SchoolId = @schoolId 
+                    AND u.IsActive = 1 
+                    AND (u.UserType = 'Teacher' OR u.UserType = 'SubjectTeacher' OR u.UserType = 'Adviser')";
+
+                if (onlyUnassigned)
+                {
+                    query += " AND (SELECT COUNT(*) FROM class_offering co WHERE co.TeacherId = u.TeacherId) = 0";
+                }
+
+                query += " ORDER BY u.FullName ASC";
+
+                var teachers = new List<dynamic>();
+                using (var cmd = new MySqlCommand(query, connection))
+                {
+                    cmd.Parameters.AddWithValue("@schoolId", schoolId);
+                    using var reader = await cmd.ExecuteReaderAsync();
+                    while (await reader.ReadAsync())
+                    {
+                        teachers.Add(new
+                        {
+                            TeacherId = reader.GetString("TeacherId"),
+                            FullName = reader.IsDBNull(reader.GetOrdinal("FullName")) ? reader.GetString("Username") : reader.GetString("FullName"),
+                            UserType = reader.GetString("UserType"),
+                            OfferingCount = reader.GetInt32("OfferingCount"),
+                            Subjects = reader.IsDBNull(reader.GetOrdinal("Subjects")) ? "None" : reader.GetString("Subjects")
+                        });
+                    }
+                }
+
+                return teachers;
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Error getting teachers with assignments");
+                throw;
             }
         }
     }

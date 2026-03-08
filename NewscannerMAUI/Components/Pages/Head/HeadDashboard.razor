@@ -7,89 +7,119 @@
 @inject IHttpClientFactory HttpClientFactory
 
 <div class="dashboard-container">
-    <div class="welcome-banner">
-        <h2 class="mb-1">Greetings, @headName!</h2>
-        <p class="text-head-portal small">School Head Management & Oversight Portal</p>
-    </div>
-
-    <!-- Stats Overview -->
-    <div class="stats-grid">
-        <div class="stat-card premium-card" @onclick="GoToApprovals">
-            <div class="stat-icon approvals">
-                <i class="fas fa-user-shield"></i>
-            </div>
-            <div class="stat-info">
-                <span class="stat-value">Verification Center</span>
-                <span class="stat-label">Pending teacher approvals</span>
-            </div>
-            <div class="badge-premium ms-auto">Action Required</div>
+    <!-- Simplified Teacher Summary -->
+    <div class="summary-section">
+        <div class="section-header">
+            <h3>Teacher Overview</h3>
+            <div class="header-line"></div>
         </div>
-        <div class="stat-card premium-card" @onclick="GoToManageRoles">
-            <div class="stat-icon roles">
-                <i class="fas fa-crown"></i>
-            </div>
-            <div class="stat-info">
-                <span class="stat-value">Personnel Roles</span>
-                <span class="stat-label">Assign administrative privileges</span>
-            </div>
-            <i class="fas fa-chevron-right ms-auto text-muted"></i>
-        </div>
-    </div>
 
-    <!-- Summary Section -->
-    <div class="summary-section mt-4">
-        <h5 class="section-title">School Summary</h5>
-        <div class="info-card">
-            <div class="info-item">
-                <span class="info-label">Teachers</span>
-                <span class="info-value">@activeTeachers</span>
-            </div>
-            <div class="info-divider"></div>
-            <div class="info-item">
-                <span class="info-label">Students</span>
-                <span class="info-value">@activeStudents</span>
+        <div class="main-stats-card" @onclick="() => LoadTeacherList(false)">
+            <div class="stat-item total">
+                <span class="stat-label">Total Teachers</span>
+                <span class="stat-value">@activeTeachers</span>
             </div>
         </div>
-    </div>
 
-    <!-- Actions Section -->
-    <div class="actions-section mt-4">
-        <h5 class="section-title">Administrative Tasks</h5>
-        <div class="action-buttons-grid">
-            <button class="action-card approvals" @onclick="GoToApprovals">
-                <div class="action-icon">
+        <div class="detailed-stats-grid">
+            <div class="detail-card success" @onclick="() => LoadTeacherList(false)">
+                <div class="detail-icon head">
                     <i class="fas fa-user-check"></i>
-                    @if (pendingApprovals > 0)
-                    {
-                        <span class="notification-dot">@pendingApprovals</span>
-                    }
                 </div>
-                <span class="action-text">Review Teachers</span>
-            </button>
+                <div class="detail-info">
+                    <span class="detail-value">@withSubjectsCount</span>
+                    <span class="detail-label">With Subjects</span>
+                </div>
+            </div>
+            <div class="detail-card warning" @onclick="() => LoadTeacherList(true)">
+                <div class="detail-icon alert">
+                    <i class="fas fa-user-times"></i>
+                </div>
+                <div class="detail-info">
+                    <span class="detail-value">@noSubjectsCount</span>
+                    <span class="detail-label">No Subjects</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Dynamic Teacher List Section (Visible after click) -->
+    @if (selectedTeacherList != null)
+    {
+        <div class="teacher-list-section">
+            <div class="list-header">
+                <h4>@(showingOnlyUnassigned ? "Unassigned Teachers" : "All Teachers")</h4>
+                <button class="close-btn" @onclick="() => selectedTeacherList = null">&times;</button>
+            </div>
             
-            <button class="action-card reports">
-                <div class="action-icon">
-                    <i class="fas fa-file-invoice"></i>
+            <div class="teacher-scroll-list">
+                @foreach (var teacher in selectedTeacherList)
+                {
+                    <div class="teacher-info-card">
+                        <div class="teacher-main">
+                            <span class="teacher-name">@teacher.FullName</span>
+                            <span class="teacher-role">@teacher.UserType</span>
+                        </div>
+                        <div class="teacher-details">
+                            <i class="fas fa-book-open"></i>
+                            <span class="subjects-text">@teacher.Subjects</span>
+                        </div>
+                        <div class="teacher-actions">
+                            @if (teacher.OfferingCount == 0)
+                            {
+                                <button class="assign-btn" @onclick='() => Navigation.NavigateTo($"/head-subject-planner?teacherId={teacher.TeacherId}")'>
+                                    Assign Subjects
+                                </button>
+                            }
+                            else
+                            {
+                                <button class="view-btn" @onclick='() => Navigation.NavigateTo($"/head-subject-planner?teacherId={teacher.TeacherId}")'>
+                                    Manage
+                                </button>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
+    <div class="tasks-section">
+        <h3 class="tasks-title">Administrative Tasks</h3>
+        <div class="task-grid">
+            <div class="task-item" @onclick='() => Navigation.NavigateTo("/head-reports")'>
+                <div class="task-icon reports">
+                    <i class="fas fa-chart-line"></i>
                 </div>
-                <span class="action-text">School Reports</span>
-            </button>
+                <span>Reports</span>
+            </div>
+            <div class="task-item" @onclick="GoToApprovals">
+                <div class="task-icon verify">
+                    <i class="fas fa-check-double"></i>
+                </div>
+                <span>Verify</span>
+            </div>
         </div>
     </div>
 </div>
 
 @code {
-    private string headName = "Head";
     private int activeTeachers = 0;
-    private int activeStudents = 0;
+    private int noSubjectsCount = 0;
+    private int withSubjectsCount = 0;
     private int pendingApprovals = 0;
+    private string? currentSchoolId;
+
+    private List<TeacherAssignmentInfo>? selectedTeacherList;
+    private bool showingOnlyUnassigned = false;
 
     protected override async Task OnInitializedAsync()
     {
         var user = await AuthService.GetCurrentUserAsync();
         if (user != null)
         {
-            headName = user.Username;
-            await LoadStats(user.SchoolId);
+            currentSchoolId = user.SchoolId;
+            await LoadStats(currentSchoolId);
         }
     }
 
@@ -104,8 +134,9 @@
             if (stats != null)
             {
                 activeTeachers = stats.ActiveTeachers;
-                activeStudents = stats.ActiveStudents;
                 pendingApprovals = stats.PendingApprovals;
+                noSubjectsCount = stats.NoSubjectsCount;
+                withSubjectsCount = stats.WithSubjectsCount;
             }
         }
         catch (Exception ex)
@@ -114,185 +145,340 @@
         }
     }
 
+    private async Task LoadTeacherList(bool unassigned)
+    {
+        if (string.IsNullOrEmpty(currentSchoolId)) return;
+        
+        try
+        {
+            showingOnlyUnassigned = unassigned;
+            var http = HttpClientFactory.CreateClient("AttrakAPI");
+            selectedTeacherList = await http.GetFromJsonAsync<List<TeacherAssignmentInfo>>($"/api/teacher/assignments/{currentSchoolId}?onlyUnassigned={unassigned}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading teacher list: {ex.Message}");
+        }
+    }
+
     private void GoToApprovals() => Navigation.NavigateTo("/head/teacher-approvals");
-    private void GoToManageRoles() => Navigation.NavigateTo("/head-manage-roles");
 
     private class HeadStatsResponse
     {
         public int ActiveTeachers { get; set; }
-        public int ActiveStudents { get; set; }
         public int PendingApprovals { get; set; }
+        public int NoSubjectsCount { get; set; }
+        public int WithSubjectsCount { get; set; }
+    }
+
+    private class TeacherAssignmentInfo
+    {
+        public string TeacherId { get; set; } = "";
+        public string FullName { get; set; } = "";
+        public string UserType { get; set; } = "";
+        public int OfferingCount { get; set; }
+        public string Subjects { get; set; } = "";
     }
 }
 
 <style>
-    .notification-dot {
-        position: absolute;
-        top: -5px;
-        right: -5px;
-        background: #f6c23e;
+    .dashboard-container {
+        padding: 1.5rem;
+        background: #f8faff;
+        min-height: 100vh;
+        max-width: 500px;
+        margin: 0 auto;
+    }
+
+    .summary-section {
+        margin-bottom: 2rem;
+    }
+
+    .section-header {
+        margin-bottom: 1.5rem;
+    }
+
+    .section-header h3 {
+        font-size: 1.5rem;
+        font-weight: 800;
         color: #2b166b;
-        font-size: 0.65rem;
+        margin: 0;
+    }
+
+    .header-line {
+        width: 40px;
+        height: 4px;
+        background: #6366f1;
+        border-radius: 10px;
+        margin-top: 8px;
+    }
+
+    .main-stats-card {
+        background: white;
+        border-radius: 24px;
+        padding: 2.5rem;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        box-shadow: 0 10px 30px rgba(43, 22, 107, 0.05);
+        margin-bottom: 1rem;
+        border: 1px solid #edf2f7;
+        cursor: pointer;
+        transition: transform 0.2s;
+    }
+
+    .main-stats-card:active { transform: scale(0.98); }
+
+    .stat-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .stat-label {
+        color: #718096;
+        font-size: 0.85rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin-bottom: 0.5rem;
+    }
+
+    .stat-value {
+        font-size: 3.5rem;
         font-weight: 900;
-        width: 22px;
-        height: 22px;
+        color: #2b166b;
+        line-height: 1;
+    }
+
+    .detailed-stats-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+    }
+
+    .detail-card {
+        background: white;
+        padding: 1.25rem;
+        border-radius: 20px;
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        border: 1px solid #edf2f7;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.02);
+        cursor: pointer;
+        transition: transform 0.2s;
+    }
+
+    .detail-card:active { transform: scale(0.96); }
+
+    .detail-card.success { border-left: 4px solid #10b981; }
+    .detail-card.warning { border-left: 4px solid #f59e0b; }
+
+    .detail-icon {
+        width: 40px;
+        height: 40px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.1rem;
+    }
+
+    .success .detail-icon { background: rgba(16, 185, 129, 0.1); color: #10b981; }
+    .warning .detail-icon { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
+
+    .detail-value {
+        display: block;
+        font-weight: 800;
+        color: #2d3748;
+        font-size: 1.25rem;
+    }
+
+    .detail-label {
+        font-size: 0.75rem;
+        color: #718096;
+        font-weight: 600;
+    }
+
+    /* Teacher List Section */
+    .teacher-list-section {
+        background: white;
+        border-radius: 24px;
+        padding: 1.5rem;
+        margin-bottom: 2rem;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.05);
+        border: 1px solid #edf2f7;
+        animation: slideIn 0.3s ease-out;
+    }
+
+    @keyframes slideIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    .list-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1.25rem;
+    }
+
+    .list-header h4 {
+        margin: 0;
+        font-weight: 800;
+        color: #2b166b;
+    }
+
+    .close-btn {
+        background: #f1f5f9;
+        border: none;
+        width: 30px;
+        height: 30px;
         border-radius: 50%;
         display: flex;
         align-items: center;
         justify-content: center;
-        border: 2px solid white;
-        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        cursor: pointer;
+        font-size: 1.25rem;
+        color: #64748b;
     }
 
-    .action-icon {
-        position: relative;
+    .teacher-scroll-list {
+        max-height: 400px;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        padding-right: 5px;
     }
 
-    .dashboard-container {
-        padding: 0;
+    .teacher-scroll-list::-webkit-scrollbar { width: 4px; }
+    .teacher-scroll-list::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+
+    .teacher-info-card {
+        padding: 1rem;
+        border-radius: 16px;
+        background: #f8fafc;
+        border: 1px solid #f1f5f9;
     }
 
-    .welcome-banner {
-        margin-top: 0;
+    .teacher-main {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 0.5rem;
+    }
+
+    .teacher-name {
+        font-weight: 800;
+        color: #1e293b;
+        font-size: 0.95rem;
+    }
+
+    .teacher-role {
+        font-size: 0.7rem;
+        font-weight: 700;
+        color: #6366f1;
+        background: rgba(99, 102, 241, 0.1);
+        padding: 2px 8px;
+        border-radius: 20px;
+    }
+
+    .teacher-details {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.5rem;
+        color: #64748b;
+        font-size: 0.8rem;
         margin-bottom: 0.75rem;
-        padding: 0.5rem 1rem 0.25rem;
     }
 
-    .welcome-banner h2 {
-        font-weight: 900;
-        color: #2b166b;
-        font-size: 1.5rem;
-        margin-top: 0;
+    .teacher-details i { margin-top: 2px; font-size: 0.75rem; }
+
+    .subjects-text {
+        line-height: 1.4;
+        font-weight: 500;
     }
 
-    .text-head-portal {
-        color: #6f42c1;
-        font-weight: 600;
+    .teacher-actions {
+        display: flex;
+        justify-content: flex-end;
+    }
+
+    .assign-btn, .view-btn {
+        padding: 0.5rem 1rem;
+        border-radius: 12px;
+        font-size: 0.75rem;
+        font-weight: 700;
+        border: none;
+        cursor: pointer;
+        transition: transform 0.1s;
+    }
+
+    .assign-btn {
+        background: #f59e0b;
+        color: white;
+        box-shadow: 0 4px 12px rgba(245, 158, 11, 0.2);
+    }
+
+    .view-btn {
+        background: #f1f5f9;
+        color: #475569;
+    }
+
+    .assign-btn:active { transform: scale(0.95); }
+
+    /* Tasks Section */
+    .tasks-section {
+        background: white;
+        padding: 1.5rem;
+        border-radius: 24px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.02);
+    }
+
+    .tasks-title {
+        font-size: 1rem;
+        font-weight: 700;
+        color: #718096;
+        margin-bottom: 1.25rem;
+        text-transform: uppercase;
         letter-spacing: 0.5px;
     }
 
-    /* Stats Grid */
-    .stats-grid {
+    .task-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 1.5rem;
+    }
+
+    .task-item {
         display: flex;
         flex-direction: column;
-        gap: 1rem;
-        padding: 0 1rem;
-    }
-
-    .premium-card {
-        background: white;
-        border-left: 5px solid #6f42c1 !important;
-        transition: all 0.3s cubic-bezier(0.165, 0.84, 0.44, 1) !important;
-    }
-
-    .premium-card:active {
-        background: #f8f7ff;
-        transform: scale(0.98);
-    }
-
-    .stat-card {
-        padding: 1.25rem;
-        border-radius: 16px;
-        display: flex;
         align-items: center;
-        gap: 1rem;
-        box-shadow: 0 10px 25px rgba(111, 66, 193, 0.08);
-        border: 1px solid #edf2f7;
+        gap: 0.75rem;
         cursor: pointer;
     }
 
-    .stat-icon {
-        width: 55px;
-        height: 55px;
-        border-radius: 14px;
+    .task-icon {
+        width: 60px;
+        height: 60px;
+        border-radius: 18px;
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 1.6rem;
+        font-size: 1.5rem;
+        transition: transform 0.2s, box-shadow 0.2s;
     }
 
-    .stat-icon.approvals {
-        background: linear-gradient(135deg, rgba(111, 66, 193, 0.1) 0%, rgba(111, 66, 193, 0.2) 100%);
-        color: #6f42c1;
-    }
+    .task-item:active .task-icon { transform: scale(0.95); }
 
-    .stat-icon.roles {
-        background: linear-gradient(135deg, rgba(246, 194, 62, 0.1) 0%, rgba(246, 194, 62, 0.2) 100%);
-        color: #d39e00;
-    }
+    .task-icon.reports { background: #ebf8ff; color: #3182ce; }
+    .task-icon.verify { background: #f0fff4; color: #38a169; }
 
-    .badge-premium {
-        background: #6f42c1;
-        color: white;
-        padding: 0.4rem 0.8rem;
-        border-radius: 20px;
-        font-size: 0.7rem;
-        font-weight: 800;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        box-shadow: 0 4px 10px rgba(111, 66, 193, 0.3);
-    }
-
-    /* Info Card */
-    .info-card {
-        background: white;
-        margin: 0 1rem;
-        padding: 1.5rem;
-        border-radius: 16px;
-        box-shadow: 0 10px 25px rgba(0,0,0,0.04);
-        border: 1px solid #edf2f7;
-        display: flex;
-        justify-content: space-around;
-        align-items: center;
-        border-bottom: 3px solid #f6c23e;
-    }
-
-    .info-value {
-        font-weight: 900;
-        font-size: 1.75rem;
-        color: #6f42c1;
-    }
-
-    .section-title {
-        font-weight: 800;
-        color: #2b166b;
-        margin-bottom: 1.25rem;
-        font-size: 1.1rem;
-        padding-left: 0.25rem;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-    }
-
-    .action-card {
-        background: white;
-        border: 1px solid #edf2f7;
-        border-radius: 20px;
-        padding: 1.75rem 1rem;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 0.8rem;
-        transition: all 0.3s;
-        box-shadow: 0 10px 20px rgba(0,0,0,0.05);
-        width: 100%;
-        border: none;
-    }
-
-    .action-card.approvals .action-icon {
-        background: linear-gradient(135deg, #6f42c1 0%, #4b2ea2 100%);
-        color: white;
-        box-shadow: 0 8px 15px rgba(111, 66, 193, 0.3);
-    }
-
-    .action-card.reports .action-icon {
-        background: linear-gradient(135deg, #f6c23e 0%, #d39e00 100%);
-        color: white;
-        box-shadow: 0 8px 15px rgba(246, 194, 62, 0.3);
-    }
-
-    .action-text {
+    .task-item span {
+        font-size: 0.85rem;
         font-weight: 700;
-        color: #2d3748;
-        font-size: 0.9rem;
+        color: #4a5568;
     }
 </style>
