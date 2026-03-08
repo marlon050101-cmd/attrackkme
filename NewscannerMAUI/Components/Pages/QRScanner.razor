@@ -1,5 +1,5 @@
 @page "/qr-scanner"
-@layout TeacherLayout
+@layout DynamicRoleLayout
 @using AttrackSharedClass.Models
 @using NewscannerMAUI.Services
 @inject IHttpClientFactory HttpClientFactory
@@ -28,16 +28,13 @@
     .scanner-container {
         display: flex;
         flex-direction: column;
-        height: 100vh;
+        min-height: 100%;
         background-color: #f8f9fa;
-        overflow: hidden;
     }
 
     .header-section {
         background-color: white;
-        padding: 6px 15px 10px;
-        /* Reverted top padding */
-        padding-top: calc(6px + env(safe-area-inset-top, 0px));
+        padding: 5px 15px;
         box-shadow: 0 2px 5px rgba(0,0,0,0.05);
         z-index: 10;
         display: flex;

@@ -1,0 +1,229 @@
+@implements IDisposable
+@using NewscannerMAUI.Services
+@using AttrackSharedClass.Models
+@using System.Net.Http.Json
+@inject IHttpClientFactory HttpClientFactory
+@inject AuthService AuthService
+@inject AdviserStateService AdviserState
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+
+<div class="adviser-layout @(isSidebarOpen ? "sidebar-open" : "")">
+    <!-- Header -->
+    <header class="app-header">
+        <div class="header-left">
+            <button class="menu-toggle" @onclick="ToggleSidebar">
+                <i class="fas fa-bars"></i>
+            </button>
+        </div>
+        <div class="header-center">
+            <span class="app-brand">SARDO-TRACKCARE</span>
+        </div>
+        <div class="header-right">
+            <button class="header-logout-btn" @onclick="HandleLogout">
+                <i class="fas fa-sign-out-alt"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Sidebar Overlay -->
+    <div class="sidebar-overlay" @onclick="CloseSidebar"></div>
+
+    <!-- Sidebar -->
+    <aside class="app-sidebar">
+        <div class="sidebar-header">
+            <div class="user-profile">
+                <div class="user-avatar">
+                    <i class="fas fa-user-tie"></i>
+                </div>
+                <div class="user-info">
+                    <span class="user-name">@adviserName</span>
+                    <span class="user-role">Class Adviser</span>
+                </div>
+            </div>
+        </div>
+        
+        <nav class="sidebar-nav">
+            <div class="nav-section">
+                <div class="nav-section-title">Main</div>
+                <NavLink class="nav-item" href="/adviser-dashboard" Match="NavLinkMatch.All" @onclick="CloseSidebar">
+                    <i class="fas fa-th-large"></i>
+                    <span>Dashboard</span>
+                </NavLink>
+                <NavLink class="nav-item" href="/adviser/attendance-monitoring" @onclick="CloseSidebar">
+                    <i class="fas fa-user-check"></i>
+                    <span>Attendance Monitoring</span>
+                </NavLink>
+                <NavLink class="nav-item" href="/qr-scanner" @onclick="CloseSidebar">
+                    <i class="fas fa-qrcode"></i>
+                    <span>Scanner</span>
+                </NavLink>
+                <NavLink class="nav-item" href="/adviser/student-approvals" @onclick="CloseSidebar">
+                    <i class="fas fa-user-plus"></i>
+                    <span class="nav-label">Student Approvals</span>
+                    @if (AdviserState.PendingStudentsCount > 0)
+                    {
+                        <span class="pending-badge">@AdviserState.PendingStudentsCount</span>
+                    }
+                </NavLink>
+            </div>
+
+            <div class="nav-section mt-4">
+                <div class="nav-section-title">Account</div>
+                <NavLink class="nav-item" href="/adviser-profile" @onclick="CloseSidebar">
+                    <i class="fas fa-user-circle"></i>
+                    <span>Profile</span>
+                </NavLink>
+                <button class="nav-item logout-nav" @onclick="HandleLogout">
+                    <i class="fas fa-sign-out-alt"></i>
+                    <span>Logout</span>
+                </button>
+            </div>
+        </nav>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        @Content
+    </main>
+</div>
+
+@code {
+    [Parameter] public RenderFragment? Content { get; set; }
+    private bool isSidebarOpen = false;
+    private string adviserName = "Adviser";
+
+    protected override async Task OnInitializedAsync()
+    {
+        AdviserState.OnStateChanged += HandleStateChanged;
+        var user = await AuthService.GetCurrentUserAsync();
+        if (user != null)
+        {
+            adviserName = user.Username;
+
+            if (!string.IsNullOrEmpty(user.TeacherId))
+            {
+                await LoadPendingStudentsCount(user.TeacherId);
+            }
+        }
+    }
+
+    private void HandleStateChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        AdviserState.OnStateChanged -= HandleStateChanged;
+    }
+
+    private async Task LoadPendingStudentsCount(string teacherId)
+    {
+        try
+        {
+            var http = HttpClientFactory.CreateClient("AttrakAPI");
+            var response = await http.GetAsync($"api/register/adviser/{teacherId}/students");
+            if (response.IsSuccessStatusCode)
+            {
+                var students = await response.Content.ReadFromJsonAsync<List<StudentDisplayInfo>>();
+                if (students != null)
+                {
+                    var count = students.Count(s => 
+                        string.Equals(s.EnrollmentStatus, "Pending", StringComparison.OrdinalIgnoreCase));
+                    AdviserState.SetPendingCount(count);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading pending students count: {ex.Message}");
+        }
+    }
+
+    private void ToggleSidebar() => isSidebarOpen = !isSidebarOpen;
+    private void CloseSidebar() => isSidebarOpen = false;
+
+    private void HandleLogout()
+    {
+        AuthService.Logout();
+        Navigation.NavigateTo("/");
+    }
+}
+
+<style>
+    :root {
+        --adviser-primary: #1cc88a;
+        --adviser-secondary: #17a673;
+        --sidebar-width: 260px;
+        --header-height: 60px;
+        --header-top-offset: 32px;
+    }
+
+    .adviser-layout {
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        background-color: #f8f9fc;
+    }
+
+    .app-header {
+        height: var(--header-height);
+        background: linear-gradient(180deg, var(--adviser-primary) 0%, var(--adviser-secondary) 100%);
+        color: white !important;
+        display: flex;
+        align-items: center; 
+        justify-content: space-between;
+        padding: 0 1rem;
+        position: fixed;
+        top: var(--header-top-offset); 
+        left: 0;
+        right: 0;
+        z-index: 1000;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    }
+
+    .menu-toggle, .header-logout-btn {
+        background: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        color: white !important;
+        width: 42px; height: 42px; border-radius: 12px;
+        display: flex; align-items: center; justify-content: center;
+    }
+
+    .app-brand { font-weight: 850; letter-spacing: 2px; font-size: 1.25rem; color: white !important; }
+
+    .app-sidebar {
+        position: fixed;
+        top: var(--header-top-offset);
+        bottom: 0;
+        left: calc(-1 * var(--sidebar-width));
+        width: var(--sidebar-width);
+        background: white;
+        z-index: 1002;
+        transition: transform 0.3s;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .sidebar-open .app-sidebar { transform: translateX(var(--sidebar-width)); }
+
+    .sidebar-overlay {
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0,0,0,0.5);
+        z-index: 1001;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.3s;
+    }
+
+    .sidebar-open .sidebar-overlay { opacity: 1; pointer-events: auto; }
+
+    .user-name { font-weight: 700; color: var(--adviser-primary); }
+    .nav-item { display: flex; align-items: center; gap: 0.5rem; padding: 0.6rem; color: #858796; text-decoration: none !important; }
+    .nav-item.active { background: rgba(28, 200, 138, 0.1); color: var(--adviser-primary); }
+
+    .main-content {
+        margin-top: calc(var(--header-height) + var(--header-top-offset));
+        padding: 0;
+        flex: 1;
+    }
+</style>

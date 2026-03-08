@@ -1,0 +1,52 @@
+@inherits LayoutComponentBase
+@using NewscannerMAUI.Services
+@using AttrackSharedClass.Models
+@inject AuthService AuthService
+
+@if (!isInitialized)
+{
+    <div class="loading-layout">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
+}
+else if (userType == UserType.Adviser)
+{
+    <AdviserLayoutWrapper Content="@Body" />
+}
+else
+{
+    <TeacherLayoutWrapper Content="@Body" />
+}
+
+@code {
+    private UserType userType = UserType.SubjectTeacher;
+    private bool isInitialized = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var user = await AuthService.GetCurrentUserAsync();
+            if (user != null)
+            {
+                userType = user.UserType;
+            }
+        }
+        finally
+        {
+            isInitialized = true;
+        }
+    }
+}
+
+<style>
+    .loading-layout {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        background-color: #f8f9fc;
+    }
+</style>

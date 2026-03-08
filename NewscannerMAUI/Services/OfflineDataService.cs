@@ -251,7 +251,7 @@ namespace NewscannerMAUI.Services
 
                 System.Diagnostics.Debug.WriteLine("Offline database initialized successfully");
                 
-                // Test that the database is writable
+               
                 try
                 {
                     var testCommand = new SqliteCommand("SELECT 1", connection);

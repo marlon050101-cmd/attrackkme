@@ -18,17 +18,20 @@ namespace ServerAtrrak.Controllers
         private readonly ILogger<DailyAttendanceController> _logger;
         private readonly GsmSmsService _smsService;
         private readonly IHubContext<SmsQueueHub> _smsQueueHub;
+        private readonly SmsQueueService _smsQueueService;
 
         public DailyAttendanceController(
             Dbconnection dbConnection,
             ILogger<DailyAttendanceController> logger,
             GsmSmsService smsService,
-            IHubContext<SmsQueueHub> smsQueueHub)
+            IHubContext<SmsQueueHub> smsQueueHub,
+            SmsQueueService smsQueueService)
         {
             _dbConnection = dbConnection;
             _logger = logger;
             _smsService = smsService;
             _smsQueueHub = smsQueueHub;
+            _smsQueueService = smsQueueService;
         }
 
 
@@ -42,35 +45,8 @@ namespace ServerAtrrak.Controllers
         {
             if (string.IsNullOrWhiteSpace(parentNumber)) return;
             
-            var message = GsmSmsService.BuildSmsMessage(studentName, attendanceType, time);
-            
-            _ = Task.Run(async () => {
-                try 
-                {
-                    using var connection = new MySqlConnection(_dbConnection.GetConnection());
-                    await connection.OpenAsync();
-                    
-                    var sql = @"INSERT INTO sms_queue (PhoneNumber, Message, StudentId, ScheduledAt, IsSent) 
-                               VALUES (@Phone, @Msg, @Sid, @Date, 0)";
-                    
-                    using var cmd = new MySqlCommand(sql, connection);
-                    cmd.Parameters.AddWithValue("@Phone", parentNumber);
-                    cmd.Parameters.AddWithValue("@Msg", message);
-                    cmd.Parameters.AddWithValue("@Sid", "Unknown"); // Can be updated to real ID if needed
-                    cmd.Parameters.AddWithValue("@Date", DateTime.Now);
-                    
-                    await cmd.ExecuteNonQueryAsync();
-                    _logger.LogInformation("[SMS-QUEUE] Queued message for {Name}", studentName);
-
-                    // Notify the Office PC dispatcher (SignalR) to fetch/send immediately
-                    await _smsQueueHub.Clients.Group(SmsQueueHub.GroupName)
-                        .SendAsync("SmsQueueChanged", new { Reason = "Queued", StudentName = studentName, AttendanceType = attendanceType });
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "[SMS-QUEUE] Failed to queue message for {Phone}", parentNumber);
-                }
-            });
+            // Re-use the new unified service
+            _ = _smsQueueService.QueueSmsAsync(parentNumber, studentName, attendanceType, time);
         }
 
         [HttpGet("pending-sms")]

@@ -49,6 +49,7 @@ namespace ServerAtrrak
             // Per-subject attendance
             builder.Services.AddScoped<SubjectAttendanceService>();
             builder.Services.AddScoped<ClassOfferingService>();
+            builder.Services.AddScoped<SmsQueueService>();
 
             // Register GSM SMS service (singleton: shared serial port + cached COM port detection)
             builder.Services.AddSingleton<GsmSmsService>();

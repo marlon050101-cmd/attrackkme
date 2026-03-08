@@ -8,11 +8,13 @@ namespace ServerAtrrak.Services
     {
         private readonly Dbconnection _dbConnection;
         private readonly ILogger<SubjectAttendanceService> _logger;
+        private readonly SmsQueueService _smsQueueService;
 
-        public SubjectAttendanceService(Dbconnection dbConnection, ILogger<SubjectAttendanceService> logger)
+        public SubjectAttendanceService(Dbconnection dbConnection, ILogger<SubjectAttendanceService> logger, SmsQueueService smsQueueService)
         {
             _dbConnection = dbConnection;
             _logger = logger;
+            _smsQueueService = smsQueueService;
         }
 
 
@@ -124,6 +126,31 @@ namespace ServerAtrrak.Services
                         cmd.Parameters.AddWithValue("@TimeIn", item.AttendanceType == "TimeIn" ? item.ScanTimestamp : (object)DBNull.Value);
                         cmd.Parameters.AddWithValue("@TimeOut", item.AttendanceType == "TimeOut" ? item.ScanTimestamp : (object)DBNull.Value);
                         await cmd.ExecuteNonQueryAsync();
+                    }
+
+                    // --- SMS NOTIFICATION ---
+                    try
+                    {
+                        var studentQuery = "SELECT FullName, ParentsNumber FROM student WHERE StudentId = @Sid LIMIT 1";
+                        using var sCmd = new MySqlCommand(studentQuery, connection);
+                        sCmd.Parameters.AddWithValue("@Sid", item.StudentId);
+                        using var sReader = await sCmd.ExecuteReaderAsync();
+                        if (await sReader.ReadAsync())
+                        {
+                            var name = sReader.GetString("FullName");
+                            var phone = sReader.IsDBNull("ParentsNumber") ? null : sReader.GetString("ParentsNumber");
+                            
+                            if (!string.IsNullOrEmpty(phone))
+                            {
+                                // Fire and forget SMS queuing
+                                _ = _smsQueueService.QueueSmsAsync(phone, name, item.AttendanceType ?? "TimeIn", item.ScanTimestamp, item.StudentId);
+                            }
+                        }
+                        sReader.Close();
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Failed to triggers SMS for subject attendance StudentId: {Id}", item.StudentId);
                     }
                 }
                 _logger.LogInformation("Saved {Count} subject attendance records date {Date}", request.Items.Count, date);
