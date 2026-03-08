@@ -131,19 +131,27 @@ namespace ServerAtrrak.Services
                     // --- SMS NOTIFICATION ---
                     try
                     {
-                        var studentQuery = "SELECT FullName, ParentsNumber FROM student WHERE StudentId = @Sid LIMIT 1";
-                        using var sCmd = new MySqlCommand(studentQuery, connection);
+                        var smsDataQuery = @"
+                            SELECT st.FullName, st.ParentsNumber, sub.SubjectName
+                            FROM student st
+                            CROSS JOIN class_offering co
+                            INNER JOIN subject sub ON co.SubjectId = sub.SubjectId
+                            WHERE st.StudentId = @Sid AND co.ClassOfferingId = @COId
+                            LIMIT 1";
+                        using var sCmd = new MySqlCommand(smsDataQuery, connection);
                         sCmd.Parameters.AddWithValue("@Sid", item.StudentId);
+                        sCmd.Parameters.AddWithValue("@COId", request.ClassOfferingId);
                         using var sReader = await sCmd.ExecuteReaderAsync();
                         if (await sReader.ReadAsync())
                         {
                             var name = sReader.GetString(0);
                             var phone = sReader.IsDBNull(1) ? null : sReader.GetString(1);
+                            var subName = sReader.IsDBNull(2) ? null : sReader.GetString(2);
                             
                             if (!string.IsNullOrEmpty(phone))
                             {
                                 // Fire and forget SMS queuing
-                                _ = _smsQueueService.QueueSmsAsync(phone, name, item.AttendanceType ?? "TimeIn", item.ScanTimestamp, item.StudentId);
+                                _ = _smsQueueService.QueueSmsAsync(phone, name, item.AttendanceType ?? "TimeIn", item.ScanTimestamp, item.StudentId, subName);
                             }
                         }
                         sReader.Close();

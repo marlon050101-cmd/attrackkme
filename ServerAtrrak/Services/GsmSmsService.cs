@@ -199,10 +199,11 @@ namespace ServerAtrrak.Services
             catch { }
         }
 
-        public static string BuildSmsMessage(string studentName, string attendanceType, DateTime time)
+        public static string BuildSmsMessage(string studentName, string attendanceType, DateTime time, string? subjectName = null)
         {
             var action = attendanceType == "TimeIn" ? "arrived at" : "left";
-            return $"Attrak: {studentName} has {action} school at {time:hh:mm tt}, {time:MMMM dd, yyyy}.";
+            var subjectPart = string.IsNullOrEmpty(subjectName) ? "school" : $"{subjectName} class";
+            return $"Attrak: {studentName} has {action} {subjectPart} at {time:hh:mm tt}, {time:MMMM dd, yyyy}.";
         }
 
         private static string NormalizePhoneNumber(string phone)

@@ -21,12 +21,12 @@ namespace ServerAtrrak.Services
             _smsQueueHub = smsQueueHub;
         }
 
-        public async Task QueueSmsAsync(string? parentNumber, string studentName, string attendanceType, DateTime time, string studentId = "Unknown")
+        public async Task QueueSmsAsync(string? parentNumber, string studentName, string attendanceType, DateTime time, string studentId = "Unknown", string? subjectName = null)
         {
             if (string.IsNullOrWhiteSpace(parentNumber)) return;
 
             // Normalize phone number if needed (GsmSmsService.BuildSmsMessage is static and does the formatting)
-            var message = GsmSmsService.BuildSmsMessage(studentName, attendanceType, time);
+            var message = GsmSmsService.BuildSmsMessage(studentName, attendanceType, time, subjectName);
 
             try
             {
