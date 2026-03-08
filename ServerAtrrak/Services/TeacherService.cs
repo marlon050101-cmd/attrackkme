@@ -856,31 +856,31 @@ namespace ServerAtrrak.Services
                 return false;
             }
         }
-            public async Task<HeadStatsResponse> GetHeadStatsAsync(string schoolId)
-    {
-        try
+        public async Task<HeadStatsResponse> GetHeadStatsAsync(string schoolId)
         {
-            if (string.IsNullOrEmpty(schoolId)) return new HeadStatsResponse();
+            try
+            {
+                if (string.IsNullOrEmpty(schoolId)) return new HeadStatsResponse();
 
-            using var connection = await _dbConnection.GetConnectionAsync();
-            
-            // 1. Get Teacher Counts and Roles
-            // Determine role by priority: User record > Teacher record (Section presence)
-            // LENIENT MATCHING: Match by SchoolId OR SchoolName
-            var teachersQuery = @"
-                SELECT 
-                    CASE 
-                        WHEN u.UserType IS NOT NULL THEN u.UserType
-                        WHEN t.Section IS NOT NULL AND t.Section != '' THEN 'Adviser'
-                        ELSE 'SubjectTeacher'
-                    END as UserType,
-                    t.TeacherId
-                FROM teacher t
-                LEFT JOIN user u ON t.TeacherId = u.TeacherId
-                LEFT JOIN school s ON t.SchoolId = s.SchoolId
-                WHERE (UPPER(TRIM(t.SchoolId)) = UPPER(TRIM(@schoolId)) 
-                   OR UPPER(TRIM(s.SchoolName)) = UPPER(TRIM(@schoolId)))
-                AND (u.IsActive IS NULL OR u.IsActive = 1)";
+                using var connection = await _dbConnection.GetConnectionAsync();
+                
+                // 1. Get Teacher Counts and Roles
+                // Determine role by priority: User record > Teacher record (Section presence)
+                // LENIENT MATCHING: Match by SchoolId OR SchoolName
+                var teachersQuery = @"
+                    SELECT 
+                        CASE 
+                            WHEN u.UserType IS NOT NULL THEN u.UserType
+                            WHEN t.Section IS NOT NULL AND t.Section != '' THEN 'Adviser'
+                            ELSE 'SubjectTeacher'
+                        END as UserType,
+                        t.TeacherId
+                    FROM teacher t
+                    LEFT JOIN user u ON t.TeacherId = u.TeacherId
+                    LEFT JOIN school s ON t.SchoolId = s.SchoolId
+                    WHERE (UPPER(TRIM(t.SchoolId)) = UPPER(TRIM(@schoolId)) 
+                       OR UPPER(TRIM(s.SchoolName)) = UPPER(TRIM(@schoolId)))
+                    AND (u.IsActive IS NULL OR u.IsActive = 1)";
             
             int advisersCount = 0;
             int subjectTeachersCount = 0;
@@ -1032,13 +1032,13 @@ namespace ServerAtrrak.Services
                 AssignedClassOfferings = assignedClassOfferings,
                 ActiveToday = activeToday
             };
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error in GetHeadStatsAsync: {ex.Message}");
-            return new HeadStatsResponse();
-        }
-    }        
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error in GetHeadStatsAsync: {ex.Message}");
+                return new HeadStatsResponse();
+            }
+        }        
         public async Task<object> GetTeacherApprovalDiagnosticsAsync(string schoolId)
         {
             try

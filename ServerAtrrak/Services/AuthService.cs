@@ -125,7 +125,7 @@ namespace ServerAtrrak.Services
                 var query = @"
                     SELECT u.UserId, u.Username, u.Email, u.Password, u.UserType, 
                            u.IsActive, u.IsApproved, u.CreatedAt, u.UpdatedAt, u.LastLoginAt, 
-                           u.TeacherId, u.StudentId, COALESCE(u.SchoolId, t.SchoolId, s.SchoolId) as SchoolId,
+                           u.TeacherId, u.StudentId, COALESCE(t.SchoolId, s.SchoolId) as SchoolId,
                            COALESCE(t.FullName, s.FullName) as FullName
                     FROM user u
                     LEFT JOIN teacher t ON u.TeacherId = t.TeacherId
