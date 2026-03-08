@@ -868,9 +868,10 @@ namespace ServerAtrrak.Services
                         u.UserType,
                         (SELECT COUNT(*) FROM class_offering co WHERE co.TeacherId = u.TeacherId) as OfferingCount
                     FROM user u 
-                    WHERE u.SchoolId = @schoolId 
+                    INNER JOIN teacher t ON u.TeacherId = t.TeacherId
+                    WHERE t.SchoolId = @schoolId 
                     AND u.IsActive = 1 
-                    AND (u.UserType = 'Teacher' OR u.UserType = 'SubjectTeacher' OR u.UserType = 'Adviser')";
+                    AND u.UserType IN ('Teacher', 'SubjectTeacher', 'Adviser', 'Advisor')";
                 
                 int advisersCount = 0;
                 int subjectTeachersCount = 0;
@@ -887,7 +888,7 @@ namespace ServerAtrrak.Services
                         var userType = reader.GetString("UserType");
                         var offeringCount = reader.GetInt32("OfferingCount");
 
-                        if (userType == "Adviser") advisersCount++;
+                        if (userType == "Adviser" || userType == "Advisor") advisersCount++;
                         else subjectTeachersCount++;
 
                         if (offeringCount == 0) noSubjectsCount++;
@@ -898,9 +899,10 @@ namespace ServerAtrrak.Services
                 var pendingQuery = @"
                     SELECT COUNT(*) 
                     FROM user u 
-                    WHERE u.SchoolId = @schoolId 
+                    LEFT JOIN teacher t ON u.TeacherId = t.TeacherId
+                    WHERE t.SchoolId = @schoolId 
                     AND u.IsApproved = 0 
-                    AND (u.UserType = 'Teacher' OR u.UserType = 'SubjectTeacher' OR u.UserType = 'Adviser')";
+                    AND u.UserType IN ('Teacher', 'SubjectTeacher', 'Adviser', 'Advisor')";
                 using var pendingCommand = new MySqlCommand(pendingQuery, connection);
                 pendingCommand.Parameters.AddWithValue("@schoolId", schoolId);
                 var pendingApprovals = Convert.ToInt32(await pendingCommand.ExecuteScalarAsync());
@@ -1144,15 +1146,16 @@ namespace ServerAtrrak.Services
                 string query = @"
                     SELECT 
                         u.TeacherId,
-                        u.FullName,
+                        t.FullName,
                         u.UserType,
                         u.Username,
                         (SELECT COUNT(*) FROM class_offering co WHERE co.TeacherId = u.TeacherId) as OfferingCount,
                         (SELECT GROUP_CONCAT(co.SubjectName SEPARATOR ', ') FROM class_offering co WHERE co.TeacherId = u.TeacherId) as Subjects
                     FROM user u 
-                    WHERE u.SchoolId = @schoolId 
+                    INNER JOIN teacher t ON u.TeacherId = t.TeacherId
+                    WHERE t.SchoolId = @schoolId 
                     AND u.IsActive = 1 
-                    AND (u.UserType = 'Teacher' OR u.UserType = 'SubjectTeacher' OR u.UserType = 'Adviser')";
+                    AND u.UserType IN ('Teacher', 'SubjectTeacher', 'Adviser', 'Advisor')";
 
                 if (onlyUnassigned)
                 {
