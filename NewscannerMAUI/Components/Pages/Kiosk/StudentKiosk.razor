@@ -1,0 +1,855 @@
+@page "/kiosk/student-registration"
+@layout KioskLayout
+@using AttrackSharedClass.Models
+@using NewscannerMAUI.Services
+@using System.Net.Http.Json
+@inject IHttpClientFactory HttpClientFactory
+@inject AuthService AuthService
+@inject OfflineDataService OfflineDataService
+@inject HybridQRValidationService HybridQRValidationService
+@using Microsoft.Maui.Media
+
+<div class="kiosk-container" @onclick="EnsureInputFocus">
+    @if (isLoading)
+    {
+        <div class="glass-card animate-slide-up" style="max-width: 850px; text-align: center;">
+            <div class="text-center p-4">
+                <span class="spinner"><i class="fas fa-spinner fa-spin fa-3x" style="color: #a78bfa;"></i></span>
+                <h3 class="mt-4">Loading Data...</h3>
+            </div>
+        </div>
+    }
+    else if (selectedSubject != null)
+    {
+        <div class="glass-card scanner-active animate-slide-up" style="max-width: 900px; width: 100%;">
+            <div class="header d-flex justify-content-between align-items-center" style="margin-bottom: 20px;">
+                <div class="header-icon-small" style="font-size: 1.5rem; background: linear-gradient(135deg, #a78bfa, #8b5cf6); -webkit-background-clip: text; color: transparent; font-weight: bold;">
+                    <i class="fas fa-barcode"></i> ACTIVE SCANNER
+                </div>
+                <button class="btn-cancel" style="width: auto; padding: 10px 20px; flex: none; font-size: 1rem;" @onclick="EndSession">
+                    <i class="fas fa-times"></i> End Session
+                </button>
+            </div>
+            
+            <div class="scanner-info-banner">
+                <h2 style="color: white; margin: 0; font-size: 2rem;">@selectedSubject.SubjectName</h2>
+                <p style="color: #a78bfa; margin: 8px 0 0 0; font-size: 1.2rem; font-weight: 600;">
+                    <i class="fas fa-clock"></i> @FormatTimeSpan(selectedSubject.ScheduleStart) - @FormatTimeSpan(selectedSubject.ScheduleEnd) &nbsp; • &nbsp; <i class="fas fa-users"></i> @selectedSubject.Section
+                </p>
+                @if(selectedSubject.GradeLevel >= 11 && !string.IsNullOrEmpty(selectedSubject.Strand))
+                {
+                    <p style="color: #e2e8f0; margin: 4px 0 0 0; font-size: 1rem;">Strand: @selectedSubject.Strand</p>
+                }
+            </div>
+
+            @if (isProcessing)
+            {
+                <div class="status-banner processing">
+                    <i class="fas fa-spinner fa-spin"></i> Processing Scan...
+                </div>
+            }
+            else if (showFeedback)
+            {
+                <div class="status-banner @(feedbackSuccess ? "success" : "error") animate-scale-in">
+                    <i class="fas @(feedbackSuccess ? "fa-check-circle" : "fa-exclamation-circle")"></i> @feedbackMessage
+                </div>
+            }
+            else
+            {
+                <div class="status-banner ready pulse-border">
+                    <i class="fas fa-qrcode"></i> Ready: Scan a Student ID Barcode
+                </div>
+            }
+
+            <div class="recent-scans">
+                <h4 style="color: white; margin-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px;">
+                    <i class="fas fa-history text-info"></i> Recent Scans Pipeline
+                </h4>
+                @if (!recentScans.Any())
+                {
+                    <p style="color: #94a3b8; text-align: center; padding: 20px; font-style: italic;">No students scanned yet in this active session.</p>
+                }
+                else
+                {
+                    <div class="scan-list">
+                        @foreach (var scan in recentScans)
+                        {
+                            <div class="scan-item @(scan.Success ? "success-border" : "error-border")">
+                                <div class="scan-time">@scan.Time.ToString("hh:mm:ss tt")</div>
+                                <div class="scan-name">@scan.Name</div>
+                                <div class="scan-status @(scan.Success ? "text-success" : "text-danger")">
+                                    <i class="fas @(scan.Success ? "fa-check" : "fa-times")"></i> @scan.Status
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+
+            <!-- Hidden input for Barcode Scanner Wedge -->
+            <input @ref="hiddenScannerInput" 
+                   @bind="hiddenInputBuffer" 
+                   @bind:event="oninput" 
+                   @onkeyup="HandleKeyPress" 
+                   class="hidden-input" 
+                   autocomplete="off" />
+        </div>
+    }
+    else
+    {
+        <div class="glass-card animate-slide-up" style="max-width: 950px;">
+            <div class="header">
+                <div class="header-icon">
+                    <i class="fas fa-chalkboard-teacher"></i>
+                </div>
+                <h2>Subject Scanner Kiosk</h2>
+                <p>Welcome! Setup your scanner below to track attendance.</p>
+            </div>
+
+            @if (isHeadUser)
+            {
+                <!-- HEAD USER UI PATH -->
+                <div class="head-filter-container">
+                    @if (selectedGrade == null)
+                    {
+                        <h3 class="filter-title">Step 1: Select Grade Level</h3>
+                        <div class="pill-grid">
+                            @foreach (var grade in availableGrades)
+                            {
+                                <button class="pill-button" @onclick="() => SelectGrade(grade)">Grade @grade</button>
+                            }
+                        </div>
+                    }
+                    else if (selectedGrade >= 11 && string.IsNullOrEmpty(selectedStrand))
+                    {
+                        <div class="bread-crumbs">
+                            <span @onclick="ResetFilters">Grades</span> &gt; <span>Grade @selectedGrade</span>
+                        </div>
+                        <h3 class="filter-title mt-4">Step 2: Select Strand</h3>
+                        <div class="pill-grid">
+                            @foreach (var strand in availableStrands)
+                            {
+                                <button class="pill-button" @onclick="() => SelectStrand(strand)">@strand</button>
+                            }
+                        </div>
+                    }
+                    else if (string.IsNullOrEmpty(selectedSection))
+                    {
+                        <div class="bread-crumbs">
+                            <span @onclick="ResetFilters">Grades</span> &gt; 
+                            <span @onclick="ResetSectionSelection">Grade @selectedGrade @(string.IsNullOrEmpty(selectedStrand) ? "" : $" - {selectedStrand}")</span>
+                        </div>
+                        <h3 class="filter-title mt-4">Step @(selectedGrade >= 11 ? "3" : "2"): Select Section</h3>
+                        <div class="pill-grid">
+                            @foreach (var section in availableSections)
+                            {
+                                <button class="pill-button outline" @onclick="() => SelectSection(section)">@section</button>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="bread-crumbs">
+                            <span @onclick="ResetFilters">Grades</span> &gt; 
+                            <span @onclick="ResetSectionSelection">Grade @selectedGrade @(string.IsNullOrEmpty(selectedStrand) ? "" : $" - {selectedStrand}")</span> &gt;
+                            <span @onclick="() => { selectedSubject = null; }">Section @selectedSection</span>
+                        </div>
+                        
+                        <h3 class="filter-title mt-4">Final Step: Select Subject</h3>
+                        @if (!filteredSubjects.Any())
+                        {
+                            <div class="error-banner mt-3">
+                                <i class="fas fa-info-circle"></i> No subjects assigned for this section today.
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="subject-grid mt-3">
+                                @foreach (var cls in filteredSubjects)
+                                {
+                                    <div class="subject-card" @onclick="() => SelectSubject(cls)">
+                                        <h3>@cls.SubjectName</h3>
+                                        <p><i class="fas fa-clock text-info"></i> @FormatTimeSpan(cls.ScheduleStart) - @FormatTimeSpan(cls.ScheduleEnd)</p>
+                                        <p><i class="fas fa-user-tie text-warning"></i> Teacher: @cls.TeacherId</p>
+                                        <span class="badge-active">Select <i class="fas fa-arrow-right"></i></span>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    }
+                </div>
+            }
+            else
+            {
+                <!-- TEACHER USER UI PATH (Standard) -->
+                @if (teacherClasses == null || !teacherClasses.Any())
+                {
+                    <div class="error-banner">
+                        <i class="fas fa-info-circle"></i> No subjects assigned for today. Please contact the administrator if this is a mistake.
+                    </div>
+                }
+                else
+                {
+                    <h3 class="filter-title">Select your Subject to start scanning</h3>
+                    <div class="subject-grid mt-3">
+                        @foreach (var cls in teacherClasses)
+                        {
+                            <div class="subject-card" @onclick="() => SelectSubject(cls)">
+                                <h3>@cls.SubjectName</h3>
+                                <p><i class="fas fa-clock text-info"></i> @FormatTimeSpan(cls.ScheduleStart) - @FormatTimeSpan(cls.ScheduleEnd)</p>
+                                <p><i class="fas fa-users text-warning"></i> Sec: @cls.Section | Gr: @cls.GradeLevel</p>
+                                @if(cls.GradeLevel >= 11 && !string.IsNullOrEmpty(cls.Strand))
+                                {
+                                    <p><i class="fas fa-layer-group text-success"></i> Strand: @cls.Strand</p>
+                                }
+                                <span class="badge-active">Select <i class="fas fa-arrow-right"></i></span>
+                            </div>
+                        }
+                    </div>
+                }
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private List<ClassOffering> allSchoolClasses = new(); // For Head
+    private List<ClassOffering> teacherClasses = new();   // For Teacher
+    private List<ClassOffering> filteredSubjects = new(); // Results from filtering
+    private ClassOffering? selectedSubject;
+    private bool isLoading = true;
+    private bool isHeadUser = false;
+    private string currentUserId = "";
+    private string currentSchoolId = "";
+
+    // Head Filter States
+    private int? selectedGrade = null;
+    private string selectedStrand = "";
+    private string selectedSection = "";
+
+    private List<int> availableGrades = new();
+    private List<string> availableStrands = new();
+    private List<string> availableSections = new();
+
+    // Scanner state
+    private string hiddenInputBuffer = "";
+    private ElementReference hiddenScannerInput;
+    private bool isProcessing = false;
+    private bool showFeedback = false;
+    private bool feedbackSuccess = false;
+    private string feedbackMessage = "";
+
+    // Active session logs
+    private List<ScanRecord> recentScans = new();
+
+    private class ScanRecord
+    {
+        public string Name { get; set; } = "";
+        public DateTime Time { get; set; }
+        public bool Success { get; set; }
+        public string Status { get; set; } = "";
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadRoleAndSubjects();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (selectedSubject != null)
+        {
+            try { await hiddenScannerInput.FocusAsync(); } catch { }
+        }
+    }
+
+    private async Task LoadRoleAndSubjects()
+    {
+        isLoading = true;
+        try
+        {
+            var currentUser = await AuthService.GetCurrentUserAsync();
+            if (currentUser != null)
+            {
+                currentUserId = currentUser.TeacherId ?? currentUser.UserId;
+                currentSchoolId = currentUser.SchoolId ?? "";
+                isHeadUser = currentUser.UserType == UserType.Head || currentUser.UserType == UserType.Admin;
+                
+                var httpClient = HttpClientFactory.CreateClient("AttrakAPI");
+                var todayString = DateTime.Now.DayOfWeek.ToString();
+
+                if (isHeadUser)
+                {
+                    // Head: Fetch all classes for the school
+                    List<ClassOffering>? result = null;
+                    try 
+                    {
+                        result = await httpClient.GetFromJsonAsync<List<ClassOffering>>($"api/ClassOffering?schoolId={currentSchoolId}");
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Error fetching all school classes: {ex.Message}");
+                    }
+
+                    allSchoolClasses = result?.Where(c => c.DayOfWeek.Contains(todayString, StringComparison.OrdinalIgnoreCase)).ToList() ?? new();
+                    
+                    // Extract unique available grades from today's active classes
+                    availableGrades = allSchoolClasses.Select(c => c.GradeLevel).Distinct().OrderBy(g => g).ToList();
+                }
+                else
+                {
+                    // Teacher/Adviser: Fetch their assigned classes
+                    List<ClassOffering>? result = null;
+                    try 
+                    {
+                        result = await httpClient.GetFromJsonAsync<List<ClassOffering>>($"api/ClassOffering/teacher/{currentUserId}");
+                    }
+                    catch (Exception)
+                    {
+                        result = await OfflineDataService.GetClassOfferingsOfflineAsync(currentUserId);
+                    }
+
+                    teacherClasses = result?.Where(c => c.DayOfWeek.Contains(todayString, StringComparison.OrdinalIgnoreCase)).ToList() ?? new();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading subjects: {ex.Message}");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    // Filter Logic for Head User
+    private void SelectGrade(int grade)
+    {
+        selectedGrade = grade;
+        selectedStrand = "";
+        selectedSection = "";
+        
+        var gradeClasses = allSchoolClasses.Where(c => c.GradeLevel == grade).ToList();
+
+        if (grade >= 11)
+        {
+            availableStrands = gradeClasses.Where(c => !string.IsNullOrEmpty(c.Strand))
+                                            .Select(c => c.Strand)
+                                            .Distinct()
+                                            .OrderBy(s => s)
+                                            .ToList();
+        }
+        else
+        {
+            availableSections = gradeClasses.Select(c => c.Section).Distinct().OrderBy(s => s).ToList();
+        }
+    }
+
+    private void SelectStrand(string strand)
+    {
+        selectedStrand = strand;
+        selectedSection = "";
+        availableSections = allSchoolClasses.Where(c => c.GradeLevel == selectedGrade && c.Strand == strand)
+                                            .Select(c => c.Section)
+                                            .Distinct()
+                                            .OrderBy(s => s)
+                                            .ToList();
+    }
+
+    private void SelectSection(string section)
+    {
+        selectedSection = section;
+        
+        filteredSubjects = allSchoolClasses.Where(c => c.GradeLevel == selectedGrade && 
+                                                       c.Section == section && 
+                                                       (string.IsNullOrEmpty(selectedStrand) || c.Strand == selectedStrand))
+                                            .OrderBy(c => c.ScheduleStart)
+                                            .ToList();
+    }
+
+    private void ResetFilters()
+    {
+        selectedGrade = null;
+        selectedStrand = "";
+        selectedSection = "";
+        selectedSubject = null;
+    }
+
+    private void ResetSectionSelection()
+    {
+        if (selectedGrade >= 11)
+        {
+            selectedStrand = "";
+        }
+        selectedSection = "";
+        selectedSubject = null;
+    }
+
+    // Common Logic
+    private void SelectSubject(ClassOffering subject)
+    {
+        selectedSubject = subject;
+        recentScans.Clear();
+        showFeedback = false;
+        _ = EnsureInputFocusLoop();
+    }
+
+    private void EndSession()
+    {
+        selectedSubject = null;
+        hiddenInputBuffer = "";
+    }
+
+    private async Task HandleKeyPress(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(hiddenInputBuffer))
+        {
+            var qrCode = hiddenInputBuffer.Trim();
+            hiddenInputBuffer = "";
+            await ProcessScan(qrCode);
+        }
+    }
+
+    private async Task ProcessScan(string qrCode)
+    {
+        if (isProcessing || selectedSubject == null) return;
+
+        isProcessing = true;
+        showFeedback = false;
+        StateHasChanged();
+
+        try
+        {
+            // 20-minute late lockout validation
+            var currentTime = DateTime.Now.TimeOfDay;
+            var lateThreshold = selectedSubject.ScheduleStart.Add(TimeSpan.FromMinutes(20));
+            
+            if (currentTime > lateThreshold)
+            {
+                ShowFeedback(false, "Scan Rejected: Past 20 minutes start time limit.");
+                PlayErrorSound();
+                AddRecentScan(qrCode, false, "Late Lockout");
+                return;
+            }
+
+            // Extract User ID if formatted
+            string studentId = qrCode;
+            if (qrCode.StartsWith("STUDENT:"))
+            {
+                studentId = qrCode.Substring(8);
+            }
+
+            // Core validation logic via HybridQRValidationService 
+            // TeacherId param needs to be the actual teacher assigned to that subject offering, NOT necessarily the logged-in User
+            string validatorTeacherId = isHeadUser ? selectedSubject.TeacherId : currentUserId;
+
+            var result = await HybridQRValidationService.ValidateQRCodeAsync(studentId, "TimeIn", validatorTeacherId, selectedSubject.ClassOfferingId);
+            string studentName = result.StudentName ?? result.StudentData?.FullName ?? studentId;
+
+            if (result.IsValid)
+            {
+                ShowFeedback(true, result.Message);
+                PlaySuccessSound();
+                AddRecentScan(studentName, true, "Present");
+            }
+            else
+            {
+                ShowFeedback(false, result.Message);
+                PlayErrorSound();
+                AddRecentScan(studentName, false, "Rejected");
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowFeedback(false, $"Error: {ex.Message}");
+            PlayErrorSound();
+        }
+        finally
+        {
+            isProcessing = false;
+            // Immediate cursor refocus to allow continuous rapid scanning
+            _ = EnsureInputFocus();
+            StateHasChanged();
+        }
+    }
+
+    private void ShowFeedback(bool success, string message)
+    {
+        feedbackSuccess = success;
+        feedbackMessage = message;
+        showFeedback = true;
+        
+        // Hide large feedback after 3 seconds asynchronously
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(3000);
+            showFeedback = false;
+            await InvokeAsync(StateHasChanged);
+        });
+    }
+
+    private void AddRecentScan(string name, bool success, string status)
+    {
+        recentScans.Insert(0, new ScanRecord
+        {
+            Name = name,
+            Success = success,
+            Time = DateTime.Now,
+            Status = status
+        });
+
+        if (recentScans.Count > 15)
+        {
+            recentScans = recentScans.Take(15).ToList();
+        }
+    }
+
+    private async Task EnsureInputFocus()
+    {
+        if (selectedSubject != null)
+        {
+            try { await hiddenScannerInput.FocusAsync(); } catch { }
+        }
+    }
+
+    private async Task EnsureInputFocusLoop()
+    {
+        // Delay to allow DOM to render the scanner view before focusing
+        await Task.Delay(100);
+        await EnsureInputFocus();
+    }
+
+    private void PlaySuccessSound()
+    {
+        try 
+        { 
+            HapticFeedback.Default.Perform(HapticFeedbackType.Click);
+        } catch { }
+    }
+
+    private void PlayErrorSound()
+    {
+        try 
+        { 
+            HapticFeedback.Default.Perform(HapticFeedbackType.LongPress);
+        } catch { }
+    }
+
+    private string FormatTimeSpan(TimeSpan ts)
+    {
+        DateTime dt = DateTime.Today.Add(ts);
+        return dt.ToString("hh:mm tt");
+    }
+}
+
+<style>
+    .kiosk-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        width: 100%;
+        height: 100vh;
+        font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+    }
+
+    .glass-card {
+        background: rgba(255, 255, 255, 0.05);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 24px;
+        box-shadow: 0 25px 50px rgba(0, 0, 0, 0.3);
+        padding: 40px;
+        width: 100%;
+        color: white;
+    }
+
+    .header {
+        text-align: center;
+        margin-bottom: 30px;
+    }
+
+    .header-icon {
+        font-size: 3rem;
+        background: linear-gradient(135deg, #a78bfa, #8b5cf6, #7c3aed);
+        -webkit-background-clip: text;
+        color: transparent;
+        margin-bottom: 15px;
+    }
+
+    .filter-title {
+        color: #e2e8f0;
+        font-size: 1.2rem;
+        font-weight: 600;
+        margin-bottom: 15px;
+        border-bottom: 1px solid rgba(255,255,255,0.1);
+        padding-bottom: 8px;
+    }
+
+    .bread-crumbs {
+        font-size: 1rem;
+        color: #94a3b8;
+        background: rgba(0,0,0,0.2);
+        padding: 10px 15px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+    }
+
+    .bread-crumbs span {
+        cursor: pointer;
+        color: #a78bfa;
+        font-weight: 600;
+        transition: color 0.2s;
+    }
+
+    .bread-crumbs span:hover {
+        color: #c4b5fd;
+        text-decoration: underline;
+    }
+
+    .pill-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+    }
+
+    .pill-button {
+        background: linear-gradient(135deg, #8b5cf6, #6d28d9);
+        color: white;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 100px;
+        font-size: 1.1rem;
+        font-weight: bold;
+        cursor: pointer;
+        transition: all 0.2s;
+        box-shadow: 0 4px 10px rgba(139, 92, 246, 0.3);
+    }
+
+    .pill-button:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 8px 15px rgba(139, 92, 246, 0.5);
+    }
+
+    .pill-button.outline {
+        background: transparent;
+        border: 2px solid #8b5cf6;
+        color: #c4b5fd;
+    }
+
+    .pill-button.outline:hover {
+        background: rgba(139, 92, 246, 0.2);
+        color: white;
+    }
+
+    .subject-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 20px;
+        margin-top: 20px;
+        max-height: 50vh;
+        overflow-y: auto;
+        padding-right: 10px;
+    }
+
+    .subject-card {
+        background: rgba(0, 0, 0, 0.2);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 16px;
+        padding: 24px;
+        cursor: pointer;
+        transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        position: relative;
+        overflow: hidden;
+    }
+
+    .subject-card:hover {
+        transform: translateY(-5px) scale(1.02);
+        border-color: #a78bfa;
+        background: rgba(139, 92, 246, 0.15);
+        box-shadow: 0 15px 30px rgba(139, 92, 246, 0.2);
+    }
+
+    .subject-card h3 {
+        margin: 0 0 12px 0;
+        font-size: 1.4rem;
+        color: white;
+        font-weight: bold;
+    }
+
+    .subject-card p {
+        margin: 8px 0;
+        color: #e2e8f0;
+        font-size: 0.95rem;
+        font-weight: 500;
+    }
+
+    .badge-active {
+        position: absolute;
+        bottom: 20px;
+        right: 20px;
+        background: linear-gradient(135deg, #8b5cf6, #6d28d9);
+        color: white;
+        padding: 6px 14px;
+        border-radius: 20px;
+        font-size: 0.85rem;
+        font-weight: bold;
+        opacity: 0;
+        transform: translateY(15px);
+        transition: all 0.4s ease;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+    }
+
+    .subject-card:hover .badge-active {
+        opacity: 1;
+        transform: translateY(0);
+    }
+
+    .scanner-info-banner {
+        background: linear-gradient(90deg, rgba(139, 92, 246, 0.2) 0%, rgba(79, 70, 229, 0.2) 100%);
+        border: 1px solid rgba(139, 92, 246, 0.3);
+        padding: 25px;
+        border-radius: 16px;
+        margin-bottom: 25px;
+        text-align: center;
+        box-shadow: inset 0 2px 10px rgba(0,0,0,0.1);
+    }
+
+    .status-banner {
+        padding: 25px;
+        border-radius: 12px;
+        font-size: 1.3rem;
+        font-weight: 600;
+        text-align: center;
+        margin-bottom: 30px;
+        transition: all 0.3s ease;
+    }
+
+    .status-banner.ready {
+        background: rgba(255, 255, 255, 0.05);
+        border: 2px dashed rgba(255, 255, 255, 0.3);
+        color: #e2e8f0;
+    }
+
+    .status-banner.processing {
+        background: rgba(59, 130, 246, 0.2);
+        border: 2px solid #3b82f6;
+        color: #93c5fd;
+    }
+
+    .status-banner.success {
+        background: rgba(16, 185, 129, 0.2);
+        border: 2px solid #10b981;
+        color: #6ee7b7;
+        box-shadow: 0 0 20px rgba(16, 185, 129, 0.3);
+    }
+
+    .status-banner.error {
+        background: rgba(239, 68, 68, 0.2);
+        border: 2px solid #ef4444;
+        color: #fca5a5;
+        box-shadow: 0 0 20px rgba(239, 68, 68, 0.3);
+    }
+
+    .hidden-input {
+        position: absolute;
+        opacity: 0;
+        left: -9999px;
+    }
+
+    .scan-list {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        max-height: 350px;
+        overflow-y: auto;
+        padding-right: 10px;
+    }
+
+    .scan-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background: rgba(0, 0, 0, 0.3);
+        padding: 15px 20px;
+        border-radius: 12px;
+        border-left: 5px solid transparent;
+        transition: transform 0.2s;
+    }
+
+    .scan-item:hover {
+        transform: translateX(5px);
+        background: rgba(0, 0, 0, 0.4);
+    }
+
+    .success-border { border-left-color: #10b981; }
+    .error-border { border-left-color: #ef4444; }
+
+    .scan-time { color: #94a3b8; font-size: 0.95rem; font-weight: 500; }
+    .scan-name { color: white; font-weight: 700; font-size: 1.1rem; flex: 1; margin-left: 20px; }
+    .scan-status { font-weight: bold; font-size: 1rem; }
+
+    .pulse-border {
+        animation: pulseBorder 2s infinite;
+    }
+
+    .btn-cancel {
+        background: rgba(239, 68, 68, 0.2);
+        border: 1px solid rgba(239, 68, 68, 0.4);
+        color: #fca5a5;
+        border-radius: 12px;
+        cursor: pointer;
+        transition: all 0.2s;
+        font-weight: 600;
+    }
+
+    .btn-cancel:hover {
+        background: rgba(239, 68, 68, 0.5);
+        color: white;
+        transform: scale(1.05);
+    }
+
+    .error-banner {
+        background: rgba(239, 68, 68, 0.2);
+        border-left: 4px solid #ef4444;
+        color: #fca5a5;
+        padding: 16px 20px;
+        border-radius: 12px;
+        font-size: 1.1rem;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    @@keyframes pulseBorder {
+        0% { box-shadow: 0 0 0 0 rgba(167, 139, 250, 0.4); }
+        70% { box-shadow: 0 0 0 12px rgba(167, 139, 250, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(167, 139, 250, 0); }
+    }
+    
+    @@keyframes slideUp {
+        from { opacity: 0; transform: translateY(40px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    .animate-slide-up {
+        animation: slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    @@keyframes scaleIn {
+        from { opacity: 0; transform: scale(0.9); }
+        to { opacity: 1; transform: scale(1); }
+    }
+
+    .animate-scale-in {
+        animation: scaleIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+    }
+    
+    /* Scrollbar */
+    .subject-grid::-webkit-scrollbar, .scan-list::-webkit-scrollbar { width: 8px; }
+    .subject-grid::-webkit-scrollbar-track, .scan-list::-webkit-scrollbar-track { background: rgba(0,0,0,0.1); border-radius: 10px; }
+    .subject-grid::-webkit-scrollbar-thumb, .scan-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 10px; }
+    .subject-grid::-webkit-scrollbar-thumb:hover, .scan-list::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.3); }
+</style>

@@ -1,0 +1,40 @@
+@inherits LayoutComponentBase
+
+<div class="kiosk-layout">
+    <main class="kiosk-content">
+        @Body
+    </main>
+</div>
+
+<style>
+    /* Full screen layout for kiosk mode */
+    .kiosk-layout {
+        min-height: 100vh;
+        width: 100vw;
+        background: radial-gradient(circle at center, #2e1a55 0%, #15092a 100%);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        overflow-x: hidden;
+        position: fixed; /* Lock to screen, prevent external scrolling */
+        top: 0;
+        left: 0;
+        z-index: 9999; /* Ensure it stays on top */
+    }
+
+    .kiosk-content {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+    }
+
+    /* Hide the default shell navigation and headers generally provided by MAUI apps if present */
+    ::deep nav, ::deep .app-header, ::deep .app-sidebar, ::deep .sidebar-overlay {
+        display: none !important;
+    }
+</style>
