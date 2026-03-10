@@ -203,5 +203,10 @@ namespace ServerAtrrak.Services
                 return false;
             }
         }
+        public async Task<bool> NotifyStudentAsync(string studentId, string type)
+        {
+            _logger.LogInformation("Awareness notification (NoDateFilter) for {Id} from {Type}", studentId, type);
+            return true; // Simplified stub
+        }
     }
 }

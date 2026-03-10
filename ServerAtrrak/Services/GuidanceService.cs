@@ -9,11 +9,13 @@ namespace ServerAtrrak.Services
     {
         private readonly Dbconnection _dbConnection;
         private readonly ILogger<GuidanceService> _logger;
+        private readonly SmsQueueService _smsQueueService;
 
-        public GuidanceService(Dbconnection dbConnection, ILogger<GuidanceService> logger)
+        public GuidanceService(Dbconnection dbConnection, ILogger<GuidanceService> logger, SmsQueueService smsQueueService)
         {
             _dbConnection = dbConnection;
             _logger = logger;
+            _smsQueueService = smsQueueService;
         }
 
         public async Task<List<StudentInfo>> GetStudentsBySchoolAsync(string schoolId)
@@ -187,6 +189,41 @@ namespace ServerAtrrak.Services
             return consecutive;
         }
 
+        private async Task<double> GetSchoolWeeklyAttendanceRateAsync(string schoolId)
+        {
+            try
+            {
+                using var connection = new MySqlConnection(_dbConnection.GetConnection());
+                await connection.OpenAsync();
+
+                var query = @"
+                    SELECT 
+                        COUNT(sa.SubjectAttendanceId) as Total,
+                        SUM(CASE WHEN sa.Status = 'Present' OR sa.Status = 'Late' THEN 1 ELSE 0 END) as Present
+                    FROM subject_attendance sa
+                    INNER JOIN student s ON sa.StudentId = s.StudentId
+                    WHERE s.SchoolId = @SchoolId 
+                      AND sa.Date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)";
+
+                using var cmd = new MySqlCommand(query, connection);
+                cmd.Parameters.AddWithValue("@SchoolId", schoolId);
+
+                using var reader = await cmd.ExecuteReaderAsync();
+                if (await reader.ReadAsync())
+                {
+                    long total = reader.IsDBNull(0) ? 0 : reader.GetInt64(0);
+                    long present = reader.IsDBNull(1) ? 0 : reader.GetInt64(1);
+                    return total > 0 ? (double)present / total * 100 : 0;
+                }
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error calculating school weekly attendance for {SchoolId}", schoolId);
+                return 0;
+            }
+        }
+
         public async Task<GuidanceDashboardData> GetDashboardDataAsync(string schoolId, int days = 30)
         {
             try
@@ -203,17 +240,23 @@ namespace ServerAtrrak.Services
                 var flaggedStudents = summaries.Where(s => s.AbsentDays >= threshold || s.ConsecutiveAbsences >= 3 || s.IncompleteSessions > 0).ToList();
                 
                 var uniqueFlaggedIds = flaggedStudents.Select(s => s.StudentId).Distinct().Count();
+                var noTimeOutCount = summaries.Where(s => s.IncompleteSessions > 0).Select(s => s.StudentId).Distinct().Count();
                 var gradeLevels = flaggedStudents.Select(s => s.GradeLevel).Distinct().Count();
                 var sections = flaggedStudents.Select(s => s.Section).Distinct().Count();
+
+                // Calculate School-wide Weekly Attendance Rate
+                double weeklyRate = await GetSchoolWeeklyAttendanceRateAsync(schoolId);
 
                 return new GuidanceDashboardData
                 {
                     TotalStudents = students.Count,
                     FlaggedStudents = uniqueFlaggedIds,
+                    NoTimeOutCount = noTimeOutCount,
                     GradeLevelsAffected = gradeLevels,
                     SectionsMonitored = sections,
                     StudentsAtRisk = flaggedStudents,
-                    AllStudents = students
+                    AllStudents = students,
+                    WeeklyAttendanceRate = weeklyRate
                 };
             }
             catch (Exception ex)
@@ -252,6 +295,44 @@ namespace ServerAtrrak.Services
                 return false;
             }
         }
+
+        public async Task<bool> NotifyStudentAsync(string studentId, string type)
+        {
+            try
+            {
+                using var connection = new MySqlConnection(_dbConnection.GetConnection());
+                await connection.OpenAsync();
+
+                var query = "SELECT FullName, ParentsNumber FROM student WHERE StudentId = @Id";
+                using var cmd = new MySqlCommand(query, connection);
+                cmd.Parameters.AddWithValue("@Id", studentId);
+
+                using var reader = await cmd.ExecuteReaderAsync();
+                if (await reader.ReadAsync())
+                {
+                    var name = reader.GetString(0);
+                    var phone = reader.IsDBNull(1) ? null : reader.GetString(1);
+
+                    if (!string.IsNullOrEmpty(phone))
+                    {
+                        // Log the awareness action in guidance_cases
+                        await UpdateCaseStatusAsync(studentId, "Pending", $"User clicked 'Aware' for {type}");
+                        
+                        // Fire and forget SMS
+                        _ = _smsQueueService.QueueSmsAsync(phone, name, type, DateTime.Now, studentId, "Attendance Awareness");
+                        
+                        _logger.LogInformation("Awareness notification sent for student {Id} ({Type})", studentId, type);
+                        return true;
+                    }
+                }
+                return false;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error notifying student {Id}", studentId);
+                return false;
+            }
+        }
     }
 
     public interface IGuidanceService
@@ -260,6 +341,7 @@ namespace ServerAtrrak.Services
         Task<List<AttendanceSummary>> GetAttendanceSummaryAsync(string schoolId, int days = 30);
         Task<GuidanceDashboardData> GetDashboardDataAsync(string schoolId, int days = 30);
         Task<bool> UpdateCaseStatusAsync(string studentId, string status, string? notes = null);
+        Task<bool> NotifyStudentAsync(string studentId, string type);
     }
 
 }

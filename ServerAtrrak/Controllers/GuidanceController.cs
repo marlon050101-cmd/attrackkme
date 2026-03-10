@@ -304,5 +304,26 @@ namespace ServerAtrrak.Controllers
                 return 0;
             }
         }
+        [HttpPost("notify-student")]
+        public async Task<ActionResult> NotifyStudent([FromBody] NotifyStudentRequest request)
+        {
+            try
+            {
+                var success = await _guidanceService.NotifyStudentAsync(request.StudentId, request.Type);
+                if (success) return Ok();
+                return BadRequest("Failed to notify student");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error notifying student");
+                return StatusCode(500, "Internal server error");
+            }
+        }
+    }
+
+    public class NotifyStudentRequest
+    {
+        public string StudentId { get; set; } = string.Empty;
+        public string Type { get; set; } = string.Empty;
     }
 }

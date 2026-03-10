@@ -46,6 +46,18 @@
                 <span class="text-danger"><i class="fas fa-arrow-up"></i> High priority</span>
             </div>
         </div>
+        <div class="metric-card warning">
+            <div class="metric-icon">
+                <i class="fas fa-door-open"></i>
+            </div>
+            <div class="metric-data">
+                <span class="metric-value">@dashboardData.NoTimeOutCount</span>
+                <span class="metric-label">No TimeOut Today</span>
+            </div>
+            <div class="metric-trend">
+                <span class="text-warning"><i class="fas fa-walking"></i> Cutting class risk</span>
+            </div>
+        </div>
         <div class="metric-card info">
             <div class="metric-icon">
                 <i class="fas fa-users"></i>
@@ -62,6 +74,18 @@
             <div class="metric-data">
                 <span class="metric-value">@dashboardData.GradeLevelsAffected</span>
                 <span class="metric-label">Affected Grades</span>
+            </div>
+        </div>
+        <div class="metric-card primary">
+            <div class="metric-icon">
+                <i class="fas fa-chart-line"></i>
+            </div>
+            <div class="metric-data">
+                <span class="metric-value">@dashboardData.WeeklyAttendanceRate.ToString("F1")%</span>
+                <span class="metric-label">Weekly Attendance</span>
+            </div>
+            <div class="metric-trend">
+                <span class="text-success"><i class="fas fa-calendar-week"></i> Last 7 days</span>
             </div>
         </div>
     </div>
@@ -163,6 +187,12 @@
                                     {
                                         <button class="btn-action resolve" @onclick='() => UpdateStatus(student.StudentId, "Resolved")'>Resolve</button>
                                     }
+                                    @if (student.IncompleteSessions > 0)
+                                    {
+                                        <button class="btn-action aware" @onclick='() => NotifyStudent(student.StudentId, "Cutting Class Awareness")'>
+                                            <i class="fas fa-bullhorn"></i> Aware
+                                        </button>
+                                    }
                                     <button class="btn-action view" @onclick="() => ViewDetails(student.StudentId)">Details</button>
                                 </div>
                             </div>
@@ -240,6 +270,23 @@
         catch (Exception ex)
         {
             Console.WriteLine("Update error: " + ex.Message);
+        }
+    }
+
+    private async Task NotifyStudent(string studentId, string type)
+    {
+        try
+        {
+            var response = await Http.PostAsJsonAsync($"{ApiConfig.BaseUrl}api/guidance/notify-student", new { StudentId = studentId, Type = type });
+            if (response.IsSuccessStatusCode)
+            {
+                await RefreshData();
+                // Optional: Show success toast
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("Notify error: " + ex.Message);
         }
     }
 
@@ -561,6 +608,10 @@
 
     .status-badge.pending { color: #f59e0b; }
     .status-badge.resolved { color: #10b981; }
+
+    .metric-card.warning .metric-icon { background: #fff7ed; color: #f97316; }
+    .btn-action.aware { background: #fee2e2; color: #dc2626; border: 1px solid #fecaca; }
+    .btn-action.aware:hover { background: #fecaca; transform: scale(1.05); }
 
     .search-overlay {
         position: fixed;
