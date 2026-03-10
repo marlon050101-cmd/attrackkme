@@ -124,6 +124,10 @@
                                     {
                                         <span class="consecutive-tag"><i class="fas fa-fire"></i> @student.ConsecutiveAbsences STRAIGHT</span>
                                     }
+                                    else if (student.IncompleteSessions > 0)
+                                    {
+                                        <span class="cutting-tag"><i class="fas fa-running"></i> @student.IncompleteSessions CUTTING CLASS?</span>
+                                    }
                                     else
                                     {
                                         <span class="absent-tag">@student.AbsentDays TOTAL ABSENCES</span>
@@ -488,6 +492,15 @@
     .absent-tag {
         background: #fef3c7;
         color: #d97706;
+        padding: 6px 12px;
+        border-radius: 10px;
+        font-weight: 800;
+        font-size: 0.75rem;
+    }
+
+    .cutting-tag {
+        background: #f3e8ff;
+        color: #9333ea;
         padding: 6px 12px;
         border-radius: 10px;
         font-weight: 800;

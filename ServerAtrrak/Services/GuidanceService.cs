@@ -85,6 +85,7 @@ namespace ServerAtrrak.Services
                            SUM(CASE WHEN sa.Status = 'Present' THEN 1 ELSE 0 END) as PresentDays,
                            SUM(CASE WHEN sa.Status = 'Absent' THEN 1 ELSE 0 END) as AbsentDays,
                            SUM(CASE WHEN sa.Status = 'Late' THEN 1 ELSE 0 END) as LateDays,
+                           SUM(CASE WHEN sa.TimeIn IS NOT NULL AND sa.TimeOut IS NULL THEN 1 ELSE 0 END) as IncompleteSessions,
                            sub.SubjectName,
                            COALESCE(gc.Status, 'Normal') as GuidanceStatus
                     FROM student s
@@ -96,8 +97,8 @@ namespace ServerAtrrak.Services
                     LEFT JOIN guidance_cases gc ON s.StudentId = gc.StudentId
                     WHERE s.SchoolId = @SchoolId AND s.IsActive = true
                     GROUP BY s.StudentId, s.FullName, s.GradeLevel, s.Section, s.Strand, s.Gender, sub.SubjectName, gc.Status
-                    HAVING AbsentDays >= 3
-                    ORDER BY AbsentDays DESC, s.GradeLevel, s.Section, s.FullName";
+                    HAVING AbsentDays > 0 OR IncompleteSessions > 0
+                    ORDER BY AbsentDays DESC, IncompleteSessions DESC, s.GradeLevel, s.Section, s.FullName";
 
                 using var command = new MySqlCommand(query, connection);
                 command.Parameters.AddWithValue("@SchoolId", schoolId);
@@ -125,6 +126,7 @@ namespace ServerAtrrak.Services
                         PresentDays = presentDays,
                         AbsentDays = reader.IsDBNull("AbsentDays") ? 0 : reader.GetInt32("AbsentDays"),
                         LateDays = reader.IsDBNull("LateDays") ? 0 : reader.GetInt32("LateDays"),
+                        IncompleteSessions = reader.IsDBNull("IncompleteSessions") ? 0 : reader.GetInt32("IncompleteSessions"),
                         AttendanceRate = totalDays > 0 ? (double)presentDays / totalDays * 100 : 0,
                         GuidanceStatus = reader.GetString("GuidanceStatus"),
                         SubjectName = subjectName
@@ -186,7 +188,7 @@ namespace ServerAtrrak.Services
                 // Let's use a dynamic threshold: Math.Max(1, Math.Min(3, days / 2))? No, simple is better.
                 int threshold = days <= 3 ? 1 : 3;
 
-                var flaggedStudents = summaries.Where(s => s.AbsentDays >= threshold || s.ConsecutiveAbsences >= 3).ToList();
+                var flaggedStudents = summaries.Where(s => s.AbsentDays >= threshold || s.ConsecutiveAbsences >= 3 || s.IncompleteSessions > 0).ToList();
                 
                 var uniqueFlaggedIds = flaggedStudents.Select(s => s.StudentId).Distinct().Count();
                 var gradeLevels = flaggedStudents.Select(s => s.GradeLevel).Distinct().Count();
