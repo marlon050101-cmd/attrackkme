@@ -75,20 +75,27 @@ namespace ServerAtrrak.Services
         {
             try
             {
-                using var connection = new MySql.Data.MySqlClient.MySqlConnection(_dbConnection.GetConnection());
+                using var connection = new MySqlConnection(_dbConnection.GetConnection());
                 await connection.OpenAsync();
 
+                // Join with guidance_cases to get Status
                 var query = @"
                     SELECT s.StudentId, s.FullName, s.GradeLevel, s.Section, s.Strand, s.Gender,
-                           COUNT(da.AttendanceId) as TotalDays,
-                           SUM(CASE WHEN da.Status = 'Present' THEN 1 ELSE 0 END) as PresentDays,
-                           SUM(CASE WHEN da.Status = 'Absent' THEN 1 ELSE 0 END) as AbsentDays,
-                           SUM(CASE WHEN da.Status = 'Late' THEN 1 ELSE 0 END) as LateDays
+                           COUNT(sa.SubjectAttendanceId) as TotalDays,
+                           SUM(CASE WHEN sa.Status = 'Present' THEN 1 ELSE 0 END) as PresentDays,
+                           SUM(CASE WHEN sa.Status = 'Absent' THEN 1 ELSE 0 END) as AbsentDays,
+                           SUM(CASE WHEN sa.Status = 'Late' THEN 1 ELSE 0 END) as LateDays,
+                           sub.SubjectName,
+                           COALESCE(gc.Status, 'Normal') as GuidanceStatus
                     FROM student s
-                    LEFT JOIN daily_attendance da ON s.StudentId = da.StudentId 
-                        AND da.Date >= DATE_SUB(CURDATE(), INTERVAL @Days DAY)
+                    INNER JOIN class_offering co ON s.GradeLevel = co.GradeLevel AND s.Section = co.Section
+                    INNER JOIN subject sub ON co.SubjectId = sub.SubjectId
+                    LEFT JOIN subject_attendance sa ON s.StudentId = sa.StudentId 
+                        AND sa.ClassOfferingId = co.ClassOfferingId
+                        AND sa.Date >= DATE_SUB(CURDATE(), INTERVAL @Days DAY)
+                    LEFT JOIN guidance_cases gc ON s.StudentId = gc.StudentId
                     WHERE s.SchoolId = @SchoolId AND s.IsActive = true
-                    GROUP BY s.StudentId, s.FullName, s.GradeLevel, s.Section, s.Strand, s.Gender
+                    GROUP BY s.StudentId, s.FullName, s.GradeLevel, s.Section, s.Strand, s.Gender, sub.SubjectName, gc.Status
                     HAVING AbsentDays >= 3
                     ORDER BY AbsentDays DESC, s.GradeLevel, s.Section, s.FullName";
 
@@ -101,12 +108,14 @@ namespace ServerAtrrak.Services
                 
                 while (await reader.ReadAsync())
                 {
+                    var studentId = reader.GetString("StudentId");
+                    var subjectName = reader.IsDBNull("SubjectName") ? null : reader.GetString("SubjectName");
                     var totalDays = reader.IsDBNull("TotalDays") ? 0 : reader.GetInt32("TotalDays");
                     var presentDays = reader.IsDBNull("PresentDays") ? 0 : reader.GetInt32("PresentDays");
                     
                     summaries.Add(new AttendanceSummary
                     {
-                        StudentId = reader.IsDBNull("StudentId") ? string.Empty : reader.GetString("StudentId"),
+                        StudentId = studentId,
                         FullName = reader.IsDBNull("FullName") ? string.Empty : reader.GetString("FullName"),
                         GradeLevel = reader.IsDBNull("GradeLevel") ? 0 : reader.GetInt32("GradeLevel"),
                         Section = reader.IsDBNull("Section") ? string.Empty : reader.GetString("Section"),
@@ -116,11 +125,19 @@ namespace ServerAtrrak.Services
                         PresentDays = presentDays,
                         AbsentDays = reader.IsDBNull("AbsentDays") ? 0 : reader.GetInt32("AbsentDays"),
                         LateDays = reader.IsDBNull("LateDays") ? 0 : reader.GetInt32("LateDays"),
-                        AttendanceRate = totalDays > 0 ? (double)presentDays / totalDays * 100 : 0
+                        AttendanceRate = totalDays > 0 ? (double)presentDays / totalDays * 100 : 0,
+                        GuidanceStatus = reader.GetString("GuidanceStatus"),
+                        SubjectName = subjectName
                     });
                 }
+                reader.Close();
 
-                _logger.LogInformation("Retrieved {Count} attendance summaries for school {SchoolId}", summaries.Count, schoolId);
+                // Calculate consecutive absences for flagged students
+                foreach (var summary in summaries)
+                {
+                    summary.ConsecutiveAbsences = await GetConsecutiveAbsencesAsync(summary.StudentId, summary.SubjectName, connection);
+                }
+
                 return summaries;
             }
             catch (Exception ex)
@@ -130,21 +147,55 @@ namespace ServerAtrrak.Services
             }
         }
 
-        public async Task<GuidanceDashboardData> GetDashboardDataAsync(string schoolId)
+        private async Task<int> GetConsecutiveAbsencesAsync(string studentId, string? subjectName, MySqlConnection connection)
+        {
+            var query = @"
+                SELECT Status FROM subject_attendance sa
+                INNER JOIN class_offering co ON sa.ClassOfferingId = co.ClassOfferingId
+                INNER JOIN subject sub ON co.SubjectId = sub.SubjectId
+                WHERE sa.StudentId = @StudentId AND sub.SubjectName = @SubjectName
+                ORDER BY sa.Date DESC
+                LIMIT 10";
+
+            using var cmd = new MySqlCommand(query, connection);
+            cmd.Parameters.AddWithValue("@StudentId", studentId);
+            cmd.Parameters.AddWithValue("@SubjectName", subjectName ?? (object)DBNull.Value);
+
+            int consecutive = 0;
+            using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                if (reader.GetString(0) == "Absent")
+                    consecutive++;
+                else
+                    break;
+            }
+            return consecutive;
+        }
+
+        public async Task<GuidanceDashboardData> GetDashboardDataAsync(string schoolId, int days = 30)
         {
             try
             {
                 var students = await GetStudentsBySchoolAsync(schoolId);
-                var attendanceSummary = await GetAttendanceSummaryAsync(schoolId);
+                var summaries = await GetAttendanceSummaryAsync(schoolId, days);
 
-                var flaggedStudents = attendanceSummary.Where(s => s.AbsentDays >= 3).ToList();
+                // For small timeframes (Daily/Weekly), be more sensitive
+                // days=1 (Daily): Flag anyone absent today
+                // days=7 (Weekly): Flag anyone with at least 1-2 absences? Or stick to 3?
+                // Let's use a dynamic threshold: Math.Max(1, Math.Min(3, days / 2))? No, simple is better.
+                int threshold = days <= 3 ? 1 : 3;
+
+                var flaggedStudents = summaries.Where(s => s.AbsentDays >= threshold || s.ConsecutiveAbsences >= 3).ToList();
+                
+                var uniqueFlaggedIds = flaggedStudents.Select(s => s.StudentId).Distinct().Count();
                 var gradeLevels = flaggedStudents.Select(s => s.GradeLevel).Distinct().Count();
                 var sections = flaggedStudents.Select(s => s.Section).Distinct().Count();
 
                 return new GuidanceDashboardData
                 {
                     TotalStudents = students.Count,
-                    FlaggedStudents = flaggedStudents.Count,
+                    FlaggedStudents = uniqueFlaggedIds,
                     GradeLevelsAffected = gradeLevels,
                     SectionsMonitored = sections,
                     StudentsAtRisk = flaggedStudents,
@@ -157,13 +208,44 @@ namespace ServerAtrrak.Services
                 throw;
             }
         }
+
+        public async Task<bool> UpdateCaseStatusAsync(string studentId, string status, string? notes = null)
+        {
+            try
+            {
+                using var connection = new MySqlConnection(_dbConnection.GetConnection());
+                await connection.OpenAsync();
+
+                var sql = @"
+                    INSERT INTO guidance_cases (CaseId, StudentId, Status, LastFlaggedDate, Notes)
+                    VALUES (@CaseId, @StudentId, @Status, NOW(), @Notes)
+                    ON DUPLICATE KEY UPDATE 
+                        Status = @Status, 
+                        Notes = COALESCE(@Notes, Notes),
+                        UpdatedAt = NOW()";
+                
+                using var cmd = new MySqlCommand(sql, connection);
+                cmd.Parameters.AddWithValue("@CaseId", Guid.NewGuid().ToString());
+                cmd.Parameters.AddWithValue("@StudentId", studentId);
+                cmd.Parameters.AddWithValue("@Status", status);
+                cmd.Parameters.AddWithValue("@Notes", notes ?? (object)DBNull.Value);
+
+                return await cmd.ExecuteNonQueryAsync() > 0;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating case status for student {StudentId}", studentId);
+                return false;
+            }
+        }
     }
 
     public interface IGuidanceService
     {
         Task<List<StudentInfo>> GetStudentsBySchoolAsync(string schoolId);
         Task<List<AttendanceSummary>> GetAttendanceSummaryAsync(string schoolId, int days = 30);
-        Task<GuidanceDashboardData> GetDashboardDataAsync(string schoolId);
+        Task<GuidanceDashboardData> GetDashboardDataAsync(string schoolId, int days = 30);
+        Task<bool> UpdateCaseStatusAsync(string studentId, string status, string? notes = null);
     }
 
 }

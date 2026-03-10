@@ -163,8 +163,8 @@
             <div class="mb-3">
                 <i class="fas fa-check-circle fa-3x text-primary"></i>
             </div>
-            <h2 class="fw-bold text-primary">Sardo-TrackCare</h2>
-            <p class="text-muted">Attendance Tracking System</p>
+            <h2 class="fw-bold text-primary">@(isSmsHubMode ? "SMS Hub - Office PC" : (isKioskMode ? "Kiosk Mode Setup" : "Sardo-TrackCare"))</h2>
+            <p class="text-muted">@(isSmsHubMode ? "Head/Admin/Guidance Login Required" : (isKioskMode ? "Head/Admin Access Required" : "Attendance Tracking System"))</p>
             
             <!-- Connection Status Indicator -->
             <div class="connection-status mb-3">
@@ -219,35 +219,46 @@
                     <div class="alert alert-danger" role="alert">
                         <i class="fas fa-exclamation-triangle me-2"></i>
                         @errorMessage
-                        @if (errorMessage.Contains("Connection") || errorMessage.Contains("timeout"))
-                        {
-                            <div class="mt-2">
-                                <button type="button" class="btn btn-sm btn-outline-danger" @onclick="RetryConnection">
-                                    <i class="fas fa-redo me-1"></i>Retry Connection
-                                </button>
-                            </div>
-                        }
                     </div>
                 }
 
-                <div class="d-grid">
-                    <button type="submit" class="btn btn-primary" disabled="@isLoading">
+                <div class="d-grid gap-2">
+                    <button type="submit" class="btn @(isSmsHubMode ? "btn-success" : (isKioskMode ? "btn-info text-white" : "btn-primary"))" disabled="@isLoading">
                         @if (isLoading)
                         {
                             <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-                            <span>Logging in...</span>
+                            <span>@(isSmsHubMode ? "Authenticating..." : (isKioskMode ? "Launching..." : "Logging in..."))</span>
                         }
                         else
                         {
-                            <i class="fas fa-sign-in-alt me-2"></i>
-                            <span>Login</span>
+                            <i class="fas @(isSmsHubMode ? "fa-satellite-dish" : (isKioskMode ? "fa-tablet-alt" : "fa-sign-in-alt")) me-2"></i>
+                            <span>@(isSmsHubMode ? "Login to SMS Hub" : (isKioskMode ? "Launch Kiosk Mode" : "Login"))</span>
                         }
                     </button>
+
+                    @if (!isSmsHubMode)
+                    {
+                        <button type="button" class="btn btn-outline-secondary mt-2" @onclick="ToggleKioskMode" disabled="@isLoading">
+                            <i class="fas @(isKioskMode ? "fa-user-cog" : "fa-desktop") me-2"></i>
+                            @(isKioskMode ? "Back to Standard Login" : "Kiosk Mode Login (Head Only)")
+                        </button>
+                    }
                 </div>
             </EditForm>
         <!-- Create Account Link -->
         <div class="text-center mt-3">
-            <small class="text-muted">Don't have an account? <a href="/register" class="text-primary fw-semibold">Register</a></small>
+            @if (!isKioskMode && !isSmsHubMode)
+            {
+                <small class="text-muted">Don't have an account? <a href="/register" class="text-primary fw-semibold">Register</a></small>
+            }
+            else if (isKioskMode)
+            {
+                <small class="text-info fw-bold"><i class="fas fa-info-circle"></i> This will lock the app to the Attendance Scanner.</small>
+            }
+            else if (isSmsHubMode)
+            {
+                <small class="text-success fw-bold"><i class="fas fa-shield-alt"></i> Authorized access to SMS Dispatcher system.</small>
+            }
         </div>
     </div>
 </div>
@@ -271,18 +282,24 @@
     private string errorMessage = string.Empty;
     private bool isLoading = false;
     private bool showApprovalModal = false;
+    private bool isKioskMode = false;
+    private bool isSmsHubMode = false;
     private string connectionStatus = "Checking...";
     private Timer? connectionCheckTimer;
 
     private void CloseModal() => showApprovalModal = false;
+    private void ToggleKioskMode() 
+    {
+        isKioskMode = !isKioskMode;
+        errorMessage = string.Empty;
+    }
 
     protected override async Task OnInitializedAsync()
     {
-        // For Windows (Office PC), auto-redirect to SMS Hub Dashboard
+        // For Windows (Office PC), set to SMS Hub Mode instead of auto-redirecting
         if (DeviceInfo.Current.Platform == DevicePlatform.WinUI)
         {
-            Navigation.NavigateTo("/sms-hub");
-            return;
+            isSmsHubMode = true;
         }
 
         // Start connection monitoring
@@ -315,10 +332,8 @@
             System.Diagnostics.Debug.WriteLine("=== Starting Login Process ===");
             System.Diagnostics.Debug.WriteLine($"Username: {loginRequest.Username}");
             
-            // Check if we have internet connectivity (don't block on server health check
-            // because Render.com free tier has cold starts that can take 30+ seconds)
+            // Check if we have internet connectivity
             var hasInternet = Microsoft.Maui.Networking.Connectivity.NetworkAccess == Microsoft.Maui.Networking.NetworkAccess.Internet;
-            System.Diagnostics.Debug.WriteLine($"Has Internet: {hasInternet}");
             
             if (!hasInternet)
             {
@@ -326,73 +341,93 @@
                 return;
             }
             
-            // Update UI to show online status
             connectionStatus = "Online";
             await InvokeAsync(StateHasChanged);
             
-            // Use a longer timeout (100s) to handle Render.com cold starts
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(100));
-            
             var httpClient = HttpClientFactory.CreateClient("AttrakAPI");
             var response = await httpClient.PostAsJsonAsync("api/auth/login", loginRequest, cts.Token);
 
             var responseContent = await response.Content.ReadAsStringAsync();
-            System.Diagnostics.Debug.WriteLine($"Response Status: {response.StatusCode}");
-            System.Diagnostics.Debug.WriteLine($"Response Content: {responseContent}");
 
             if (response.IsSuccessStatusCode)
             {
                 if (responseContent.TrimStart().StartsWith("{"))
                 {
                     var result = await response.Content.ReadFromJsonAsync<LoginResponse>();
-                if (result?.Success == true && result.User != null)
-                {
-                    System.Diagnostics.Debug.WriteLine("Login successful, setting user...");
-                    AuthService.SetCurrentUser(result.User);
-                    
-                    try
+                    if (result?.Success == true && result.User != null)
                     {
-                        await Task.Delay(1000);
-                        await InvokeAsync(() => 
+                        // KIOSK OR SMS HUB MODE VALIDATION
+                        // Note: Guidance Counselor is allowed on Windows/SMS Hub Mode for monitoring
+                        if ((isKioskMode || isSmsHubMode) && 
+                            result.User.UserType != UserType.Head && 
+                            result.User.UserType != UserType.Admin && 
+                            result.User.UserType != UserType.GuidanceCounselor)
                         {
-                            if (result.User.UserType == UserType.SubjectTeacher)
+                            errorMessage = $"Access Denied: Only Head, Admin, or Guidance accounts can {(isSmsHubMode ? "access this version" : "launch Kiosk Mode")}.";
+                            isLoading = false;
+                            return;
+                        }
+
+                        System.Diagnostics.Debug.WriteLine("Login successful, setting user...");
+                        AuthService.SetCurrentUser(result.User);
+                        
+                        try
+                        {
+                            await Task.Delay(1000);
+                            await InvokeAsync(() => 
                             {
-                                Navigation.NavigateTo("/teacher-dashboard");
-                            }
-                            else if (result.User.UserType == UserType.Adviser || result.User.UserType == UserType.GuidanceCounselor)
-                            {
-                                Navigation.NavigateTo("/adviser-dashboard");
-                            }
-                            else if (result.User.UserType == UserType.Student)
-                            {
-                                Navigation.NavigateTo("/student-dashboard");
-                            }
-                            else if (result.User.UserType == UserType.Head)
-                            {
-                                Navigation.NavigateTo("/head-dashboard");
-                            }
-                            else
-                            {
-                                Navigation.NavigateTo("/qr-scanner");
-                            }
-                        });
+                                if (isKioskMode)
+                                {
+                                    Navigation.NavigateTo("/kiosk/student-registration");
+                                }
+                                else if (result.User.UserType == UserType.SubjectTeacher)
+                                {
+                                    Navigation.NavigateTo("/teacher-dashboard");
+                                }
+                                else if (result.User.UserType == UserType.GuidanceCounselor)
+                                {
+                                    Navigation.NavigateTo("/guidance-dashboard");
+                                }
+                                else if (result.User.UserType == UserType.Adviser)
+                                {
+                                    Navigation.NavigateTo("/adviser-dashboard");
+                                }
+                                else if (result.User.UserType == UserType.Student)
+                                {
+                                    Navigation.NavigateTo("/student-dashboard");
+                                }
+                                else if (result.User.UserType == UserType.Head)
+                                {
+                                    Navigation.NavigateTo("/head-dashboard");
+                                }
+                                else if (isSmsHubMode)
+                                {
+                                    Navigation.NavigateTo("/sms-hub");
+                                }
+                                else
+                                {
+                                    Navigation.NavigateTo("/qr-scanner");
+                                }
+                            });
+                        }
+                        catch (Exception navEx)
+                        {
+                            System.Diagnostics.Debug.WriteLine($"Navigation error: {navEx.Message}");
+                            Navigation.NavigateTo(isKioskMode ? "/kiosk/student-registration" : "/qr-scanner");
+                        }
                     }
-                    catch (Exception navEx)
+                    else
                     {
-                        System.Diagnostics.Debug.WriteLine($"Navigation error: {navEx.Message}");
-                        Navigation.NavigateTo("/qr-scanner");
+                        errorMessage = "Invalid login credentials";
                     }
                 }
                 else
                 {
-                    errorMessage = "Invalid login credentials";
+                    errorMessage = "Server returned invalid response format";
                 }
             }
-            else
-            {
-                errorMessage = "Server returned invalid response format";
-            }
-        }
+// ... [rest of catch blocks]
         else
         {
             if (responseContent.TrimStart().StartsWith("{"))

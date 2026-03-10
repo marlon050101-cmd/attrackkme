@@ -1,0 +1,11 @@
+CREATE TABLE IF NOT EXISTS guidance_cases (
+    CaseId VARCHAR(36) PRIMARY KEY,
+    StudentId VARCHAR(50) NOT NULL,
+    Status VARCHAR(20) NOT NULL DEFAULT 'Normal', -- Normal, Pending, Resolved
+    LastFlaggedDate DATETIME NOT NULL,
+    Notes TEXT,
+    CreatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UpdatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX (StudentId),
+    INDEX (Status)
+);

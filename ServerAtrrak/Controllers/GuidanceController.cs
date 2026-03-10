@@ -22,7 +22,7 @@ namespace ServerAtrrak.Controllers
         }
 
         [HttpGet("dashboard/{userId}")]
-        public async Task<ActionResult<GuidanceDashboardData>> GetDashboardData(string userId)
+        public async Task<ActionResult<GuidanceDashboardData>> GetDashboardData(string userId, [FromQuery] int days = 30)
         {
             try
             {
@@ -38,7 +38,7 @@ namespace ServerAtrrak.Controllers
 
                 _logger.LogInformation("Found school {SchoolId} for guidance counselor {UserId}", schoolId, userId);
                 
-                var dashboardData = await _guidanceService.GetDashboardDataAsync(schoolId);
+                var dashboardData = await _guidanceService.GetDashboardDataAsync(schoolId, days);
                 _logger.LogInformation("Retrieved dashboard data with {StudentCount} students and {FlaggedCount} flagged students", 
                     dashboardData.TotalStudents, dashboardData.FlaggedStudents);
                 
@@ -90,6 +90,27 @@ namespace ServerAtrrak.Controllers
             {
                 _logger.LogError(ex, "Error getting attendance summary for guidance counselor {UserId}", userId);
                 return StatusCode(500, new { message = "An error occurred while retrieving attendance summary" });
+            }
+        }
+
+        [HttpPost("update-case-status")]
+        public async Task<ActionResult> UpdateCaseStatus([FromBody] UpdateCaseStatusRequest request)
+        {
+            try
+            {
+                if (request == null || string.IsNullOrEmpty(request.StudentId))
+                    return BadRequest(new { message = "Invalid request" });
+
+                var success = await _guidanceService.UpdateCaseStatusAsync(request.StudentId, request.Status, request.Notes);
+                if (success)
+                    return Ok(new { success = true, message = "Status updated successfully" });
+                
+                return BadRequest(new { success = false, message = "Failed to update status" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating status for student {StudentId}", request?.StudentId);
+                return StatusCode(500, new { message = "An error occurred while updating status" });
             }
         }
 

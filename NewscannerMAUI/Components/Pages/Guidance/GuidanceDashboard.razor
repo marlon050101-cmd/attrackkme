@@ -1,0 +1,583 @@
+@page "/guidance-dashboard"
+@using AttrackSharedClass.Models
+@using NewscannerMAUI.Services
+@inject HttpClient Http
+@inject AuthService AuthService
+@inject NavigationManager Navigation
+
+<div class="guidance-container">
+    <div class="header-banner">
+        <div class="header-content">
+            <h1 class="welcome-text">Guidance Counselor Dashboard</h1>
+            <p class="subtitle">Monitoring student attendance risk & consecutive absences</p>
+        </div>
+        <div class="header-actions">
+            <button class="btn-search-toggle" @onclick="ToggleSearch">
+                <i class="fas fa-search"></i>
+            </button>
+            <button class="btn-refresh" @onclick="RefreshData" disabled="@isLoading">
+                <i class="fas fa-sync-alt @(isLoading ? "fa-spin" : "")"></i>
+            </button>
+        </div>
+    </div>
+
+    @if (showSearch)
+    {
+        <div class="search-overlay">
+            <div class="search-box">
+                <i class="fas fa-search search-icon"></i>
+                <input type="text" placeholder="Search students by name or ID..." @bind="searchQuery" @bind:event="oninput" />
+                <button class="btn-close-search" @onclick="ToggleSearch"><i class="fas fa-times"></i></button>
+            </div>
+        </div>
+    }
+
+    <!-- Key Metrics -->
+    <div class="metrics-grid">
+        <div class="metric-card risk">
+            <div class="metric-icon">
+                <i class="fas fa-exclamation-triangle"></i>
+            </div>
+            <div class="metric-data">
+                <span class="metric-value">@dashboardData.FlaggedStudents</span>
+                <span class="metric-label">Students at Risk</span>
+            </div>
+            <div class="metric-trend">
+                <span class="text-danger"><i class="fas fa-arrow-up"></i> High priority</span>
+            </div>
+        </div>
+        <div class="metric-card info">
+            <div class="metric-icon">
+                <i class="fas fa-users"></i>
+            </div>
+            <div class="metric-data">
+                <span class="metric-value">@dashboardData.TotalStudents</span>
+                <span class="metric-label">Total Students</span>
+            </div>
+        </div>
+        <div class="metric-card success">
+            <div class="metric-icon">
+                <i class="fas fa-check-circle"></i>
+            </div>
+            <div class="metric-data">
+                <span class="metric-value">@dashboardData.GradeLevelsAffected</span>
+                <span class="metric-label">Affected Grades</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Attendance Risks -->
+    <div class="content-section">
+            <div class="filter-groups">
+                <div class="filter-group">
+                    <span class="filter-group-label">Risk Profile:</span>
+                    <div class="filter-pills">
+                        <button class="filter-pill @(activeFilter == "all" ? "active" : "")" @onclick='() => SetFilter("all")'>All Risks</button>
+                        <button class="filter-pill @(activeFilter == "consecutive" ? "active" : "")" @onclick='() => SetFilter("consecutive")'>3+ Straight Absences</button>
+                        <button class="filter-pill @(activeFilter == "pending" ? "active" : "")" @onclick='() => SetFilter("pending")'>Pending Cases</button>
+                    </div>
+                </div>
+                <div class="filter-group">
+                    <span class="filter-group-label">Timeframe:</span>
+                    <div class="filter-pills">
+                        <button class="filter-pill @(timeRange == 1 ? "active" : "")" @onclick='() => SetTimeRange(1)'>Today</button>
+                        <button class="filter-pill @(timeRange == 7 ? "active" : "")" @onclick='() => SetTimeRange(7)'>Weekly</button>
+                        <button class="filter-pill @(timeRange == 30 ? "active" : "")" @onclick='() => SetTimeRange(30)'>Monthly</button>
+                    </div>
+                </div>
+            </div>
+
+        @if (isLoading)
+        {
+            <div class="loading-state">
+                <div class="shimmer-card"></div>
+                <div class="shimmer-card"></div>
+                <div class="shimmer-card"></div>
+            </div>
+        }
+        else if (!filteredRisks.Any())
+        {
+            <div class="empty-state">
+                <div class="empty-icon"><i class="fas fa-user-check"></i></div>
+                <h3>All Clear!</h3>
+                <p>No students currently match this risk profile.</p>
+            </div>
+        }
+        else
+        {
+            <div class="risk-list">
+                @foreach (var student in filteredRisks)
+                {
+                    <div class="risk-card @(student.IsConsecutiveRisk ? "critical" : "")">
+                        <div class="status-indicator @student.GuidanceStatus.ToLower()"></div>
+                        <div class="risk-card-content">
+                            <div class="student-main">
+                                <div class="student-avatar">
+                                    @(student.FullName.Substring(0, 1))
+                                </div>
+                                <div class="student-details">
+                                    <h3 class="student-name">@student.FullName</h3>
+                                    <span class="student-meta">@student.GradeLevel - @student.Section (@student.Strand)</span>
+                                </div>
+                                <div class="risk-badge">
+                                    @if (student.IsConsecutiveRisk)
+                                    {
+                                        <span class="consecutive-tag"><i class="fas fa-fire"></i> @student.ConsecutiveAbsences STRAIGHT</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="absent-tag">@student.AbsentDays TOTAL ABSENCES</span>
+                                    }
+                                </div>
+                            </div>
+                            
+                            <div class="risk-info-row">
+                                <div class="info-item">
+                                    <span class="info-label">Subject</span>
+                                    <span class="info-value">@student.SubjectName</span>
+                                </div>
+                                <div class="info-item">
+                                    <span class="info-label">Rate</span>
+                                    <span class="info-value">@student.AttendanceRate.ToString("F1")%</span>
+                                </div>
+                                <div class="info-item">
+                                    <span class="info-label">Last Absent</span>
+                                    <span class="info-value">@student.LastAbsentDate?.ToString("MMM dd")</span>
+                                </div>
+                            </div>
+
+                            <div class="card-actions">
+                                <div class="status-badge-container">
+                                    <span class="status-badge @student.GuidanceStatus.ToLower()">Status: @student.GuidanceStatus</span>
+                                </div>
+                                <div class="btn-group">
+                                    @if (student.GuidanceStatus != "Pending")
+                                    {
+                                        <button class="btn-action pending" @onclick='() => UpdateStatus(student.StudentId, "Pending")'>Mark Pending</button>
+                                    }
+                                    @if (student.GuidanceStatus != "Resolved")
+                                    {
+                                        <button class="btn-action resolve" @onclick='() => UpdateStatus(student.StudentId, "Resolved")'>Resolve</button>
+                                    }
+                                    <button class="btn-action view" @onclick="() => ViewDetails(student.StudentId)">Details</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private GuidanceDashboardData dashboardData = new();
+    private bool isLoading = true;
+    private bool showSearch = false;
+    private string searchQuery = "";
+    private string activeFilter = "all";
+    private int timeRange = 30;
+    private UserInfo? currentUser;
+
+    private List<AttendanceSummary> filteredRisks => dashboardData.StudentsAtRisk
+        .Where(s => string.IsNullOrEmpty(searchQuery) || s.FullName.Contains(searchQuery, StringComparison.OrdinalIgnoreCase))
+        .Where(s => activeFilter == "all" || 
+                   (activeFilter == "consecutive" && s.IsConsecutiveRisk) ||
+                   (activeFilter == "pending" && s.GuidanceStatus == "Pending"))
+        .ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        currentUser = await AuthService.GetCurrentUserAsync();
+        if (currentUser == null) Navigation.NavigateTo("/");
+        await RefreshData();
+    }
+
+    private async Task RefreshData()
+    {
+        if (currentUser == null) return;
+        isLoading = true;
+        try
+        {
+            var data = await Http.GetFromJsonAsync<GuidanceDashboardData>($"{ApiConfig.BaseUrl}api/guidance/dashboard/{currentUser.UserId}?days={timeRange}");
+            dashboardData = data ?? new GuidanceDashboardData();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("Error: " + ex.Message);
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task SetTimeRange(int days)
+    {
+        timeRange = days;
+        await RefreshData();
+    }
+
+    private async Task UpdateStatus(string studentId, string status)
+    {
+        try
+        {
+            var response = await Http.PostAsJsonAsync($"{ApiConfig.BaseUrl}api/guidance/update-case-status", new UpdateCaseStatusRequest
+            {
+                StudentId = studentId,
+                Status = status
+            });
+
+            if (response.IsSuccessStatusCode)
+            {
+                await RefreshData();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("Update error: " + ex.Message);
+        }
+    }
+
+    private void ToggleSearch() => showSearch = !showSearch;
+    private void SetFilter(string filter) => activeFilter = filter;
+    private void ViewDetails(string studentId) => Navigation.NavigateTo($"/guidance/student/{studentId}");
+}
+
+<style>
+    :root {
+        --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        --glass-bg: rgba(255, 255, 255, 0.95);
+        --card-shadow: 0 8px 32px rgba(31, 38, 135, 0.1);
+    }
+
+    .guidance-container {
+        padding: 0;
+        background: #f8fafc;
+        min-height: 100vh;
+    }
+
+    .header-banner {
+        background: var(--primary-gradient);
+        padding: 2rem;
+        color: white;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-radius: 0 0 30px 30px;
+        box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+    }
+
+    .welcome-text {
+        font-size: 1.8rem;
+        font-weight: 800;
+        margin: 0;
+    }
+
+    .subtitle {
+        opacity: 0.9;
+        margin: 5px 0 0;
+    }
+
+    .btn-refresh, .btn-search-toggle {
+        background: rgba(255,255,255,0.2);
+        border: none;
+        color: white;
+        width: 45px;
+        height: 45px;
+        border-radius: 12px;
+        backdrop-filter: blur(5px);
+        margin-left: 10px;
+        transition: all 0.2s;
+    }
+
+    .btn-refresh:hover, .btn-search-toggle:hover {
+        background: rgba(255,255,255,0.3);
+        transform: translateY(-2px);
+    }
+
+    .metrics-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 1.5rem;
+        padding: 2rem;
+        margin-top: -30px;
+    }
+
+    .metric-card {
+        background: white;
+        padding: 1.5rem;
+        border-radius: 20px;
+        display: flex;
+        align-items: center;
+        box-shadow: var(--card-shadow);
+        border: 1px solid #fff;
+    }
+
+    .metric-icon {
+        width: 60px;
+        height: 60px;
+        border-radius: 15px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.5rem;
+        margin-right: 1.2rem;
+    }
+
+    .metric-card.risk .metric-icon { background: #fee2e2; color: #ef4444; }
+    .metric-card.info .metric-icon { background: #e0f2fe; color: #3b82f6; }
+    .metric-card.success .metric-icon { background: #dcfce7; color: #22c55e; }
+
+    .metric-value {
+        display: block;
+        font-size: 1.8rem;
+        font-weight: 800;
+        color: #1e293b;
+    }
+
+    .metric-label {
+        color: #64748b;
+        font-size: 0.9rem;
+    }
+
+    .content-section {
+        padding: 0 2rem 2rem;
+    }
+
+    .section-header {
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
+        margin-bottom: 2rem;
+    }
+
+    .section-title {
+        font-size: 1.4rem;
+        font-weight: 800;
+        color: #1e293b;
+        margin: 0;
+    }
+
+    .filter-groups {
+        display: flex;
+        flex-direction: column;
+        gap: 1.2rem;
+        background: white;
+        padding: 1.5rem;
+        border-radius: 20px;
+        box-shadow: var(--card-shadow);
+    }
+
+    .filter-group {
+        display: flex;
+        align-items: center;
+        gap: 1.5rem;
+        flex-wrap: wrap;
+    }
+
+    .filter-group-label {
+        font-size: 0.9rem;
+        font-weight: 700;
+        color: #64748b;
+        min-width: 100px;
+    }
+
+    .filter-pills {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+
+    .filter-pill {
+        padding: 8px 16px;
+        border-radius: 20px;
+        border: none;
+        background: #e2e8f0;
+        color: #64748b;
+        font-weight: 600;
+        font-size: 0.85rem;
+    }
+
+    .filter-pill.active {
+        background: #3b82f6;
+        color: white;
+    }
+
+    .risk-list {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    .risk-card {
+        background: white;
+        border-radius: 20px;
+        display: flex;
+        overflow: hidden;
+        box-shadow: var(--card-shadow);
+        border: 1px solid #f1f5f9;
+        transition: transform 0.2s;
+    }
+
+    .risk-card:hover {
+        transform: translateY(-4px);
+    }
+
+    .risk-card.critical {
+        border-left: 5px solid #ef4444;
+    }
+
+    .status-indicator {
+        width: 10px;
+        background: #e2e8f0;
+    }
+
+    .status-indicator.pending { background: #f59e0b; }
+    .status-indicator.resolved { background: #10b981; }
+
+    .risk-card-content {
+        flex: 1;
+        padding: 1.5rem;
+    }
+
+    .student-main {
+        display: flex;
+        align-items: center;
+        margin-bottom: 1.2rem;
+    }
+
+    .student-avatar {
+        width: 50px;
+        height: 50px;
+        background: #f1f5f9;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 800;
+        color: #3b82f6;
+        margin-right: 1rem;
+    }
+
+    .student-name {
+        margin: 0;
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: #1e293b;
+    }
+
+    .student-meta {
+        font-size: 0.85rem;
+        color: #64748b;
+    }
+
+    .risk-badge {
+        margin-left: auto;
+    }
+
+    .consecutive-tag {
+        background: #fee2e2;
+        color: #ef4444;
+        padding: 6px 12px;
+        border-radius: 10px;
+        font-weight: 800;
+        font-size: 0.75rem;
+    }
+
+    .absent-tag {
+        background: #fef3c7;
+        color: #d97706;
+        padding: 6px 12px;
+        border-radius: 10px;
+        font-weight: 800;
+        font-size: 0.75rem;
+    }
+
+    .risk-info-row {
+        display: flex;
+        gap: 2rem;
+        padding: 1rem 0;
+        border-top: 1px solid #f1f5f9;
+        border-bottom: 1px solid #f1f5f9;
+        margin-bottom: 1.2rem;
+    }
+
+    .info-item {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .info-label {
+        font-size: 0.75rem;
+        color: #94a3b8;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    .info-value {
+        font-weight: 700;
+        color: #475569;
+    }
+
+    .card-actions {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .btn-action {
+        padding: 8px 16px;
+        border-radius: 10px;
+        border: none;
+        font-weight: 700;
+        font-size: 0.85rem;
+        margin-left: 8px;
+        transition: all 0.2s;
+    }
+
+    .btn-action.pending { background: #fef3c7; color: #d97706; }
+    .btn-action.resolve { background: #dcfce7; color: #16a34a; }
+    .btn-action.view { background: #e0f2fe; color: #2563eb; }
+
+    .status-badge {
+        font-size: 0.75rem;
+        font-weight: 700;
+        color: #64748b;
+    }
+
+    .status-badge.pending { color: #f59e0b; }
+    .status-badge.resolved { color: #10b981; }
+
+    .search-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        padding: 2rem;
+        z-index: 100;
+        background: rgba(0,0,0,0.4);
+        backdrop-filter: blur(8px);
+        display: flex;
+        justify-content: center;
+    }
+
+    .search-box {
+        background: white;
+        width: 100%;
+        max-width: 600px;
+        padding: 1rem;
+        border-radius: 20px;
+        display: flex;
+        align-items: center;
+        box-shadow: 0 20px 50px rgba(0,0,0,0.2);
+    }
+
+    .search-box input {
+        border: none;
+        flex: 1;
+        padding: 0 1rem;
+        font-size: 1.1rem;
+        outline: none;
+    }
+</style>

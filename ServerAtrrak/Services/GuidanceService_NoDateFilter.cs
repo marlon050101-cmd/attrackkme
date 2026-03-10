@@ -135,18 +135,22 @@ namespace ServerAtrrak.Services
             }
         }
 
-        public async Task<GuidanceDashboardData> GetDashboardDataAsync(string schoolId)
+        public async Task<GuidanceDashboardData> GetDashboardDataAsync(string schoolId, int days = 30)
         {
             try
             {
                 var students = await GetStudentsBySchoolAsync(schoolId);
-                var attendanceSummary = await GetAttendanceSummaryAsync(schoolId);
+                var attendanceSummary = await GetAttendanceSummaryAsync(schoolId, days);
 
-                // Critical Alert: 3+ absences (red alert)
-                var criticalStudents = attendanceSummary.Where(s => s.AbsentDays >= 3).ToList();
+                // Adjust thresholds based on timeframe
+                int criticalThreshold = days <= 3 ? 1 : 3;
+                int warningThreshold = days <= 3 ? 1 : 2;
+
+                // Critical Alert: 3+ absences (red alert) or 1+ for Daily
+                var criticalStudents = attendanceSummary.Where(s => s.AbsentDays >= criticalThreshold).ToList();
                 
-                // Warning Alert: 2 absences (yellow warning)
-                var warningStudents = attendanceSummary.Where(s => s.AbsentDays == 2).ToList();
+                // Warning Alert: 2 absences (orange alert) or 1+ for Daily
+                var warningStudents = attendanceSummary.Where(s => s.AbsentDays >= warningThreshold && s.AbsentDays < (days <= 3 ? 10 : 3)).ToList();
                 
                 // Combine both for display
                 var allFlaggedStudents = criticalStudents.Concat(warningStudents).ToList();
@@ -168,6 +172,35 @@ namespace ServerAtrrak.Services
             {
                 _logger.LogError(ex, "Error getting dashboard data for school {SchoolId}", schoolId);
                 throw;
+            }
+        }
+        public async Task<bool> UpdateCaseStatusAsync(string studentId, string status, string? notes = null)
+        {
+            try
+            {
+                using var connection = new MySqlConnection(_dbConnection.GetConnection());
+                await connection.OpenAsync();
+
+                var sql = @"
+                    INSERT INTO guidance_cases (CaseId, StudentId, Status, LastFlaggedDate, Notes)
+                    VALUES (@CaseId, @StudentId, @Status, NOW(), @Notes)
+                    ON DUPLICATE KEY UPDATE 
+                        Status = @Status, 
+                        Notes = COALESCE(@Notes, Notes),
+                        UpdatedAt = NOW()";
+                
+                using var cmd = new MySqlCommand(sql, connection);
+                cmd.Parameters.AddWithValue("@CaseId", Guid.NewGuid().ToString());
+                cmd.Parameters.AddWithValue("@StudentId", studentId);
+                cmd.Parameters.AddWithValue("@Status", status);
+                cmd.Parameters.AddWithValue("@Notes", notes ?? (object)DBNull.Value);
+
+                return await cmd.ExecuteNonQueryAsync() > 0;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating case status for student {StudentId}", studentId);
+                return false;
             }
         }
     }

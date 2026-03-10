@@ -1,0 +1,218 @@
+@page "/guidance/student-search"
+@using AttrackSharedClass.Models
+@using NewscannerMAUI.Services
+@inject HttpClient Http
+@inject AuthService AuthService
+@inject NavigationManager Navigation
+
+<div class="search-page-container">
+    <div class="header">
+        <button class="btn-back" @onclick="GoBack"><i class="fas fa-arrow-left"></i></button>
+        <h1>Student Directory</h1>
+    </div>
+
+    <div class="search-bar-container">
+        <div class="search-input-wrapper">
+            <i class="fas fa-search"></i>
+            <input type="text" placeholder="Search by name, ID, or section..." @bind="searchQuery" @bind:event="oninput" />
+        </div>
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="shimmer-list">
+            @for (int i = 0; i < 5; i++)
+            {
+                <div class="shimmer-item"></div>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="results-meta">
+            Showing @filteredStudents.Count students
+        </div>
+
+        <div class="students-list">
+            @foreach (var student in filteredStudents)
+            {
+                <div class="student-item" @onclick="() => ViewDetails(student.StudentId)">
+                    <div class="avatar">
+                        @student.FullName.Substring(0, 1)
+                    </div>
+                    <div class="info">
+                        <span class="name">@student.FullName</span>
+                        <span class="meta">@student.GradeLevel - @student.Section</span>
+                    </div>
+                    <i class="fas fa-chevron-right text-muted"></i>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private List<StudentInfo> allStudents = new();
+    private string searchQuery = "";
+    private bool isLoading = true;
+
+    private List<StudentInfo> filteredStudents => allStudents
+        .Where(s => string.IsNullOrEmpty(searchQuery) || 
+                   s.FullName.Contains(searchQuery, StringComparison.OrdinalIgnoreCase) ||
+                   s.StudentId.Contains(searchQuery, StringComparison.OrdinalIgnoreCase) ||
+                   s.Section.Contains(searchQuery, StringComparison.OrdinalIgnoreCase))
+        .OrderBy(s => s.FullName)
+        .ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var user = await AuthService.GetCurrentUserAsync();
+        if (user == null) Navigation.NavigateTo("/");
+
+        try
+        {
+            var data = await Http.GetFromJsonAsync<GuidanceDashboardData>($"{ApiConfig.BaseUrl}api/guidance/dashboard/{user.UserId}");
+            allStudents = data?.AllStudents ?? new();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex.Message);
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void GoBack() => Navigation.NavigateTo("/guidance-dashboard");
+    private void ViewDetails(string studentId) => Navigation.NavigateTo($"/guidance/student/{studentId}");
+}
+
+<style>
+    .search-page-container {
+        padding: 0;
+        background: white;
+        min-height: 100vh;
+    }
+
+    .header {
+        padding: 1.5rem;
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        border-bottom: 1px solid #f1f5f9;
+    }
+
+    .header h1 {
+        font-size: 1.3rem;
+        font-weight: 800;
+        margin: 0;
+    }
+
+    .btn-back {
+        background: #f8fafc;
+        border: none;
+        width: 35px;
+        height: 35px;
+        border-radius: 8px;
+        color: #64748b;
+    }
+
+    .search-bar-container {
+        padding: 1rem 1.5rem;
+        background: white;
+        position: sticky;
+        top: 0;
+    }
+
+    .search-input-wrapper {
+        background: #f1f5f9;
+        padding: 0.8rem 1rem;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .search-input-wrapper i {
+        color: #94a3b8;
+    }
+
+    .search-input-wrapper input {
+        border: none;
+        background: transparent;
+        flex: 1;
+        outline: none;
+        font-size: 1rem;
+    }
+
+    .results-meta {
+        padding: 0.5rem 1.5rem;
+        font-size: 0.8rem;
+        color: #94a3b8;
+        font-weight: 600;
+    }
+
+    .students-list {
+        padding: 0 1rem;
+    }
+
+    .student-item {
+        display: flex;
+        align-items: center;
+        padding: 1rem;
+        border-bottom: 1px solid #f8fafc;
+        transition: background 0.2s;
+    }
+
+    .student-item:active {
+        background: #f1f5f9;
+    }
+
+    .student-item .avatar {
+        width: 45px;
+        height: 45px;
+        background: #eff6ff;
+        color: #3b82f6;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 800;
+        margin-right: 1rem;
+    }
+
+    .info {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .info .name {
+        font-weight: 700;
+        color: #1e293b;
+    }
+
+    .info .meta {
+        font-size: 0.85rem;
+        color: #64748b;
+    }
+
+    .shimmer-list {
+        padding: 1rem;
+    }
+
+    .shimmer-item {
+        height: 60px;
+        background: #f1f5f9;
+        border-radius: 12px;
+        margin-bottom: 10px;
+        animation: pulse 1.5s infinite;
+    }
+
+    @@keyframes pulse {
+        0% { opacity: 1; }
+        50% { opacity: 0.5; }
+        100% { opacity: 1; }
+    }
+</style>

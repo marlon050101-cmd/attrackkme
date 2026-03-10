@@ -24,5 +24,6 @@
     <Compile Include="$(MSBuildThisFileDirectory)Models\ClassOfferingModels.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\SubjectAttendanceModels.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Models\UpdateProfileRequest.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Models\StudentWalkInLog.cs" />
   </ItemGroup>
 </Project>

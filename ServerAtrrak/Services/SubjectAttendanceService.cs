@@ -20,6 +20,8 @@ namespace ServerAtrrak.Services
 
         public async Task<SubjectAttendanceResponse> SaveBatchAsync(SubjectAttendanceBatchRequest request)
         {
+            string? lastStudentName = null;
+            string? lastStudentId = null;
             try
             {
                 if (request?.Items == null || request.Items.Count == 0)
@@ -148,6 +150,9 @@ namespace ServerAtrrak.Services
                             var phone = sReader.IsDBNull(1) ? null : sReader.GetString(1);
                             var subName = sReader.IsDBNull(2) ? null : sReader.GetString(2);
                             
+                            lastStudentName = name;
+                            lastStudentId = item.StudentId;
+
                             if (!string.IsNullOrEmpty(phone))
                             {
                                 // Fire and forget SMS queuing
@@ -162,7 +167,13 @@ namespace ServerAtrrak.Services
                     }
                 }
                 _logger.LogInformation("Saved {Count} subject attendance records date {Date}", request.Items.Count, date);
-                return new SubjectAttendanceResponse { Success = true, Message = "Saved." };
+                return new SubjectAttendanceResponse 
+                { 
+                    Success = true, 
+                    Message = "Saved.",
+                    StudentName = lastStudentName,
+                    StudentId = lastStudentId
+                };
             }
             catch (Exception ex)
             {

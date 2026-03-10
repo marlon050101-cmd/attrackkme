@@ -56,6 +56,8 @@ namespace AttrackSharedClass.Models
     {
         public bool Success { get; set; }
         public string Message { get; set; } = "";
+        public string? StudentName { get; set; }
+        public string? StudentId { get; set; }
     }
 
     /// <summary>Adviser (GuidanceCounselor) for dropdowns.</summary>

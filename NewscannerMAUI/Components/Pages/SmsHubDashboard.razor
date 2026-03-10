@@ -1,7 +1,9 @@
 @page "/sms-hub"
 @using NewscannerMAUI.Services
+@using AttrackSharedClass.Models
 @using Microsoft.Maui.Devices
 @inject SmsHubService SmsHubService
+@inject AuthService AuthService
 @inject NavigationManager Navigation
 @implements IDisposable
 
@@ -368,8 +370,15 @@
     private bool _isRefreshingModem;
     private bool _isRefreshingServer;
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
+        var user = await AuthService.GetCurrentUserAsync();
+        if (user == null || (user.UserType != UserType.Head && user.UserType != UserType.Admin))
+        {
+            Navigation.NavigateTo("/");
+            return;
+        }
+
         SmsHubService.OnStatusChanged += HandleStatusChanged;
         
         // Initial log if empty

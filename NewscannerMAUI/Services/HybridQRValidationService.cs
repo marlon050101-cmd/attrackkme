@@ -232,9 +232,11 @@ namespace NewscannerMAUI.Services
                                 // Try to extract name from response if available
                                 if (responseData != null)
                                 {
-                                    // Check common properties for student name
+                                    // Check common properties for student name (camelCase and PascalCase)
                                     if (responseData.studentName != null) studentName = responseData.studentName.ToString();
+                                    else if (responseData.StudentName != null) studentName = responseData.StudentName.ToString();
                                     else if (responseData.fullName != null) studentName = responseData.fullName.ToString();
+                                    else if (responseData.FullName != null) studentName = responseData.FullName.ToString();
                                     else if (responseData.firstName != null && responseData.lastName != null) 
                                         studentName = $"{responseData.firstName} {responseData.lastName}";
                                 }

@@ -1,0 +1,242 @@
+@page "/guidance/risk-monitoring"
+@using AttrackSharedClass.Models
+@using NewscannerMAUI.Services
+@inject HttpClient Http
+@inject AuthService AuthService
+@inject NavigationManager Navigation
+
+<div class="monitoring-container">
+    <div class="header-section">
+        <button class="btn-back" @onclick="GoBack"><i class="fas fa-arrow-left"></i></button>
+        <div class="title-group">
+            <h1>Detailed Risk Monitoring</h1>
+            <p>Analyzing consecutive absences per subject</p>
+        </div>
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="loading-spinner">
+            <div class="spinner"></div>
+            <p>Analyzing attendance patterns...</p>
+        </div>
+    }
+    else
+    {
+        <div class="subjects-grid">
+            @foreach (var student in studentsAtRisk)
+            {
+                <div class="student-risk-card">
+                    <div class="card-header">
+                        <div class="student-info">
+                            <h3>@student.FullName</h3>
+                            <span class="meta">@student.GradeLevel-@student.Section</span>
+                        </div>
+                        <div class="risk-indicator @(student.IsConsecutiveRisk ? "high" : "med")">
+                            @(student.IsConsecutiveRisk ? "CRITICAL" : "AT RISK")
+                        </div>
+                    </div>
+                    
+                    <div class="subject-stat">
+                        <span class="subject-name">@student.SubjectName</span>
+                        <div class="consecutive-track">
+                            @for (int i = 0; i < 5; i++)
+                            {
+                                <div class="track-dot @(i < student.ConsecutiveAbsences ? "absent" : "present")"></div>
+                            }
+                            <span class="count-label">@student.ConsecutiveAbsences Straight Absences</span>
+                        </div>
+                    </div>
+
+                    <div class="attendance-details">
+                        <div class="detail-box">
+                            <span class="label">Total Absences</span>
+                            <span class="value">@student.AbsentDays</span>
+                        </div>
+                        <div class="detail-box">
+                            <span class="label">Attendance Rate</span>
+                            <span class="value">@student.AttendanceRate.ToString("F1")%</span>
+                        </div>
+                    </div>
+
+                    <div class="actions">
+                        <button class="btn-contact" @onclick="() => ContactParent(student.StudentId)"><i class="fas fa-phone"></i> Contact Parent</button>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private List<AttendanceSummary> studentsAtRisk = new();
+    private bool isLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var user = await AuthService.GetCurrentUserAsync();
+        if (user == null) Navigation.NavigateTo("/");
+        
+        try
+        {
+            var data = await Http.GetFromJsonAsync<GuidanceDashboardData>($"{ApiConfig.BaseUrl}api/guidance/dashboard/{user.UserId}");
+            studentsAtRisk = data?.StudentsAtRisk ?? new();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex.Message);
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void GoBack() => Navigation.NavigateTo("/guidance-dashboard");
+    private void ContactParent(string studentId) { /* Add contact logic */ }
+}
+
+<style>
+    .monitoring-container {
+        padding: 1.5rem;
+        background: #f8fafc;
+        min-height: 100vh;
+    }
+
+    .header-section {
+        display: flex;
+        align-items: center;
+        gap: 1.5rem;
+        margin-bottom: 2rem;
+    }
+
+    .btn-back {
+        background: white;
+        border: none;
+        width: 40px;
+        height: 40px;
+        border-radius: 10px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        color: #64748b;
+    }
+
+    .header-section h1 {
+        font-size: 1.5rem;
+        font-weight: 800;
+        margin: 0;
+        color: #1e293b;
+    }
+
+    .header-section p {
+        margin: 0;
+        color: #64748b;
+    }
+
+    .subjects-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+        gap: 1.5rem;
+    }
+
+    .student-risk-card {
+        background: white;
+        border-radius: 20px;
+        padding: 1.5rem;
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+    }
+
+    .card-header {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 1.5rem;
+    }
+
+    .student-info h3 {
+        margin: 0;
+        font-size: 1.1rem;
+        font-weight: 700;
+    }
+
+    .student-info .meta {
+        font-size: 0.85rem;
+        color: #64748b;
+    }
+
+    .risk-indicator {
+        padding: 4px 12px;
+        border-radius: 8px;
+        font-size: 0.75rem;
+        font-weight: 800;
+    }
+
+    .risk-indicator.high { background: #fee2e2; color: #ef4444; }
+    .risk-indicator.med { background: #fef3c7; color: #d97706; }
+
+    .subject-stat {
+        background: #f1f5f9;
+        padding: 1rem;
+        border-radius: 12px;
+        margin-bottom: 1rem;
+    }
+
+    .subject-name {
+        display: block;
+        font-weight: 700;
+        margin-bottom: 8px;
+        color: #475569;
+    }
+
+    .consecutive-track {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .track-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+    }
+
+    .track-dot.absent { background: #ef4444; }
+    .track-dot.present { background: #e2e8f0; }
+
+    .count-label {
+        margin-left: 8px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: #ef4444;
+    }
+
+    .attendance-details {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .detail-box {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .detail-box .label {
+        font-size: 0.75rem;
+        color: #94a3b8;
+    }
+
+    .detail-box .value {
+        font-weight: 700;
+        color: #1e293b;
+    }
+
+    .actions .btn-contact {
+        width: 100%;
+        padding: 10px;
+        background: #3b82f6;
+        color: white;
+        border: none;
+        border-radius: 12px;
+        font-weight: 700;
+    }
+</style>

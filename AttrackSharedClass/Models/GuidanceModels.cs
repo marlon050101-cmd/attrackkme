@@ -30,6 +30,10 @@ namespace AttrackSharedClass.Models
         public int AbsentDays { get; set; }
         public int LateDays { get; set; }
         public double AttendanceRate { get; set; }
+        public int ConsecutiveAbsences { get; set; }
+        public bool IsConsecutiveRisk => ConsecutiveAbsences >= 3;
+        public string GuidanceStatus { get; set; } = "Normal"; // Normal, Pending, Resolved
+        public string? SubjectName { get; set; }
         public DateTime? FirstAbsentDate { get; set; }
         public DateTime? LastAbsentDate { get; set; }
         public string AbsentDates { get; set; } = string.Empty;
@@ -43,5 +47,12 @@ namespace AttrackSharedClass.Models
         public int SectionsMonitored { get; set; }
         public List<AttendanceSummary> StudentsAtRisk { get; set; } = new();
         public List<StudentInfo> AllStudents { get; set; } = new();
+    }
+
+    public class UpdateCaseStatusRequest
+    {
+        public string StudentId { get; set; } = string.Empty;
+        public string Status { get; set; } = "Normal";
+        public string? Notes { get; set; }
     }
 }
