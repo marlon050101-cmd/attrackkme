@@ -158,8 +158,8 @@ namespace ServerAtrrak.Services
                         ON DUPLICATE KEY UPDATE 
                             Status = VALUES(Status),
                             Remarks = VALUES(Remarks),
-                            TimeIn = IF(VALUES(TimeIn) IS NOT NULL, VALUES(TimeIn), TimeIn),
-                            TimeOut = IF(VALUES(TimeOut) IS NOT NULL, VALUES(TimeOut), TimeOut),
+                            TimeIn = COALESCE(TimeIn, VALUES(TimeIn)),
+                            TimeOut = COALESCE(TimeOut, VALUES(TimeOut)),
                             ClassOfferingId = VALUES(ClassOfferingId),
                             TeacherSubjectId = VALUES(TeacherSubjectId),
                             UpdatedAt = NOW()";

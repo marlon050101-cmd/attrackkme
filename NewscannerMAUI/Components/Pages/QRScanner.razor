@@ -255,13 +255,71 @@
         border-color: #6366f1;
     }
 
-    .status-now {
-        background: #10b981;
+    /* Simplified Box Modal */
+    .confirm-overlay {
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0,0,0,0.6);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 3000;
+        padding: 20px;
+    }
+
+    .confirm-box {
+        background: white;
+        width: 100%;
+        max-width: 320px;
+        border-radius: 16px;
+        padding: 24px;
+        text-align: center;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+    }
+
+    .confirm-box i {
+        font-size: 2.5rem;
+        color: #f59e0b;
+        margin-bottom: 16px;
+    }
+
+    .confirm-box h3 {
+        font-size: 1.1rem;
+        font-weight: 700;
+        margin-bottom: 8px;
+        color: #1e293b;
+    }
+
+    .confirm-box p {
+        font-size: 0.9rem;
+        color: #64748b;
+        margin-bottom: 24px;
+        line-height: 1.5;
+    }
+
+    .confirm-btns {
+        display: flex;
+        gap: 12px;
+    }
+
+    .btn-confirm-yes {
+        flex: 1;
+        background: #4f46e5;
         color: white;
-        padding: 2px 8px;
-        border-radius: 100px;
-        font-size: 0.65rem;
-        font-weight: 800;
+        border: none;
+        padding: 12px;
+        border-radius: 12px;
+        font-weight: 600;
+    }
+
+    .btn-confirm-no {
+        flex: 1;
+        background: #f1f5f9;
+        color: #64748b;
+        border: none;
+        padding: 12px;
+        border-radius: 12px;
+        font-weight: 600;
     }
 </style>
 
@@ -650,23 +708,17 @@
     </div>
 }
 
-<!-- Confirmation Modal -->
+<!-- Simplified Confirmation Modal -->
 @if (showConfirmModal)
 {
-    <div class="modal-backdrop" style="z-index: 2000;">
-        <div class="modal-content confirm-modal" @onclick:stopPropagation>
-            <div class="modal-header bg-light">
-                <h5 class="modal-title">@confirmTitle</h5>
-                <button class="close-btn" @onclick="() => showConfirmModal = false">&times;</button>
-            </div>
-            <div class="modal-body text-center p-4">
-                <i class="fas fa-exclamation-triangle text-warning mb-3" style="font-size: 3rem;"></i>
-                <p class="mb-0">@confirmMessage</p>
-                <p class="text-muted small mt-2">This action cannot be undone.</p>
-            </div>
-            <div class="modal-footer border-0 pb-4 d-flex gap-2">
-                <button class="btn btn-secondary flex-grow-1" @onclick="() => showConfirmModal = false">Cancel</button>
-                <button class="btn btn-danger flex-grow-1" @onclick="ExecuteConfirmAction">Yes, I'm sure</button>
+    <div class="confirm-overlay" @onclick="() => showConfirmModal = false">
+        <div class="confirm-box" @onclick:stopPropagation>
+            <i class="fas fa-exclamation-circle"></i>
+            <h3>@confirmTitle</h3>
+            <p>@confirmMessage</p>
+            <div class="confirm-btns">
+                <button class="btn-confirm-no" @onclick="() => showConfirmModal = false">Cancel</button>
+                <button class="btn-confirm-yes" @onclick="ExecuteConfirmAction">Confirm</button>
             </div>
         </div>
     </div>
@@ -1226,35 +1278,31 @@
             qrCode = qrCode.Trim();
 
             // 1. Instant Local Duplicate Check (For Performance)
-            var existingRecord = attendanceList.FirstOrDefault(r => r.StudentId == qrCode && r.Timestamp.Date == DateTime.Today.Date);
+            // 1. Strict Local Duplicate Check (Prevent Overwriting)
+            var existingRecord = attendanceList.FirstOrDefault(r => r.StudentId == qrCode);
             if (existingRecord != null)
             {
-                bool isDuplicate = false;
-                string duplicateStatus = "";
+                bool isDone = false;
+                string doneMessage = "";
                 
-                if (selectedClass != null)
+                if (attendanceType == "TimeIn" && existingRecord.TimeIn != null)
                 {
-                    isDuplicate = true;
-                    duplicateStatus = "Already recorded for this class";
-                }
-                else if (attendanceType == "TimeIn" && existingRecord.TimeIn != null)
-                {
-                    isDuplicate = true;
-                    duplicateStatus = $"Already Timed In at {existingRecord.TimeIn.Value:hh:mm tt}";
+                    isDone = true;
+                    doneMessage = "Already Timed In";
                 }
                 else if (attendanceType == "TimeOut" && existingRecord.TimeOut != null)
                 {
-                    isDuplicate = true;
-                    duplicateStatus = $"Already Timed Out at {existingRecord.TimeOut.Value:hh:mm tt}";
+                    isDone = true;
+                    doneMessage = "Already Timed Out";
                 }
 
-                if (isDuplicate)
+                if (isDone)
                 {
-                    toastMessage = $"{existingRecord.StudentName} - {duplicateStatus}";
+                    toastMessage = $"{existingRecord.StudentName} - {doneMessage}";
                     showToast = true;
                     await InvokeAsync(StateHasChanged);
                     _ = Task.Run(async () => { await Task.Delay(3000); showToast = false; await InvokeAsync(StateHasChanged); });
-                    return; // EXIT EARLY - NO API CALL NEEDED
+                    return; // EXIT EARLY
                 }
             }
 
