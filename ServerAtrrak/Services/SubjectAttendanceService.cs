@@ -30,6 +30,53 @@ namespace ServerAtrrak.Services
                     return new SubjectAttendanceResponse { Success = false, Message = "ClassOfferingId required." };
                 using var connection = new MySqlConnection(_dbConnection.GetConnection());
                 await connection.OpenAsync();
+
+                // --- SCHEMA MIGRATION: Ensure correct indexes ---
+                // The previous index (StudentId, Date) was too broad, preventing multiple subjects per day.
+                // We upgrade it to (StudentId, ClassOfferingId, Date).
+                try
+                {
+                    // Check if old index exists
+                    var checkIdxSql = @"
+                        SELECT COUNT(*) 
+                        FROM information_schema.statistics 
+                        WHERE table_schema = DATABASE() 
+                          AND table_name = 'subject_attendance' 
+                          AND index_name = 'unique_subject_student_date'";
+                    using var cidx = new MySqlCommand(checkIdxSql, connection);
+                    var idxCount = Convert.ToInt32(await cidx.ExecuteScalarAsync());
+
+                    if (idxCount > 0)
+                    {
+                        // Check if it's the 'old' specific one (just 2 columns)
+                        var checkColsSql = @"
+                            SELECT COUNT(*) 
+                            FROM information_schema.statistics 
+                            WHERE table_schema = DATABASE() 
+                              AND table_name = 'subject_attendance' 
+                              AND index_name = 'unique_subject_student_date'";
+                        // We'll just drop and recreate it to be safe if it exists
+                        using (var dropCmd = new MySqlCommand("ALTER TABLE subject_attendance DROP INDEX unique_subject_student_date", connection))
+                        {
+                            await dropCmd.ExecuteNonQueryAsync();
+                            _logger.LogInformation("Dropped old unique_subject_student_date index.");
+                        }
+                    }
+
+                    // Create/Re-create the granular index
+                    var createIdxSql = @"
+                        CREATE UNIQUE INDEX unique_subject_student_date 
+                        ON subject_attendance (StudentId, ClassOfferingId, Date)";
+                    using (var createCmd = new MySqlCommand(createIdxSql, connection))
+                    {
+                        try { await createCmd.ExecuteNonQueryAsync(); } catch { /* Already exists */ }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning("Schema migration ignored or already applied: {Msg}", ex.Message);
+                }
+
                 var date = request.Date.Date;
 
                 foreach (var item in request.Items)
@@ -78,57 +125,37 @@ namespace ServerAtrrak.Services
                     var status = string.IsNullOrEmpty(item.Status) ? "Present" : item.Status;
                     if (status != "Present" && status != "Absent" && status != "Late") status = "Present";
 
-                    // Prevent double insert by checking for existing record first
-                    var checkExistSql = @"
-                        SELECT SubjectAttendanceId FROM subject_attendance 
-                        WHERE ClassOfferingId = @COId 
-                          AND StudentId = @StudentId AND Date = @Date 
-                        LIMIT 1";
-                    using var checkCmd = new MySqlCommand(checkExistSql, connection);
-                    checkCmd.Parameters.AddWithValue("@COId", request.ClassOfferingId);
-                    checkCmd.Parameters.AddWithValue("@StudentId", item.StudentId);
-                    checkCmd.Parameters.AddWithValue("@Date", date);
-                    var existingId = await checkCmd.ExecuteScalarAsync();
+                    // --- UPSERT LOGIC (INSERT OR UPDATE) ---
+                    // This handles the 'Duplicate entry' error by updating the existing record instead of failing.
+                    var upsertSql = @"
+                        INSERT INTO subject_attendance (
+                            SubjectAttendanceId, ClassOfferingId, TeacherSubjectId, StudentId, Date, Status, Remarks, TimeIn, TimeOut
+                        )
+                        VALUES (@Id, @COId, @TeacherSubjectId, @StudentId, @Date, @Status, @Remarks, @TimeIn, @TimeOut)
+                        ON DUPLICATE KEY UPDATE 
+                            Status = VALUES(Status),
+                            Remarks = VALUES(Remarks),
+                            TimeIn = IF(VALUES(TimeIn) IS NOT NULL, VALUES(TimeIn), TimeIn),
+                            TimeOut = IF(VALUES(TimeOut) IS NOT NULL, VALUES(TimeOut), TimeOut),
+                            ClassOfferingId = VALUES(ClassOfferingId),
+                            TeacherSubjectId = VALUES(TeacherSubjectId),
+                            UpdatedAt = NOW()";
 
-                    if (existingId != null && existingId != DBNull.Value)
-                    {
-                        var updateSql = @"
-                            UPDATE subject_attendance 
-                            SET Status = @Status, 
-                                Remarks = @Remarks, 
-                                TimeIn = IF(@Type = 'TimeIn', @Time, TimeIn),
-                                TimeOut = IF(@Type = 'TimeOut', @Time, TimeOut),
-                                ClassOfferingId = COALESCE(@COId, ClassOfferingId),
-                                TeacherSubjectId = COALESCE(@TeacherSubjectId, TeacherSubjectId),
-                                UpdatedAt = NOW()
-                            WHERE SubjectAttendanceId = @Id";
-                        using var cmd = new MySqlCommand(updateSql, connection);
-                        cmd.Parameters.AddWithValue("@Id", existingId);
-                        cmd.Parameters.AddWithValue("@COId", request.ClassOfferingId);
-                        cmd.Parameters.AddWithValue("@TeacherSubjectId", (object?)teacherSubjectId ?? DBNull.Value);
-                        cmd.Parameters.AddWithValue("@Status", status);
-                        cmd.Parameters.AddWithValue("@Remarks", item.Remarks ?? (object)DBNull.Value);
-                        cmd.Parameters.AddWithValue("@Type", item.AttendanceType ?? "TimeIn");
-                        cmd.Parameters.AddWithValue("@Time", item.ScanTimestamp);
-                        await cmd.ExecuteNonQueryAsync();
-                    }
-                    else
-                    {
-                        var insertSql = @"
-                            INSERT INTO subject_attendance (SubjectAttendanceId, ClassOfferingId, TeacherSubjectId, StudentId, Date, Status, Remarks, TimeIn, TimeOut)
-                            VALUES (@Id, @COId, @TeacherSubjectId, @StudentId, @Date, @Status, @Remarks, @TimeIn, @TimeOut)";
-                        using var cmd = new MySqlCommand(insertSql, connection);
-                        cmd.Parameters.AddWithValue("@Id", Guid.NewGuid().ToString());
-                        cmd.Parameters.AddWithValue("@COId", request.ClassOfferingId);
-                        cmd.Parameters.AddWithValue("@TeacherSubjectId", (object?)teacherSubjectId ?? DBNull.Value);
-                        cmd.Parameters.AddWithValue("@StudentId", item.StudentId);
-                        cmd.Parameters.AddWithValue("@Date", date);
-                        cmd.Parameters.AddWithValue("@Status", status);
-                        cmd.Parameters.AddWithValue("@Remarks", item.Remarks ?? (object)DBNull.Value);
-                        cmd.Parameters.AddWithValue("@TimeIn", item.AttendanceType == "TimeIn" ? item.ScanTimestamp : (object)DBNull.Value);
-                        cmd.Parameters.AddWithValue("@TimeOut", item.AttendanceType == "TimeOut" ? item.ScanTimestamp : (object)DBNull.Value);
-                        await cmd.ExecuteNonQueryAsync();
-                    }
+                    using var cmd = new MySqlCommand(upsertSql, connection);
+                    cmd.Parameters.AddWithValue("@Id", Guid.NewGuid().ToString());
+                    cmd.Parameters.AddWithValue("@COId", request.ClassOfferingId);
+                    cmd.Parameters.AddWithValue("@TeacherSubjectId", (object?)teacherSubjectId ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@StudentId", item.StudentId);
+                    cmd.Parameters.AddWithValue("@Date", date);
+                    cmd.Parameters.AddWithValue("@Status", status);
+                    cmd.Parameters.AddWithValue("@Remarks", item.Remarks ?? (object)DBNull.Value);
+                    
+                    var timestamp = item.ScanTimestamp;
+                    cmd.Parameters.AddWithValue("@TimeIn", item.AttendanceType == "TimeIn" ? timestamp : (object)DBNull.Value);
+                    cmd.Parameters.AddWithValue("@TimeOut", item.AttendanceType == "TimeOut" ? timestamp : (object)DBNull.Value);
+                    
+                    await cmd.ExecuteNonQueryAsync();
+
 
                     // --- SMS NOTIFICATION ---
                     try
@@ -444,13 +471,14 @@ namespace ServerAtrrak.Services
             }
             return list;
         }
-
         private async Task UpdateDailySummaryAsync(string studentId, DateTime date)
         {
             try
             {
                 using var connection = new MySqlConnection(_dbConnection.GetConnection());
                 await connection.OpenAsync();
+
+                _logger.LogInformation("Updating Daily Summary for Student: {Id} on {Date}", studentId, date.ToString("yyyy-MM-dd"));
 
                 // 1. Ensure table exists
                 var createTableSql = @"
@@ -467,10 +495,11 @@ namespace ServerAtrrak.Services
                     )";
                 using (var ccmd = new MySqlCommand(createTableSql, connection)) await ccmd.ExecuteNonQueryAsync();
 
-                // 2. Get day of week string (e.g., 'Monday', 'Tuesday')
-                string dayName = date.DayOfWeek.ToString();
+                // 2. Count Total Scheduled Subjects for this student TODAY
+                // We check for both full day name and 3-letter abbreviation (e.g. 'Monday' and 'Mon')
+                var dayFull = date.DayOfWeek.ToString(); // e.g. "Monday"
+                var dayShort = dayFull.Substring(0, 3);   // e.g. "Mon"
 
-                // 3. Count total subjects scheduled for THIS student on THIS day
                 var totalSql = @"
                     SELECT COUNT(*) 
                     FROM class_offering co
@@ -478,30 +507,38 @@ namespace ServerAtrrak.Services
                     WHERE co.GradeLevel = s.GradeLevel 
                       AND co.Section = s.Section
                       AND (co.Strand IS NULL OR s.Strand IS NULL OR co.Strand = s.Strand)
-                      AND (co.DayOfWeek IS NULL OR co.DayOfWeek = '' OR FIND_IN_SET(@Day, co.DayOfWeek) OR co.DayOfWeek LIKE CONCAT('%', @Day, '%'))";
+                      AND (
+                           co.DayOfWeek IS NULL 
+                           OR co.DayOfWeek = '' 
+                           OR FIND_IN_SET(@DayFull, co.DayOfWeek) 
+                           OR FIND_IN_SET(@DayShort, co.DayOfWeek)
+                           OR co.DayOfWeek LIKE CONCAT('%', @DayFull, '%')
+                           OR co.DayOfWeek LIKE CONCAT('%', @DayShort, '%')
+                      )";
                 
-                int totalSubjects = 0;
+                int total = 0;
                 using (var tcmd = new MySqlCommand(totalSql, connection))
                 {
                     tcmd.Parameters.AddWithValue("@StudentId", studentId);
-                    tcmd.Parameters.AddWithValue("@Day", dayName);
-                    totalSubjects = Convert.ToInt32(await tcmd.ExecuteScalarAsync());
+                    tcmd.Parameters.AddWithValue("@DayFull", dayFull);
+                    tcmd.Parameters.AddWithValue("@DayShort", dayShort);
+                    total = Convert.ToInt32(await tcmd.ExecuteScalarAsync());
                 }
 
-                // 4. Get actual subject attendance data for today
+                // 3. Count Attended Subjects and get Time In/Out
                 var attendanceSql = @"
                     SELECT 
-                        COUNT(*), 
-                        MIN(TimeIn), 
-                        MAX(TimeOut),
-                        MAX(UpdatedAt)
+                        COUNT(DISTINCT ClassOfferingId) as Attended,
+                        MIN(TimeIn) as TimeIn,
+                        MAX(TimeOut) as TimeOut,
+                        MAX(UpdatedAt) as LastSeen
                     FROM subject_attendance
                     WHERE StudentId = @StudentId AND Date = @Date";
                 
                 int attended = 0;
                 DateTime? timeIn = null;
                 DateTime? timeOut = null;
-                DateTime? lastSeen = null;
+                DateTime? lastUpdated = null;
 
                 using (var acmd = new MySqlCommand(attendanceSql, connection))
                 {
@@ -514,29 +551,24 @@ namespace ServerAtrrak.Services
                             attended = reader.IsDBNull(0) ? 0 : reader.GetInt32(0);
                             timeIn = reader.IsDBNull(1) ? (DateTime?)null : reader.GetDateTime(1);
                             timeOut = reader.IsDBNull(2) ? (DateTime?)null : reader.GetDateTime(2);
-                            lastSeen = reader.IsDBNull(3) ? (DateTime?)null : reader.GetDateTime(3);
+                            lastUpdated = reader.IsDBNull(3) ? (DateTime?)null : reader.GetDateTime(3);
                         }
                     }
                 }
 
-                // 5. Determine Status
+                // 4. Calculate Status
+                double percentage = total > 0 ? (double)attended / total * 100 : 0;
                 string status = "Absent";
                 if (attended > 0)
                 {
-                    if (totalSubjects > 0)
-                    {
-                        double ratio = (double)attended / totalSubjects;
-                        if (ratio >= 0.75) status = "Whole Day";
-                        else if (ratio >= 0.4) status = "Half Day";
-                        else status = "Partially Present";
-                    }
-                    else
-                    {
-                        status = "Present";
-                    }
+                    if (percentage >= 75) status = "Whole Day";
+                    else if (percentage >= 40) status = "Half Day";
+                    else status = "Partially Present";
                 }
 
-                // 6. Save to Summary Table
+                _logger.LogInformation("Student {Id}: Total={Total}, Attended={Attended}, Status={Status}", studentId, total, attended, status);
+
+                // 5. Upsert into student_daily_summary
                 var upsertSql = @"
                     INSERT INTO student_daily_summary (StudentId, Date, Status, TotalSubjects, AttendedSubjects, TimeIn, TimeOut, UpdatedAt)
                     VALUES (@StudentId, @Date, @Status, @Total, @Attended, @In, @Out, NOW())
@@ -553,7 +585,7 @@ namespace ServerAtrrak.Services
                     ucmd.Parameters.AddWithValue("@StudentId", studentId);
                     ucmd.Parameters.AddWithValue("@Date", date.Date);
                     ucmd.Parameters.AddWithValue("@Status", status);
-                    ucmd.Parameters.AddWithValue("@Total", totalSubjects);
+                    ucmd.Parameters.AddWithValue("@Total", total);
                     ucmd.Parameters.AddWithValue("@Attended", attended);
                     ucmd.Parameters.AddWithValue("@In", (object?)timeIn ?? DBNull.Value);
                     ucmd.Parameters.AddWithValue("@Out", (object?)timeOut ?? DBNull.Value);
@@ -562,7 +594,7 @@ namespace ServerAtrrak.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error updating daily summary for student {Id}", studentId);
+                _logger.LogError(ex, "Failed to update daily summary for student {Id}", studentId);
             }
         }
 

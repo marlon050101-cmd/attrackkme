@@ -101,6 +101,7 @@ namespace ServerAtrrak.Controllers
                 _logger.LogError(ex, "Error getting adviser subjects");
                 return StatusCode(500, new List<ClassOffering>());
             }
+        }
         [HttpGet("adviser/{adviserId}/daily-summary/{date:datetime}")]
         public async Task<ActionResult<List<DailySubjectSummary>>> GetDailyAdviserSummary(string adviserId, DateTime date)
         {
