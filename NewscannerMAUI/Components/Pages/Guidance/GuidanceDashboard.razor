@@ -205,6 +205,66 @@
     </div>
 </div>
 
+<!-- Details Modal -->
+@if (showDetailsModal && selectedStudent != null)
+{
+    <div class="modal-backdrop-custom" @onclick="CloseDetails">
+        <div class="modal-content-custom" @onclick:stopPropagation="true">
+            <div class="modal-header-custom">
+                <h5 class="modal-title">Attendance Details</h5>
+                <button type="button" class="btn-close-custom" @onclick="CloseDetails">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body-custom">
+                <div class="student-info-section">
+                    <div class="avatar-large">
+                        @selectedStudent.FullName.Substring(0, 1).ToUpper()
+                    </div>
+                    <h4>@selectedStudent.FullName</h4>
+                    <p class="grade-section">Grade @selectedStudent.GradeLevel - @selectedStudent.Section</p>
+                </div>
+                
+                <div class="stats-row">
+                    <div class="stat-box">
+                        <span class="stat-num">@selectedStudent.AbsentDays</span>
+                        <span class="stat-label">Absences</span>
+                    </div>
+                    <div class="stat-box">
+                        <span class="stat-num">@selectedStudent.ConsecutiveAbsences</span>
+                        <span class="stat-label">Consecutive</span>
+                    </div>
+                    <div class="stat-box">
+                        <span class="stat-num">@selectedStudent.IncompleteSessions</span>
+                        <span class="stat-label">Cutting</span>
+                    </div>
+                </div>
+
+                <div class="details-list">
+                    <h6>Absent Dates</h6>
+                    @if (!string.IsNullOrEmpty(selectedStudent.AbsentDates))
+                    {
+                        var dates = selectedStudent.AbsentDates.Split(',');
+                        <ul class="date-list">
+                            @foreach (var d in dates)
+                            {
+                                <li><i class="fas fa-calendar-day"></i> @(DateTime.TryParse(d.Trim(), out var pDate) ? pDate.ToString("MMM dd, yyyy") : d.Trim())</li>
+                            }
+                        </ul>
+                    }
+                    else
+                    {
+                        <p class="text-muted">No specific dates recorded.</p>
+                    }
+                </div>
+            </div>
+            <div class="modal-footer-custom">
+                <button class="btn btn-secondary w-100" @onclick="CloseDetails">Close</button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     private GuidanceDashboardData dashboardData = new();
     private bool isLoading = true;
@@ -213,6 +273,8 @@
     private string activeFilter = "all";
     private int timeRange = 30;
     private UserInfo? currentUser;
+    private bool showDetailsModal = false;
+    private AttendanceSummary? selectedStudent = null;
 
     private List<AttendanceSummary> filteredRisks => dashboardData.StudentsAtRisk
         .Where(s => string.IsNullOrEmpty(searchQuery) || s.FullName.Contains(searchQuery, StringComparison.OrdinalIgnoreCase))
@@ -303,7 +365,21 @@
 
     private void ToggleSearch() => showSearch = !showSearch;
     private void SetFilter(string filter) => activeFilter = filter;
-    private void ViewDetails(string studentId) => Navigation.NavigateTo($"/guidance/student/{studentId}");
+    
+    private void ViewDetails(string studentId)
+    {
+        selectedStudent = dashboardData.StudentsAtRisk.FirstOrDefault(s => s.StudentId == studentId);
+        if (selectedStudent != null)
+        {
+            showDetailsModal = true;
+        }
+    }
+
+    private void CloseDetails()
+    {
+        showDetailsModal = false;
+        selectedStudent = null;
+    }
 }
 
 <style>
@@ -654,5 +730,126 @@
         padding: 0 1rem;
         font-size: 1.1rem;
         outline: none;
+    }
+
+    /* Modal Styles */
+    .modal-backdrop-custom {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: rgba(15, 23, 42, 0.6);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 1000;
+        backdrop-filter: blur(4px);
+    }
+    .modal-content-custom {
+        background: white;
+        border-radius: 20px;
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+        width: 90%;
+        max-width: 450px;
+        overflow: hidden;
+    }
+    .modal-header-custom {
+        padding: 1.5rem;
+        border-bottom: 1px solid #f1f5f9;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background: #f8fafc;
+    }
+    .modal-title {
+        margin: 0;
+        font-size: 1.25rem;
+        font-weight: 700;
+        color: #1e293b;
+    }
+    .btn-close-custom {
+        background: none;
+        border: none;
+        font-size: 1.25rem;
+        color: #64748b;
+        cursor: pointer;
+        padding: 0.5rem;
+    }
+    .modal-body-custom {
+        padding: 1.5rem;
+    }
+    .student-info-section {
+        text-align: center;
+        margin-bottom: 1.5rem;
+    }
+    .avatar-large {
+        width: 80px;
+        height: 80px;
+        background: var(--primary-gradient);
+        color: white;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 2rem;
+        font-weight: bold;
+        margin: 0 auto 1rem;
+    }
+    .grade-section {
+        color: #64748b;
+        margin: 0;
+    }
+    .stats-row {
+        display: flex;
+        justify-content: space-around;
+        background: #f8fafc;
+        border-radius: 15px;
+        padding: 1rem;
+        margin-bottom: 1.5rem;
+    }
+    .stat-box {
+        text-align: center;
+    }
+    .stat-num {
+        display: block;
+        font-size: 1.5rem;
+        font-weight: 800;
+        color: #3b82f6;
+    }
+    .stat-label {
+        font-size: 0.8rem;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+    .details-list h6 {
+        font-weight: 700;
+        color: #1e293b;
+        margin-bottom: 1rem;
+    }
+    .date-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        max-height: 150px;
+        overflow-y: auto;
+    }
+    .date-list li {
+        padding: 0.75rem;
+        background: #f1f5f9;
+        border-radius: 10px;
+        margin-bottom: 0.5rem;
+        color: #334155;
+        font-weight: 500;
+    }
+    .date-list li i {
+        color: #3b82f6;
+        margin-right: 0.5rem;
+    }
+    .modal-footer-custom {
+        padding: 1.5rem;
+        border-top: 1px solid #f1f5f9;
+        background: #f8fafc;
     }
 </style>

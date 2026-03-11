@@ -88,12 +88,14 @@ namespace ServerAtrrak.Services
                            SUM(CASE WHEN sds.Status = 'Late' THEN 1 ELSE 0 END) as LateDays,
                            MIN(CASE WHEN sds.Status = 'Absent' THEN sds.Date ELSE NULL END) as FirstAbsentDate,
                            MAX(CASE WHEN sds.Status = 'Absent' THEN sds.Date ELSE NULL END) as LastAbsentDate,
-                           GROUP_CONCAT(CASE WHEN sds.Status = 'Absent' THEN sds.Date ELSE NULL END ORDER BY sds.Date SEPARATOR ', ') as AbsentDates
+                           GROUP_CONCAT(CASE WHEN sds.Status = 'Absent' THEN sds.Date ELSE NULL END ORDER BY sds.Date SEPARATOR ', ') as AbsentDates,
+                           COALESCE(gc.Status, 'Normal') as GuidanceStatus
                     FROM student s
                     LEFT JOIN student_daily_summary sds ON s.StudentId = sds.StudentId 
                          AND sds.Date >= DATE_SUB(CURDATE(), INTERVAL @Days DAY)
+                    LEFT JOIN guidance_cases gc ON s.StudentId = gc.StudentId
                     WHERE s.SchoolId = @SchoolId AND s.IsActive = true
-                    GROUP BY s.StudentId, s.FullName, s.GradeLevel, s.Section, s.Strand, s.Gender
+                    GROUP BY s.StudentId, s.FullName, s.GradeLevel, s.Section, s.Strand, s.Gender, gc.Status
                     HAVING AbsentDays > 0";
 
                 using (var command = new MySqlCommand(dailyQuery, connection))
@@ -120,11 +122,12 @@ namespace ServerAtrrak.Services
                             AbsentDays = reader.IsDBNull("AbsentDays") ? 0 : reader.GetInt32("AbsentDays"),
                             LateDays = reader.IsDBNull("LateDays") ? 0 : reader.GetInt32("LateDays"),
                             IncompleteSessions = 0, // Daily has no incomplete sessions concept, it's subject level
-                            SubjectName = "Daily Attendance", // Provide a default label instead of null
+                            SubjectName = "All", // Represents all subjects for a full day
                             AttendanceRate = totalDays > 0 ? (double)presentDays / totalDays * 100 : 0,
                             FirstAbsentDate = reader.IsDBNull("FirstAbsentDate") ? null : reader.GetDateTime("FirstAbsentDate"),
                             LastAbsentDate = reader.IsDBNull("LastAbsentDate") ? null : reader.GetDateTime("LastAbsentDate"),
-                            AbsentDates = reader.IsDBNull("AbsentDates") ? string.Empty : reader.GetString("AbsentDates")
+                            AbsentDates = reader.IsDBNull("AbsentDates") ? string.Empty : reader.GetString("AbsentDates"),
+                            GuidanceStatus = reader.IsDBNull("GuidanceStatus") ? "Normal" : reader.GetString("GuidanceStatus")
                         });
                     }
                 }
@@ -140,7 +143,8 @@ namespace ServerAtrrak.Services
                            COALESCE(sub_co.SubjectName, sub_ts.SubjectName, 'Unknown Subject') as SubjectName,
                            MIN(CASE WHEN sa.Status = 'Absent' THEN sa.Date ELSE NULL END) as FirstAbsentDate,
                            MAX(CASE WHEN sa.Status = 'Absent' THEN sa.Date ELSE NULL END) as LastAbsentDate,
-                           GROUP_CONCAT(CASE WHEN sa.Status = 'Absent' THEN sa.Date ELSE NULL END ORDER BY sa.Date SEPARATOR ', ') as AbsentDates
+                           GROUP_CONCAT(CASE WHEN sa.Status = 'Absent' THEN sa.Date ELSE NULL END ORDER BY sa.Date SEPARATOR ', ') as AbsentDates,
+                           COALESCE(gc.Status, 'Normal') as GuidanceStatus
                     FROM student s
                     INNER JOIN subject_attendance sa ON sa.StudentId = s.StudentId 
                           AND sa.Date >= DATE_SUB(CURDATE(), INTERVAL @Days DAY)
@@ -148,8 +152,9 @@ namespace ServerAtrrak.Services
                     LEFT JOIN subject sub_co ON co.SubjectId = sub_co.SubjectId
                     LEFT JOIN teachersubject ts ON sa.TeacherSubjectId = ts.TeacherSubjectId 
                     LEFT JOIN subject sub_ts ON ts.SubjectId = sub_ts.SubjectId
+                    LEFT JOIN guidance_cases gc ON s.StudentId = gc.StudentId
                     WHERE s.SchoolId = @SchoolId AND s.IsActive = true
-                    GROUP BY s.StudentId, s.FullName, s.GradeLevel, s.Section, s.Strand, s.Gender, SubjectName
+                    GROUP BY s.StudentId, s.FullName, s.GradeLevel, s.Section, s.Strand, s.Gender, SubjectName, gc.Status
                     HAVING AbsentDays > 0 OR DaysWithIncompleteSessions > 0";
 
                 using (var command = new MySqlCommand(subjectQuery, connection))
@@ -180,13 +185,14 @@ namespace ServerAtrrak.Services
                             AttendanceRate = totalDays > 0 ? (double)presentDays / totalDays * 100 : 0,
                             FirstAbsentDate = reader.IsDBNull("FirstAbsentDate") ? null : reader.GetDateTime("FirstAbsentDate"),
                             LastAbsentDate = reader.IsDBNull("LastAbsentDate") ? null : reader.GetDateTime("LastAbsentDate"),
-                            AbsentDates = reader.IsDBNull("AbsentDates") ? string.Empty : reader.GetString("AbsentDates")
+                            AbsentDates = reader.IsDBNull("AbsentDates") ? string.Empty : reader.GetString("AbsentDates"),
+                            GuidanceStatus = reader.IsDBNull("GuidanceStatus") ? "Normal" : reader.GetString("GuidanceStatus")
                         });
                     }
                 }
 
                 // Calculate consecutive absences strictly for the Daily Summary
-                foreach (var summary in summaries.Where(s => s.SubjectName == "Daily Attendance"))
+                foreach (var summary in summaries.Where(s => s.SubjectName == "All"))
                 {
                     summary.ConsecutiveAbsences = await GetConsecutiveAbsencesAsync(summary.StudentId, connection);
                 }
