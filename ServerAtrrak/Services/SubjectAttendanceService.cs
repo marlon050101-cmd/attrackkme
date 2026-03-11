@@ -644,12 +644,12 @@ namespace ServerAtrrak.Services
                         ds.Remarks,
                         ds.UpdatedAt as LastSeen
                     FROM student s
-                    INNER JOIN teacher t ON t.TeacherId = @AdviserId
+                    LEFT JOIN teacher t ON TRIM(t.TeacherId) = @AdviserId
                     LEFT JOIN student_daily_summary ds ON s.StudentId = ds.StudentId AND ds.Date = @Date
                     WHERE s.IsActive = 1
                       AND (
-                        s.AdviserId = @AdviserId
-                        OR (s.SchoolId = t.SchoolId AND s.Section = t.Section AND (t.Gradelvl IS NULL OR s.GradeLevel = t.Gradelvl))
+                        TRIM(s.AdviserId) = @AdviserId
+                        OR (t.TeacherId IS NOT NULL AND s.SchoolId = t.SchoolId AND s.Section = t.Section AND (t.Gradelvl IS NULL OR s.GradeLevel = t.Gradelvl))
                       )
                     ORDER BY s.FullName";
 
