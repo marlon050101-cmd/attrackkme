@@ -101,6 +101,19 @@ namespace ServerAtrrak.Controllers
                 _logger.LogError(ex, "Error getting adviser subjects");
                 return StatusCode(500, new List<ClassOffering>());
             }
+        [HttpGet("adviser/{adviserId}/daily-summary/{date:datetime}")]
+        public async Task<ActionResult<List<DailySubjectSummary>>> GetDailyAdviserSummary(string adviserId, DateTime date)
+        {
+            try
+            {
+                var list = await _service.GetDailySubjectSummaryAsync(adviserId, date);
+                return Ok(list);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting daily subject summary for adviser");
+                return StatusCode(500, new List<DailySubjectSummary>());
+            }
         }
     }
 }

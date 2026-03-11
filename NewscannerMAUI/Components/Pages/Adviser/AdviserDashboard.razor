@@ -36,36 +36,34 @@
                         <tr>
                             <th>Student</th>
                             <th>Status</th>
-                            <th>Time</th>
+                            <th>In</th>
+                            <th>Out</th>
                         </tr>
                     </thead>
                     <tbody>
-                        @if (!_sectionStudents.Any())
+                        @if (!_dailySummaries.Any())
                         {
                             <tr>
-                                <td colspan="3" class="text-center py-4 text-muted small">No students found in your section.</td>
+                                <td colspan="4" class="text-center py-4 text-muted small">No students found in your section.</td>
                             </tr>
                         }
                         else
                         {
-                            @foreach (var student in _sectionStudents.OrderBy(s => s.FullName))
+                            @foreach (var summary in _dailySummaries.OrderBy(s => s.FullName))
                             {
-                                var record = _dailyRecords.FirstOrDefault(r => r.StudentId == student.StudentId);
-                                var status = record?.Status ?? "Absent";
-                                var timeDisplay = status == "Absent" ? "--:--" : (record?.TimeIn ?? "--:--");
+                                var status = summary.Status;
+                                var inDisplay = summary.TimeIn?.ToString("HH:mm") ?? "--:--";
+                                var outDisplay = summary.TimeOut?.ToString("HH:mm") ?? "--:--";
 
                                 <tr>
                                     <td>
                                         <div class="student-cell">
-                                            <div class="student-avatar-sm @GetAvatarClass(status)">@GetInitials(student.FullName)</div>
-                                            <div class="student-meta">
-                                                <span class="student-name">@student.FullName</span>
-                                                <span class="student-id">ID: @student.StudentId</span>
-                                            </div>
+                                            <span class="student-name">@summary.FullName</span>
                                         </div>
                                     </td>
-                                    <td><span class="status-badge @status.ToLower()">@status</span></td>
-                                    <td>@timeDisplay</td>
+                                    <td><span class="status-badge @status.ToLower().Replace(" ", "-")">@status</span></td>
+                                    <td>@inDisplay</td>
+                                    <td>@outDisplay</td>
                                 </tr>
                             }
                         }
@@ -179,8 +177,7 @@
     private string? activeSubjectId;
     
     private List<ClassOffering> _subjects = new();
-    private List<Student> _sectionStudents = new();
-    private List<DailyAttendanceRecord> _dailyRecords = new();
+    private List<DailySubjectSummary> _dailySummaries = new();
     private List<SubjectAttendanceRecord> _subjectAttendanceRecords = new();
     
     private bool _isLoadingSubjects = true;
@@ -223,28 +220,17 @@
                 _subjects = await OfflineDataService.GetClassOfferingsOfflineAsync(adviserId!);
             }
 
-            // Load monitored students (Section)
+            // Load monitored students and their statuses based on subject attendance
             try
             {
-                var studentList = await Http.GetFromJsonAsync<List<Student>>($"{ApiConfig.BaseUrl}api/register/students?teacherId={adviserId}");
-                _sectionStudents = studentList ?? new();
+                var date = DateTime.Today.ToString("yyyy-MM-dd");
+                var summaries = await Http.GetFromJsonAsync<List<DailySubjectSummary>>($"{ApiConfig.BaseUrl}api/SubjectAttendance/adviser/{adviserId}/daily-summary/{date}");
+                _dailySummaries = summaries ?? new();
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Error fetching students from API: {ex.Message}");
-                _sectionStudents = new();
-            }
-
-            // Load today's daily records
-            try
-            {
-                var dailyRecords = await Http.GetFromJsonAsync<List<DailyAttendanceRecord>>($"{ApiConfig.BaseUrl}api/dailyattendance/today/{adviserId}");
-                _dailyRecords = dailyRecords ?? new();
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error fetching daily records: {ex.Message}");
-                _dailyRecords = new();
+                System.Diagnostics.Debug.WriteLine($"Error fetching daily summaries: {ex.Message}");
+                _dailySummaries = new();
             }
 
             if (_subjects.Any())
@@ -456,9 +442,19 @@
         display: inline-block;
     }
 
-    .status-badge.present {
+    .status-badge.present, .status-badge.whole-day {
         background: #ecfdf5;
         color: #059669;
+    }
+
+    .status-badge.half-day {
+        background: #eff6ff;
+        color: #3b82f6;
+    }
+
+    .status-badge.partially-present {
+        background: #fff7ed;
+        color: #f97316;
     }
 
     .status-badge.late {

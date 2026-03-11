@@ -67,4 +67,17 @@ namespace AttrackSharedClass.Models
         public string FullName { get; set; } = "";
         public string? Email { get; set; }
     }
+
+    public class DailySubjectSummary
+    {
+        public string StudentId { get; set; } = "";
+        public string FullName { get; set; } = "";
+        public DateTime Date { get; set; }
+        public int TotalSubjects { get; set; }
+        public int AttendedSubjects { get; set; }
+        public string Status { get; set; } = "Absent"; // Whole Day, Half Day, Partial, Absent
+        public DateTime? TimeIn { get; set; }
+        public DateTime? TimeOut { get; set; }
+        public DateTime? LastSeen { get; set; }
+    }
 }

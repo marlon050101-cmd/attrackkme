@@ -167,6 +167,13 @@ namespace ServerAtrrak.Services
                     }
                 }
                 _logger.LogInformation("Saved {Count} subject attendance records date {Date}", request.Items.Count, date);
+
+                // Update Daily Summaries for relevant students
+                foreach (var item in request.Items.Where(i => !string.IsNullOrEmpty(i.StudentId)))
+                {
+                    _ = UpdateDailySummaryAsync(item.StudentId, date);
+                }
+
                 return new SubjectAttendanceResponse 
                 { 
                     Success = true, 
@@ -434,6 +441,184 @@ namespace ServerAtrrak.Services
             {
                 _logger.LogError(ex, "Error getting subjects for adviser {AdviserId}", adviserId);
                 throw; // Re-throw to let controller handle or return meaningful error
+            }
+            return list;
+        }
+
+        private async Task UpdateDailySummaryAsync(string studentId, DateTime date)
+        {
+            try
+            {
+                using var connection = new MySqlConnection(_dbConnection.GetConnection());
+                await connection.OpenAsync();
+
+                // 1. Ensure table exists
+                var createTableSql = @"
+                    CREATE TABLE IF NOT EXISTS student_daily_summary (
+                        StudentId VARCHAR(100),
+                        Date DATE,
+                        Status VARCHAR(50),
+                        TotalSubjects INT,
+                        AttendedSubjects INT,
+                        TimeIn DATETIME NULL,
+                        TimeOut DATETIME NULL,
+                        UpdatedAt DATETIME,
+                        PRIMARY KEY (StudentId, Date)
+                    )";
+                using (var ccmd = new MySqlCommand(createTableSql, connection)) await ccmd.ExecuteNonQueryAsync();
+
+                // 2. Get day of week string (e.g., 'Monday', 'Tuesday')
+                string dayName = date.DayOfWeek.ToString();
+
+                // 3. Count total subjects scheduled for THIS student on THIS day
+                var totalSql = @"
+                    SELECT COUNT(*) 
+                    FROM class_offering co
+                    INNER JOIN student s ON s.StudentId = @StudentId
+                    WHERE co.GradeLevel = s.GradeLevel 
+                      AND co.Section = s.Section
+                      AND (co.Strand IS NULL OR s.Strand IS NULL OR co.Strand = s.Strand)
+                      AND (co.DayOfWeek IS NULL OR co.DayOfWeek = '' OR FIND_IN_SET(@Day, co.DayOfWeek) OR co.DayOfWeek LIKE CONCAT('%', @Day, '%'))";
+                
+                int totalSubjects = 0;
+                using (var tcmd = new MySqlCommand(totalSql, connection))
+                {
+                    tcmd.Parameters.AddWithValue("@StudentId", studentId);
+                    tcmd.Parameters.AddWithValue("@Day", dayName);
+                    totalSubjects = Convert.ToInt32(await tcmd.ExecuteScalarAsync());
+                }
+
+                // 4. Get actual subject attendance data for today
+                var attendanceSql = @"
+                    SELECT 
+                        COUNT(*), 
+                        MIN(TimeIn), 
+                        MAX(TimeOut),
+                        MAX(UpdatedAt)
+                    FROM subject_attendance
+                    WHERE StudentId = @StudentId AND Date = @Date";
+                
+                int attended = 0;
+                DateTime? timeIn = null;
+                DateTime? timeOut = null;
+                DateTime? lastSeen = null;
+
+                using (var acmd = new MySqlCommand(attendanceSql, connection))
+                {
+                    acmd.Parameters.AddWithValue("@StudentId", studentId);
+                    acmd.Parameters.AddWithValue("@Date", date.Date);
+                    using (var reader = await acmd.ExecuteReaderAsync())
+                    {
+                        if (await reader.ReadAsync())
+                        {
+                            attended = reader.IsDBNull(0) ? 0 : reader.GetInt32(0);
+                            timeIn = reader.IsDBNull(1) ? (DateTime?)null : reader.GetDateTime(1);
+                            timeOut = reader.IsDBNull(2) ? (DateTime?)null : reader.GetDateTime(2);
+                            lastSeen = reader.IsDBNull(3) ? (DateTime?)null : reader.GetDateTime(3);
+                        }
+                    }
+                }
+
+                // 5. Determine Status
+                string status = "Absent";
+                if (attended > 0)
+                {
+                    if (totalSubjects > 0)
+                    {
+                        double ratio = (double)attended / totalSubjects;
+                        if (ratio >= 0.75) status = "Whole Day";
+                        else if (ratio >= 0.4) status = "Half Day";
+                        else status = "Partially Present";
+                    }
+                    else
+                    {
+                        status = "Present";
+                    }
+                }
+
+                // 6. Save to Summary Table
+                var upsertSql = @"
+                    INSERT INTO student_daily_summary (StudentId, Date, Status, TotalSubjects, AttendedSubjects, TimeIn, TimeOut, UpdatedAt)
+                    VALUES (@StudentId, @Date, @Status, @Total, @Attended, @In, @Out, NOW())
+                    ON DUPLICATE KEY UPDATE 
+                        Status = VALUES(Status),
+                        TotalSubjects = VALUES(TotalSubjects),
+                        AttendedSubjects = VALUES(AttendedSubjects),
+                        TimeIn = VALUES(TimeIn),
+                        TimeOut = VALUES(TimeOut),
+                        UpdatedAt = NOW()";
+
+                using (var ucmd = new MySqlCommand(upsertSql, connection))
+                {
+                    ucmd.Parameters.AddWithValue("@StudentId", studentId);
+                    ucmd.Parameters.AddWithValue("@Date", date.Date);
+                    ucmd.Parameters.AddWithValue("@Status", status);
+                    ucmd.Parameters.AddWithValue("@Total", totalSubjects);
+                    ucmd.Parameters.AddWithValue("@Attended", attended);
+                    ucmd.Parameters.AddWithValue("@In", (object?)timeIn ?? DBNull.Value);
+                    ucmd.Parameters.AddWithValue("@Out", (object?)timeOut ?? DBNull.Value);
+                    await ucmd.ExecuteNonQueryAsync();
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating daily summary for student {Id}", studentId);
+            }
+        }
+
+        public async Task<List<DailySubjectSummary>> GetDailySubjectSummaryAsync(string adviserId, DateTime date)
+        {
+            var list = new List<DailySubjectSummary>();
+            try
+            {
+                using var connection = new MySqlConnection(_dbConnection.GetConnection());
+                await connection.OpenAsync();
+
+                var query = @"
+                    SELECT 
+                        s.StudentId, 
+                        s.FullName,
+                        COALESCE(ds.TotalSubjects, 0),
+                        COALESCE(ds.AttendedSubjects, 0),
+                        COALESCE(ds.Status, 'Absent') as Status,
+                        ds.TimeIn,
+                        ds.TimeOut,
+                        ds.UpdatedAt as LastSeen
+                    FROM student s
+                    INNER JOIN teacher t ON t.TeacherId = @AdviserId
+                    LEFT JOIN student_daily_summary ds ON s.StudentId = ds.StudentId AND ds.Date = @Date
+                    WHERE s.IsActive = 1
+                      AND (
+                        s.AdviserId = @AdviserId
+                        OR (s.SchoolId = t.SchoolId AND s.Section = t.Section AND (t.Gradelvl IS NULL OR s.GradeLevel = t.Gradelvl))
+                      )
+                    ORDER BY s.FullName";
+
+                using var cmd = new MySqlCommand(query, connection);
+                cmd.Parameters.AddWithValue("@AdviserId", adviserId.Trim());
+                cmd.Parameters.AddWithValue("@Date", date.Date);
+
+                using var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    list.Add(new DailySubjectSummary
+                    {
+                        StudentId = reader.GetString(0),
+                        FullName = reader.GetString(1),
+                        TotalSubjects = reader.GetInt32(2),
+                        AttendedSubjects = reader.GetInt32(3),
+                        Status = reader.GetString(4),
+                        TimeIn = reader.IsDBNull(5) ? (DateTime?)null : reader.GetDateTime(5),
+                        TimeOut = reader.IsDBNull(6) ? (DateTime?)null : reader.GetDateTime(6),
+                        LastSeen = reader.IsDBNull(7) ? (DateTime?)null : reader.GetDateTime(7),
+                        Date = date
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting daily subject summary for adviser {AdviserId}", adviserId);
+                throw;
             }
             return list;
         }
