@@ -77,70 +77,116 @@ namespace ServerAtrrak.Services
             {
                 using var connection = new MySql.Data.MySqlClient.MySqlConnection(_dbConnection.GetConnection());
                 await connection.OpenAsync();
+                var summaries = new List<AttendanceSummary>();
 
-                // Query from student_daily_summary to correctly track adviser manual overrides
-                var query = @"
+                // Query 1: Daily Summaries from student_daily_summary
+                var dailyQuery = @"
                     SELECT s.StudentId, s.FullName, s.GradeLevel, s.Section, s.Strand, s.Gender,
                            COUNT(sds.Date) as TotalDays,
                            SUM(CASE WHEN sds.Status IN ('Present', 'Late', 'Partial') THEN 1 ELSE 0 END) as PresentDays,
                            SUM(CASE WHEN sds.Status = 'Absent' THEN 1 ELSE 0 END) as AbsentDays,
                            SUM(CASE WHEN sds.Status = 'Late' THEN 1 ELSE 0 END) as LateDays,
-                           SUM(CASE WHEN sds.IncompleteSessions > 0 THEN 1 ELSE 0 END) as DaysWithIncompleteSessions,
                            MIN(CASE WHEN sds.Status = 'Absent' THEN sds.Date ELSE NULL END) as FirstAbsentDate,
                            MAX(CASE WHEN sds.Status = 'Absent' THEN sds.Date ELSE NULL END) as LastAbsentDate,
                            GROUP_CONCAT(CASE WHEN sds.Status = 'Absent' THEN sds.Date ELSE NULL END ORDER BY sds.Date SEPARATOR ', ') as AbsentDates
                     FROM student s
-                    LEFT JOIN (
-                        SELECT StudentId, Date, Status,
-                               -- Check if any subjects for this day are incomplete (TimeIn without TimeOut)
-                               (SELECT COUNT(*) FROM subject_attendance sa 
-                                WHERE sa.StudentId = sds_inner.StudentId AND sa.Date = sds_inner.Date 
-                                  AND sa.TimeIn IS NOT NULL AND sa.TimeOut IS NULL) as IncompleteSessions
-                        FROM student_daily_summary sds_inner
-                    ) sds ON s.StudentId = sds.StudentId 
+                    LEFT JOIN student_daily_summary sds ON s.StudentId = sds.StudentId 
                          AND sds.Date >= DATE_SUB(CURDATE(), INTERVAL @Days DAY)
                     WHERE s.SchoolId = @SchoolId AND s.IsActive = true
                     GROUP BY s.StudentId, s.FullName, s.GradeLevel, s.Section, s.Strand, s.Gender
-                    HAVING AbsentDays > 0 OR DaysWithIncompleteSessions > 0
-                    ORDER BY AbsentDays DESC, s.GradeLevel, s.Section, s.FullName";
+                    HAVING AbsentDays > 0";
 
-                using var command = new MySqlCommand(query, connection);
-                command.Parameters.AddWithValue("@SchoolId", schoolId);
-                command.Parameters.AddWithValue("@Days", days);
-
-                var summaries = new List<AttendanceSummary>();
-                using var reader = await command.ExecuteReaderAsync();
-                
-                while (await reader.ReadAsync())
+                using (var command = new MySqlCommand(dailyQuery, connection))
                 {
-                    var totalDays = reader.IsDBNull("TotalDays") ? 0 : reader.GetInt32("TotalDays");
-                    var presentDays = reader.IsDBNull("PresentDays") ? 0 : reader.GetInt32("PresentDays");
-                    var incompleteSessions = reader.IsDBNull("DaysWithIncompleteSessions") ? 0 : reader.GetInt32("DaysWithIncompleteSessions");
+                    command.Parameters.AddWithValue("@SchoolId", schoolId);
+                    command.Parameters.AddWithValue("@Days", days);
+                    using var reader = await command.ExecuteReaderAsync();
                     
-                    summaries.Add(new AttendanceSummary
+                    while (await reader.ReadAsync())
                     {
-                        StudentId = reader.IsDBNull("StudentId") ? string.Empty : reader.GetString("StudentId"),
-                        FullName = reader.IsDBNull("FullName") ? string.Empty : reader.GetString("FullName"),
-                        GradeLevel = reader.IsDBNull("GradeLevel") ? 0 : reader.GetInt32("GradeLevel"),
-                        Section = reader.IsDBNull("Section") ? string.Empty : reader.GetString("Section"),
-                        Strand = reader.IsDBNull("Strand") ? null : reader.GetString("Strand"),
-                        Gender = reader.IsDBNull("Gender") ? string.Empty : reader.GetString("Gender"),
-                        TotalDays = totalDays,
-                        PresentDays = presentDays,
-                        AbsentDays = reader.IsDBNull("AbsentDays") ? 0 : reader.GetInt32("AbsentDays"),
-                        LateDays = reader.IsDBNull("LateDays") ? 0 : reader.GetInt32("LateDays"),
-                        IncompleteSessions = incompleteSessions,
-                        AttendanceRate = totalDays > 0 ? (double)presentDays / totalDays * 100 : 0,
-                        FirstAbsentDate = reader.IsDBNull("FirstAbsentDate") ? null : reader.GetDateTime("FirstAbsentDate"),
-                        LastAbsentDate = reader.IsDBNull("LastAbsentDate") ? null : reader.GetDateTime("LastAbsentDate"),
-                        AbsentDates = reader.IsDBNull("AbsentDates") ? string.Empty : reader.GetString("AbsentDates")
-                    });
+                        var totalDays = reader.IsDBNull("TotalDays") ? 0 : reader.GetInt32("TotalDays");
+                        var presentDays = reader.IsDBNull("PresentDays") ? 0 : reader.GetInt32("PresentDays");
+                        
+                        summaries.Add(new AttendanceSummary
+                        {
+                            StudentId = reader.IsDBNull("StudentId") ? string.Empty : reader.GetString("StudentId"),
+                            FullName = reader.IsDBNull("FullName") ? string.Empty : reader.GetString("FullName"),
+                            GradeLevel = reader.IsDBNull("GradeLevel") ? 0 : reader.GetInt32("GradeLevel"),
+                            Section = reader.IsDBNull("Section") ? string.Empty : reader.GetString("Section"),
+                            Strand = reader.IsDBNull("Strand") ? null : reader.GetString("Strand"),
+                            Gender = reader.IsDBNull("Gender") ? string.Empty : reader.GetString("Gender"),
+                            TotalDays = totalDays,
+                            PresentDays = presentDays,
+                            AbsentDays = reader.IsDBNull("AbsentDays") ? 0 : reader.GetInt32("AbsentDays"),
+                            LateDays = reader.IsDBNull("LateDays") ? 0 : reader.GetInt32("LateDays"),
+                            IncompleteSessions = 0, // Daily has no incomplete sessions concept, it's subject level
+                            SubjectName = null, // Null means Daily Summary
+                            AttendanceRate = totalDays > 0 ? (double)presentDays / totalDays * 100 : 0,
+                            FirstAbsentDate = reader.IsDBNull("FirstAbsentDate") ? null : reader.GetDateTime("FirstAbsentDate"),
+                            LastAbsentDate = reader.IsDBNull("LastAbsentDate") ? null : reader.GetDateTime("LastAbsentDate"),
+                            AbsentDates = reader.IsDBNull("AbsentDates") ? string.Empty : reader.GetString("AbsentDates")
+                        });
+                    }
                 }
-                
-                reader.Close(); // Close before firing off another reader loop
 
-                // Calculate consecutive absences
-                foreach (var summary in summaries)
+                // Query 2: Subject Summaries from subject_attendance (Cutting Class Risk)
+                var subjectQuery = @"
+                    SELECT s.StudentId, s.FullName, s.GradeLevel, s.Section, s.Strand, s.Gender,
+                           COUNT(sa.Date) as TotalDays,
+                           SUM(CASE WHEN sa.Status IN ('Present', 'Late', 'Partial') THEN 1 ELSE 0 END) as PresentDays,
+                           SUM(CASE WHEN sa.Status = 'Absent' THEN 1 ELSE 0 END) as AbsentDays,
+                           SUM(CASE WHEN sa.Status = 'Late' THEN 1 ELSE 0 END) as LateDays,
+                           SUM(CASE WHEN sa.TimeIn IS NOT NULL AND sa.TimeOut IS NULL THEN 1 ELSE 0 END) as DaysWithIncompleteSessions,
+                           COALESCE(sub_co.SubjectName, sub_ts.SubjectName, 'Unknown Subject') as SubjectName,
+                           MIN(CASE WHEN sa.Status = 'Absent' THEN sa.Date ELSE NULL END) as FirstAbsentDate,
+                           MAX(CASE WHEN sa.Status = 'Absent' THEN sa.Date ELSE NULL END) as LastAbsentDate,
+                           GROUP_CONCAT(CASE WHEN sa.Status = 'Absent' THEN sa.Date ELSE NULL END ORDER BY sa.Date SEPARATOR ', ') as AbsentDates
+                    FROM student s
+                    INNER JOIN subject_attendance sa ON sa.StudentId = s.StudentId 
+                          AND sa.Date >= DATE_SUB(CURDATE(), INTERVAL @Days DAY)
+                    LEFT JOIN class_offering co ON sa.ClassOfferingId = co.ClassOfferingId
+                    LEFT JOIN subject sub_co ON co.SubjectId = sub_co.SubjectId
+                    LEFT JOIN teachersubject ts ON sa.TeacherSubjectId = ts.TeacherSubjectId 
+                    LEFT JOIN subject sub_ts ON ts.SubjectId = sub_ts.SubjectId
+                    WHERE s.SchoolId = @SchoolId AND s.IsActive = true
+                    GROUP BY s.StudentId, s.FullName, s.GradeLevel, s.Section, s.Strand, s.Gender, SubjectName
+                    HAVING AbsentDays > 0 OR DaysWithIncompleteSessions > 0";
+
+                using (var command = new MySqlCommand(subjectQuery, connection))
+                {
+                    command.Parameters.AddWithValue("@SchoolId", schoolId);
+                    command.Parameters.AddWithValue("@Days", days);
+                    using var reader = await command.ExecuteReaderAsync();
+                    
+                    while (await reader.ReadAsync())
+                    {
+                        var totalDays = reader.IsDBNull("TotalDays") ? 0 : reader.GetInt32("TotalDays");
+                        var presentDays = reader.IsDBNull("PresentDays") ? 0 : reader.GetInt32("PresentDays");
+                        
+                        summaries.Add(new AttendanceSummary
+                        {
+                            StudentId = reader.IsDBNull("StudentId") ? string.Empty : reader.GetString("StudentId"),
+                            FullName = reader.IsDBNull("FullName") ? string.Empty : reader.GetString("FullName"),
+                            GradeLevel = reader.IsDBNull("GradeLevel") ? 0 : reader.GetInt32("GradeLevel"),
+                            Section = reader.IsDBNull("Section") ? string.Empty : reader.GetString("Section"),
+                            Strand = reader.IsDBNull("Strand") ? null : reader.GetString("Strand"),
+                            Gender = reader.IsDBNull("Gender") ? string.Empty : reader.GetString("Gender"),
+                            TotalDays = totalDays,
+                            PresentDays = presentDays,
+                            AbsentDays = reader.IsDBNull("AbsentDays") ? 0 : reader.GetInt32("AbsentDays"),
+                            LateDays = reader.IsDBNull("LateDays") ? 0 : reader.GetInt32("LateDays"),
+                            IncompleteSessions = reader.IsDBNull("DaysWithIncompleteSessions") ? 0 : reader.GetInt32("DaysWithIncompleteSessions"),
+                            SubjectName = reader.IsDBNull("SubjectName") ? "Unknown Subject" : reader.GetString("SubjectName"),
+                            AttendanceRate = totalDays > 0 ? (double)presentDays / totalDays * 100 : 0,
+                            FirstAbsentDate = reader.IsDBNull("FirstAbsentDate") ? null : reader.GetDateTime("FirstAbsentDate"),
+                            LastAbsentDate = reader.IsDBNull("LastAbsentDate") ? null : reader.GetDateTime("LastAbsentDate"),
+                            AbsentDates = reader.IsDBNull("AbsentDates") ? string.Empty : reader.GetString("AbsentDates")
+                        });
+                    }
+                }
+
+                // Calculate consecutive absences strictly for the Daily Summary
+                foreach (var summary in summaries.Where(s => s.SubjectName == null))
                 {
                     summary.ConsecutiveAbsences = await GetConsecutiveAbsencesAsync(summary.StudentId, connection);
                 }
@@ -196,20 +242,26 @@ namespace ServerAtrrak.Services
                 // Warning Alert: 2 consecutive absences (orange alert) or 1+ for Daily
                 var warningStudents = attendanceSummary.Where(s => 
                     (s.ConsecutiveAbsences >= warningThreshold && s.ConsecutiveAbsences < (days <= 3 ? 3 : 3)) ||
-                    (s.AbsentDays >= warningThreshold && s.AbsentDays < (days <= 3 ? 3 : 3))
+                    (s.AbsentDays >= warningThreshold && s.AbsentDays < (days <= 3 ? 3 : 3)) ||
+                    s.IncompleteSessions > 0 // Cutting class risk
                 ).ToList();
                 
-                // Combine both for display (ensure no duplicates if logic overlaps)
-                var allFlaggedStudents = criticalStudents.Concat(warningStudents).GroupBy(s => s.StudentId).Select(g => g.First()).ToList();
+                // Combine both for display (ensure no duplicates for the SAME subject/daily type)
+                var allFlaggedStudents = criticalStudents.Concat(warningStudents)
+                    .GroupBy(s => new { s.StudentId, s.SubjectName }) // Group by Student+Subject
+                    .Select(g => g.First())
+                    .ToList();
                 
+                // For grade levels and sections, distinct across Students (regardless of subject)
+                var uniqueStudents = allFlaggedStudents.Select(s => s.StudentId).Distinct().ToList();
                 var gradeLevels = allFlaggedStudents.Select(s => s.GradeLevel).Distinct().Count();
                 var sections = allFlaggedStudents.Select(s => s.Section).Distinct().Count();
-                var noTimeOutCount = attendanceSummary.Count(s => s.IncompleteSessions > 0);
+                var noTimeOutCount = uniqueStudents.Count(id => allFlaggedStudents.Any(s => s.StudentId == id && s.IncompleteSessions > 0));
 
                 return new GuidanceDashboardData
                 {
                     TotalStudents = students.Count,
-                    FlaggedStudents = allFlaggedStudents.Count, // Total of critical + warning
+                    FlaggedStudents = uniqueStudents.Count, // Total unique students at risk
                     NoTimeOutCount = noTimeOutCount,
                     GradeLevelsAffected = gradeLevels,
                     SectionsMonitored = sections,
