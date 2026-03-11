@@ -120,7 +120,7 @@ namespace ServerAtrrak.Services
                             AbsentDays = reader.IsDBNull("AbsentDays") ? 0 : reader.GetInt32("AbsentDays"),
                             LateDays = reader.IsDBNull("LateDays") ? 0 : reader.GetInt32("LateDays"),
                             IncompleteSessions = 0, // Daily has no incomplete sessions concept, it's subject level
-                            SubjectName = null, // Null means Daily Summary
+                            SubjectName = "Daily Attendance", // Provide a default label instead of null
                             AttendanceRate = totalDays > 0 ? (double)presentDays / totalDays * 100 : 0,
                             FirstAbsentDate = reader.IsDBNull("FirstAbsentDate") ? null : reader.GetDateTime("FirstAbsentDate"),
                             LastAbsentDate = reader.IsDBNull("LastAbsentDate") ? null : reader.GetDateTime("LastAbsentDate"),
@@ -186,7 +186,7 @@ namespace ServerAtrrak.Services
                 }
 
                 // Calculate consecutive absences strictly for the Daily Summary
-                foreach (var summary in summaries.Where(s => s.SubjectName == null))
+                foreach (var summary in summaries.Where(s => s.SubjectName == "Daily Attendance"))
                 {
                     summary.ConsecutiveAbsences = await GetConsecutiveAbsencesAsync(summary.StudentId, connection);
                 }
