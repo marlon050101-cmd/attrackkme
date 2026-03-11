@@ -678,6 +678,8 @@ namespace ServerAtrrak.Services
                 using var cmd = new MySqlCommand(query, connection);
                 cmd.Parameters.AddWithValue("@AdviserId", adviserId.Trim());
                 cmd.Parameters.AddWithValue("@Date", date.Date);
+                cmd.Parameters.AddWithValue("@DayFull", dayFull);
+                cmd.Parameters.AddWithValue("@DayShort", dayShort);
 
                 using var reader = await cmd.ExecuteReaderAsync();
                 while (await reader.ReadAsync())
