@@ -1062,15 +1062,27 @@ namespace ServerAtrrak.Controllers
                     return students; // Return empty list if teacher not found
                 }
 
-                // Adviser should ONLY see students assigned directly to them via AdviserId
+                // Get adviser's students via:
+                // 1. Direct AdviserId link on the student record, OR
+                // 2. Students that belong to a class offering this adviser handles
+                //    (matched by GradeLevel + Section + Strand)
                 query = @"
-                    SELECT s.StudentId, s.FullName, s.GradeLevel, s.Section, s.Strand, s.SchoolId, s.ParentsNumber, s.Gender, s.QRImage, s.CreatedAt, s.UpdatedAt, s.IsActive, s.EnrollmentStatus, s.AdviserId
+                    SELECT DISTINCT s.StudentId, s.FullName, s.GradeLevel, s.Section, s.Strand, s.SchoolId, s.ParentsNumber, s.Gender, s.QRImage, s.CreatedAt, s.UpdatedAt, s.IsActive, s.EnrollmentStatus, s.AdviserId
                     FROM student s
                     WHERE s.IsActive = 1
-                      AND s.AdviserId = @TeacherId
+                      AND (
+                        s.AdviserId = @TeacherId
+                        OR EXISTS (
+                            SELECT 1 FROM class_offering co
+                            WHERE (co.AdviserId = @TeacherId OR co.TeacherId = @TeacherId)
+                              AND s.GradeLevel = co.GradeLevel
+                              AND s.Section = co.Section
+                              AND (co.Strand IS NULL OR s.Strand = co.Strand)
+                        )
+                      )
                     ORDER BY s.FullName";
 
-                Console.WriteLine($"DEBUG: Adviser student query — TeacherId: '{teacherId}'");
+                Console.WriteLine($"DEBUG: Adviser student query (AdviserId + ClassOffering) — TeacherId: '{teacherId}'");
 
                 command = new MySqlCommand(query, connection);
                 command.Parameters.AddWithValue("@TeacherId", teacherId);
