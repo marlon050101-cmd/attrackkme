@@ -410,14 +410,15 @@ namespace ServerAtrrak.Services
                             TeacherName = reader.IsDBNull(12) ? null : reader.GetString(12)
                         };
 
-                        // Safer TimeSpan handling
+                        // Safer TimeSpan handling — cast to MySqlDataReader for GetTimeSpan support
+                        var mysqlReader = (MySql.Data.MySqlClient.MySqlDataReader)reader;
                         if (!reader.IsDBNull(8))
                         {
-                            item.ScheduleStart = reader.GetTimeSpan(8);
+                            item.ScheduleStart = mysqlReader.GetTimeSpan(8);
                         }
                         if (!reader.IsDBNull(9))
                         {
-                            item.ScheduleEnd = reader.GetTimeSpan(9);
+                            item.ScheduleEnd = mysqlReader.GetTimeSpan(9);
                         }
 
                         list.Add(item);
