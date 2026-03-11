@@ -1012,7 +1012,7 @@ namespace ServerAtrrak.Controllers
             return null;
         }
 
-        private async Task<List<Student>> GetStudentsAsync(string? teacherId)
+         private async Task<List<Student>> GetStudentsAsync(string? teacherId)
         {
             Console.WriteLine($"DEBUG: GetStudentsAsync called with teacherId: {teacherId}");
             var students = new List<Student>();
@@ -1021,82 +1021,45 @@ namespace ServerAtrrak.Controllers
             {
                 using var connection = new MySqlConnection(_dbConnection.GetConnection());
                 await connection.OpenAsync();
-                Console.WriteLine("DEBUG: Database connection opened successfully");
 
                 string query;
                 MySqlCommand command;
 
-                string? schoolId = null;
-                string? section = null;
-            
-            if (!string.IsNullOrEmpty(teacherId))
-            {
-                Console.WriteLine($"DEBUG: Getting students for teacherId: {teacherId}");
-                
-                // Get teacher info directly from teacher table using the teacherId
-                var teacherQuery = @"
-                    SELECT t.SchoolId, t.Section 
-                    FROM teacher t
-                    WHERE t.TeacherId = @TeacherId";
-                
-                using (var teacherCommand = new MySqlCommand(teacherQuery, connection))
+                if (!string.IsNullOrEmpty(teacherId))
                 {
-                    teacherCommand.Parameters.AddWithValue("@TeacherId", teacherId);
-                    using var teacherReader = await teacherCommand.ExecuteReaderAsync();
-                    if (await teacherReader.ReadAsync())
-                    {
-                        schoolId = teacherReader.IsDBNull("SchoolId") ? null : teacherReader.GetString("SchoolId");
-                        section = teacherReader.IsDBNull("Section") ? null : teacherReader.GetString("Section");
-                        
-                        Console.WriteLine($"DEBUG: Found teacher - SchoolId: {schoolId}, Section: {section}");
-                    }
-                    else
-                    {
-                        Console.WriteLine($"DEBUG: No teacher found for TeacherId: {teacherId}");
-                    }
+                    Console.WriteLine($"DEBUG: Getting students for teacherId: {teacherId}");
+
+                    // Single JOIN query: match students who share the same SchoolId + Section as the adviser
+                    // OR are directly linked via student.AdviserId.
+                    // TRIM() on both sides prevents whitespace mismatches in the DB.
+                    query = @"
+                        SELECT DISTINCT s.StudentId, s.FullName, s.GradeLevel, s.Section, s.Strand,
+                               s.SchoolId, s.ParentsNumber, s.Gender, s.QRImage,
+                               s.CreatedAt, s.UpdatedAt, s.IsActive, s.EnrollmentStatus, s.AdviserId
+                        FROM student s
+                        INNER JOIN teacher t ON TRIM(t.TeacherId) = TRIM(@TeacherId)
+                        WHERE s.IsActive = 1
+                          AND (
+                            TRIM(s.AdviserId) = TRIM(@TeacherId)
+                            OR (
+                                TRIM(s.SchoolId) = TRIM(t.SchoolId)
+                                AND TRIM(s.Section) = TRIM(t.Section)
+                                AND (t.Gradelvl IS NULL OR s.GradeLevel = t.Gradelvl)
+                            )
+                          )
+                        ORDER BY s.FullName";
+
+                    Console.WriteLine($"DEBUG: Using single JOIN query for adviser TeacherId: '{teacherId}'");
+                    command = new MySqlCommand(query, connection);
+                    command.Parameters.AddWithValue("@TeacherId", teacherId.Trim());
                 }
-                
-                if (string.IsNullOrEmpty(schoolId) || string.IsNullOrEmpty(section))
+                else
                 {
-                    Console.WriteLine($"DEBUG: Teacher info incomplete - SchoolId: {schoolId}, Section: {section}");
-                    return students; // Return empty list if teacher not found
+                    // Get all students if no teacher ID provided
+                    query = "SELECT StudentId, FullName, GradeLevel, Section, Strand, SchoolId, ParentsNumber, Gender, QRImage, CreatedAt, UpdatedAt, IsActive, EnrollmentStatus, AdviserId FROM student WHERE IsActive = 1 ORDER BY FullName";
+                    command = new MySqlCommand(query, connection);
                 }
 
-                // Get adviser's students via:
-                // 1. Direct AdviserId link on the student record, OR
-                // 2. Students that belong to a class offering this adviser handles
-                //    (matched by GradeLevel + Section + Strand)
-                query = @"
-                    SELECT DISTINCT s.StudentId, s.FullName, s.GradeLevel, s.Section, s.Strand, s.SchoolId, s.ParentsNumber, s.Gender, s.QRImage, s.CreatedAt, s.UpdatedAt, s.IsActive, s.EnrollmentStatus, s.AdviserId
-                    FROM student s
-                    WHERE s.IsActive = 1
-                      AND (
-                        s.AdviserId = @TeacherId
-                        OR EXISTS (
-                            SELECT 1 FROM class_offering co
-                            WHERE (co.AdviserId = @TeacherId OR co.TeacherId = @TeacherId)
-                              AND s.GradeLevel = co.GradeLevel
-                              AND s.Section = co.Section
-                              AND (co.Strand IS NULL OR s.Strand = co.Strand)
-                        )
-                      )
-                    ORDER BY s.FullName";
-
-                Console.WriteLine($"DEBUG: Adviser student query (AdviserId + ClassOffering) — TeacherId: '{teacherId}'");
-
-                command = new MySqlCommand(query, connection);
-                command.Parameters.AddWithValue("@TeacherId", teacherId);
-            }
-            else
-            {
-                // Get all students if no teacher ID provided
-                query = "SELECT StudentId, FullName, GradeLevel, Section, Strand, SchoolId, ParentsNumber, Gender, QRImage, CreatedAt, UpdatedAt, IsActive, EnrollmentStatus, AdviserId FROM student WHERE IsActive = 1 ORDER BY FullName";
-                command = new MySqlCommand(query, connection);
-            }
-
-            Console.WriteLine($"DEBUG: About to execute main query with SchoolId: '{schoolId}', Section: '{section}'");
-            Console.WriteLine($"DEBUG: Query: {query}");
-            
             using var reader = await command.ExecuteReaderAsync();
             int studentCount = 0;
             while (await reader.ReadAsync())
