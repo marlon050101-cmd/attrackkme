@@ -116,5 +116,21 @@ namespace ServerAtrrak.Controllers
                 return StatusCode(500, new List<DailySubjectSummary>());
             }
         }
+
+        [HttpPut("daily-summary/remarks")]
+        public async Task<ActionResult> UpdateDailySummaryRemarks([FromQuery] string studentId, [FromQuery] DateTime date, [FromBody] string remarks)
+        {
+            try
+            {
+                var success = await _service.UpdateDailySummaryRemarksAsync(studentId, date, remarks);
+                if (success) return Ok(new { Message = "Remarks updated." });
+                return BadRequest(new { Message = "Failed to update remarks." });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating daily summary remarks");
+                return StatusCode(500, new { Message = "Internal server error." });
+            }
+        }
     }
 }

@@ -177,12 +177,15 @@ namespace NewscannerMAUI.Pages
                                             statusLabel.Text = $"Already {action}";
                                             statusLabel.TextColor = Colors.Orange;
                                             
-                                            _isProcessing = false; // Allow next scan immediately
-                                            
                                             Task.Delay(1500).ContinueWith(_ => {
                                                 MainThread.BeginInvokeOnMainThread(() => {
-                                                    if (_cts.IsCancellationRequested) return;
+                                                    if (_cts.IsCancellationRequested) 
+                                                    {
+                                                        _isProcessing = false;
+                                                        return;
+                                                    }
                                                     resultLabel.IsVisible = false;
+                                                    _isProcessing = false; // ALLOW NEXT SCAN ONLY AFTER UI RESET
                                                 });
                                             });
                                         });
@@ -216,12 +219,16 @@ namespace NewscannerMAUI.Pages
                                                 {
                                                     MainThread.BeginInvokeOnMainThread(() =>
                                                     {
-                                                        if (_cts.IsCancellationRequested) return;
+                                                        if (_cts.IsCancellationRequested) 
+                                                        {
+                                                            _isProcessing = false;
+                                                            return;
+                                                        }
                                                         resultLabel.IsVisible = false;
                                                         resultLabel.Text = "";
                                                         statusLabel.Text = "Ready to scan next QR code";
                                                         statusLabel.TextColor = Colors.Green;
-                                                        _isProcessing = false;
+                                                        _isProcessing = false; // ALLOW NEXT SCAN ONLY AFTER UI RESET
                                                     });
                                                 });
                                             }
@@ -262,12 +269,16 @@ namespace NewscannerMAUI.Pages
                                                 {
                                                     MainThread.BeginInvokeOnMainThread(() =>
                                                     {
-                                                        if (_cts.IsCancellationRequested) return;
+                                                        if (_cts.IsCancellationRequested) 
+                                                        {
+                                                            _isProcessing = false;
+                                                            return;
+                                                        }
                                                         resultLabel.IsVisible = false;
                                                         resultLabel.Text = "";
                                                         statusLabel.Text = "Ready to scan next QR code";
                                                         statusLabel.TextColor = Colors.Green;
-                                                        _isProcessing = false;
+                                                        _isProcessing = false; // ALLOW NEXT SCAN ONLY AFTER UI RESET
                                                     });
                                                 });
                                             }
@@ -607,10 +618,10 @@ namespace NewscannerMAUI.Pages
                 // Cancel all pending background tasks
                 _cts.Cancel();
                 
-                if (cameraView != null)
+                if (cameraView != null && cameraView.Handler != null)
                 {
-                    cameraView.IsDetecting = false;
-                    cameraView.IsTorchOn = false;
+                    try { cameraView.IsDetecting = false; } catch {}
+                    try { cameraView.IsTorchOn = false; } catch {}
                     
                     // Unsubscribe to prevent detections while page is dying
                     cameraView.BarcodesDetected -= OnBarcodesDetected;

@@ -738,6 +738,7 @@
     private bool isProcessing = false;
     private string toastMessage = string.Empty;
     private bool showToast = false;
+    private System.Threading.CancellationTokenSource? toastCts;
     private AttendanceRecord? lastScanResult;
     private List<AttendanceRecord> attendanceList = new();
     private TeacherInfo? currentTeacher;
@@ -850,6 +851,8 @@
         }
 
         scheduleTimer?.Dispose();
+        toastCts?.Cancel();
+        toastCts?.Dispose();
     }
 
     private async Task LoadTeacherSchedule()
@@ -935,8 +938,18 @@
         {
             var dayShort = GetShortDays(cls.DayOfWeek);
             toastMessage = $"'{cls.SubjectName}' is scheduled for {dayShort}. Today is {DateTime.Now.DayOfWeek}.";
-            showToast = true;
-            _ = Task.Run(async () => { await Task.Delay(4000); showToast = false; await InvokeAsync(StateHasChanged); });
+            toastCts?.Cancel();
+            toastCts = new System.Threading.CancellationTokenSource();
+            var token = toastCts.Token;
+
+            _ = Task.Run(async () => { 
+                try {
+                    await Task.Delay(4000, token); 
+                    showToast = false; 
+                    await InvokeAsync(StateHasChanged); 
+                } catch (TaskCanceledException) {}
+            }, token);
+            
             StateHasChanged();
             return;
         }
@@ -954,7 +967,18 @@
                 
                 toastMessage = $"Advanced session for {cls.SubjectName} started.";
                 showToast = true;
-                _ = Task.Run(async () => { await Task.Delay(3000); showToast = false; await InvokeAsync(StateHasChanged); });
+                
+                toastCts?.Cancel();
+                toastCts = new System.Threading.CancellationTokenSource();
+                var token = toastCts.Token;
+
+                _ = Task.Run(async () => { 
+                    try {
+                        await Task.Delay(3000, token); 
+                        showToast = false; 
+                        await InvokeAsync(StateHasChanged); 
+                    } catch (TaskCanceledException) {}
+                }, token);
             };
             showConfirmModal = true;
             StateHasChanged();
@@ -1300,8 +1324,22 @@
                 {
                     toastMessage = $"{existingRecord.StudentName} - {doneMessage}";
                     showToast = true;
+                    
+                    // Cancel previous toast timer
+                    toastCts?.Cancel();
+                    toastCts = new System.Threading.CancellationTokenSource();
+                    var token = toastCts.Token;
+
                     await InvokeAsync(StateHasChanged);
-                    _ = Task.Run(async () => { await Task.Delay(3000); showToast = false; await InvokeAsync(StateHasChanged); });
+                    
+                    _ = Task.Run(async () => { 
+                        try {
+                            await Task.Delay(3000, token); 
+                            showToast = false; 
+                            await InvokeAsync(StateHasChanged); 
+                        } catch (TaskCanceledException) {}
+                    }, token);
+                    
                     return; // EXIT EARLY
                 }
             }

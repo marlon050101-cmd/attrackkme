@@ -36,8 +36,7 @@
                         <tr>
                             <th>Student</th>
                             <th>Status</th>
-                            <th>In</th>
-                            <th>Out</th>
+                            <th>Remarks</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -51,19 +50,21 @@
                         {
                             @foreach (var summary in _dailySummaries.OrderBy(s => s.FullName))
                             {
-                                var status = summary.Status;
-                                var inDisplay = summary.TimeIn?.ToString("HH:mm") ?? "--:--";
-                                var outDisplay = summary.TimeOut?.ToString("HH:mm") ?? "--:--";
-
                                 <tr>
                                     <td>
                                         <div class="student-cell">
                                             <span class="student-name">@summary.FullName</span>
                                         </div>
                                     </td>
-                                    <td><span class="status-badge @status.ToLower().Replace(" ", "-")">@status</span></td>
-                                    <td>@inDisplay</td>
-                                    <td>@outDisplay</td>
+                                    <td><span class="status-badge @summary.Status.ToLower().Replace(" ", "-")">@summary.Status</span></td>
+                                    <td>
+                                        <div class="remarks-cell">
+                                            <span class="small text-muted">@(string.IsNullOrEmpty(summary.Remarks) ? "No remarks" : summary.Remarks)</span>
+                                            <button class="btn-edit-remarks" @onclick="() => OpenRemarksModal(summary)">
+                                                <i class="fas fa-edit"></i>
+                                            </button>
+                                        </div>
+                                    </td>
                                 </tr>
                             }
                         }
@@ -118,6 +119,8 @@
                         <tr>
                             <th>Student</th>
                             <th>Status</th>
+                            <th>In</th>
+                            <th>Out</th>
                             <th>Remarks</th>
                         </tr>
                     </thead>
@@ -125,7 +128,7 @@
                         @if (!_subjectAttendanceRecords.Any())
                         {
                             <tr>
-                                <td colspan="3" class="text-center py-4 text-muted small">No attendance records for this subject today.</td>
+                                <td colspan="5" class="text-center py-4 text-muted small">No attendance records for this subject today.</td>
                             </tr>
                         }
                         else
@@ -140,6 +143,8 @@
                                         </div>
                                     </td>
                                     <td><span class="status-badge @record.Status.ToLower()">@record.Status</span></td>
+                                    <td>@((record.TimeIn?.ToString("HH:mm") ?? "--:--"))</td>
+                                    <td>@((record.TimeOut?.ToString("HH:mm") ?? "--:--"))</td>
                                     <td><span class="small text-muted">@record.Remarks</span></td>
                                 </tr>
                             }
@@ -171,6 +176,39 @@
     </div>
 </div>
 
+<!-- Manual Remarks Modal -->
+@if (_showRemarksModal)
+{
+    <div class="confirm-overlay" @onclick="() => _showRemarksModal = false">
+        <div class="confirm-box" @onclick:stopPropagation>
+            <div class="modal-header-custom mb-3">
+                <i class="fas fa-comment-dots text-primary"></i>
+                <h3 class="mb-0">Update Remarks</h3>
+                <small class="text-muted">@_selectedStudent?.FullName</small>
+            </div>
+            
+            <div class="mb-3">
+                <label class="form-label small fw-bold">Enter Remark:</label>
+                <textarea class="form-control custom-textarea" 
+                          placeholder="e.g., Sasakit, Uuwi, Emergency..." 
+                          @bind="_editRemarksText"
+                          rows="3"></textarea>
+            </div>
+            
+            <div class="confirm-btns">
+                <button class="btn-confirm-no" @onclick="() => _showRemarksModal = false">Cancel</button>
+                <button class="btn-confirm-yes" @onclick="SaveSummaryRemarks" disabled="@_isSavingRemarks">
+                    @if (_isSavingRemarks)
+                    {
+                        <span class="spinner-border spinner-border-sm me-1"></span>
+                    }
+                    Save Remarks
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     private string adviserName = "Adviser";
     private string? adviserId;
@@ -183,6 +221,12 @@
     private bool _isLoadingSubjects = true;
     private bool _isLoadingMonitoring = true;
     private bool _isLoadingSubjectAttendance = false;
+
+    // Remarks modal state
+    private bool _showRemarksModal = false;
+    private string _editRemarksText = "";
+    private DailySubjectSummary? _selectedStudent;
+    private bool _isSavingRemarks = false;
 
     protected override async Task OnInitializedAsync()
     {
@@ -288,9 +332,88 @@
 
     private void GoToClasses() => Navigation.NavigateTo("/adviser/section-classes");
     private void GoToMonitoring() => Navigation.NavigateTo("/adviser/attendance-monitoring");
+
+    private void OpenRemarksModal(DailySubjectSummary summary)
+    {
+        _selectedStudent = summary;
+        _editRemarksText = summary.Remarks ?? "";
+        _showRemarksModal = true;
+    }
+
+    private async Task SaveSummaryRemarks()
+    {
+        if (_selectedStudent == null) return;
+        
+        _isSavingRemarks = true;
+        try
+        {
+            var dateStr = DateTime.Today.ToString("yyyy-MM-dd");
+            var response = await Http.PutAsJsonAsync($"{ApiConfig.BaseUrl}api/SubjectAttendance/daily-summary/remarks?studentId={_selectedStudent.StudentId}&date={dateStr}", _editRemarksText);
+            
+            if (response.IsSuccessStatusCode)
+            {
+                _selectedStudent.Remarks = _editRemarksText;
+                _showRemarksModal = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Error saving remarks: {ex.Message}");
+        }
+        finally
+        {
+            _isSavingRemarks = false;
+        }
+    }
 }
 
 <style>
+    .remarks-cell {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+    }
+
+    .btn-edit-remarks {
+        background: transparent;
+        border: none;
+        color: #10b981;
+        cursor: pointer;
+        padding: 4px;
+        border-radius: 4px;
+        transition: background 0.2s;
+        font-size: 0.85rem;
+    }
+
+    .btn-edit-remarks:hover {
+        background: rgba(16, 185, 129, 0.1);
+    }
+
+    .modal-header-custom {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+    }
+
+    .modal-header-custom i {
+        font-size: 2.5rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .custom-textarea {
+        border-radius: 12px;
+        border: 1px solid #e2e8f0;
+        padding: 0.75rem;
+        font-size: 0.9rem;
+    }
+
+    .custom-textarea:focus {
+        border-color: #10b981;
+        box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+    }
+
     .dashboard-container {
         padding: 0;
         animation: fadeIn 0.5s ease-out;

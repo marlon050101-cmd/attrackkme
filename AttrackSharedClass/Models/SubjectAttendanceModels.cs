@@ -78,6 +78,7 @@ namespace AttrackSharedClass.Models
         public string Status { get; set; } = "Absent"; // Whole Day, Half Day, Partial, Absent
         public DateTime? TimeIn { get; set; }
         public DateTime? TimeOut { get; set; }
+        public string? Remarks { get; set; }
         public DateTime? LastSeen { get; set; }
     }
 }

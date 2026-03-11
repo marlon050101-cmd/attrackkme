@@ -513,6 +513,7 @@ namespace ServerAtrrak.Services
                         AttendedSubjects INT,
                         TimeIn DATETIME NULL,
                         TimeOut DATETIME NULL,
+                        Remarks TEXT NULL,
                         UpdatedAt DATETIME,
                         PRIMARY KEY (StudentId, Date)
                     )";
@@ -593,14 +594,15 @@ namespace ServerAtrrak.Services
 
                 // 5. Upsert into student_daily_summary
                 var upsertSql = @"
-                    INSERT INTO student_daily_summary (StudentId, Date, Status, TotalSubjects, AttendedSubjects, TimeIn, TimeOut, UpdatedAt)
-                    VALUES (@StudentId, @Date, @Status, @Total, @Attended, @In, @Out, NOW())
+                    INSERT INTO student_daily_summary (StudentId, Date, Status, TotalSubjects, AttendedSubjects, TimeIn, TimeOut, Remarks, UpdatedAt)
+                    VALUES (@StudentId, @Date, @Status, @Total, @Attended, @In, @Out, @Remarks, NOW())
                     ON DUPLICATE KEY UPDATE 
                         Status = VALUES(Status),
                         TotalSubjects = VALUES(TotalSubjects),
                         AttendedSubjects = VALUES(AttendedSubjects),
                         TimeIn = VALUES(TimeIn),
                         TimeOut = VALUES(TimeOut),
+                        Remarks = VALUES(Remarks),
                         UpdatedAt = NOW()";
 
                 using (var ucmd = new MySqlCommand(upsertSql, connection))
@@ -612,6 +614,7 @@ namespace ServerAtrrak.Services
                     ucmd.Parameters.AddWithValue("@Attended", attended);
                     ucmd.Parameters.AddWithValue("@In", (object?)timeIn ?? DBNull.Value);
                     ucmd.Parameters.AddWithValue("@Out", (object?)timeOut ?? DBNull.Value);
+                    ucmd.Parameters.AddWithValue("@Remarks", DBNull.Value); // For now default to null, or aggregate if needed
                     await ucmd.ExecuteNonQueryAsync();
                 }
             }
@@ -638,6 +641,7 @@ namespace ServerAtrrak.Services
                         COALESCE(ds.Status, 'Absent') as Status,
                         ds.TimeIn,
                         ds.TimeOut,
+                        ds.Remarks,
                         ds.UpdatedAt as LastSeen
                     FROM student s
                     INNER JOIN teacher t ON t.TeacherId = @AdviserId
@@ -665,7 +669,8 @@ namespace ServerAtrrak.Services
                         Status = reader.GetString(4),
                         TimeIn = reader.IsDBNull(5) ? (DateTime?)null : reader.GetDateTime(5),
                         TimeOut = reader.IsDBNull(6) ? (DateTime?)null : reader.GetDateTime(6),
-                        LastSeen = reader.IsDBNull(7) ? (DateTime?)null : reader.GetDateTime(7),
+                        Remarks = reader.IsDBNull(7) ? (string?)null : reader.GetString(7),
+                        LastSeen = reader.IsDBNull(8) ? (DateTime?)null : reader.GetDateTime(8),
                         Date = date
                     });
                 }
@@ -676,6 +681,36 @@ namespace ServerAtrrak.Services
                 throw;
             }
             return list;
+        }
+
+        public async Task<bool> UpdateDailySummaryRemarksAsync(string studentId, DateTime date, string remarks)
+        {
+            try
+            {
+                using var connection = new MySqlConnection(_dbConnection.GetConnection());
+                await connection.OpenAsync();
+
+                // Check if record exists, if not, create one with default empty status
+                var sql = @"
+                    INSERT INTO student_daily_summary (StudentId, Date, Remarks, Status, TotalSubjects, AttendedSubjects, UpdatedAt)
+                    VALUES (@StudentId, @Date, @Remarks, 'Absent', 0, 0, NOW())
+                    ON DUPLICATE KEY UPDATE 
+                        Remarks = @Remarks,
+                        UpdatedAt = NOW()";
+
+                using var cmd = new MySqlCommand(sql, connection);
+                cmd.Parameters.AddWithValue("@StudentId", studentId);
+                cmd.Parameters.AddWithValue("@Date", date.Date);
+                cmd.Parameters.AddWithValue("@Remarks", remarks);
+
+                await cmd.ExecuteNonQueryAsync();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating daily summary remarks for student {Id}", studentId);
+                return false;
+            }
         }
     }
 }
