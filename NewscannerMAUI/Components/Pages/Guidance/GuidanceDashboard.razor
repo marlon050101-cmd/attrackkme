@@ -241,7 +241,7 @@
             var data = await Http.GetFromJsonAsync<GuidanceDashboardData>($"{ApiConfig.BaseUrl}api/guidance/dashboard/{currentUser.UserId}?days={timeRange}");
             dashboardData = data ?? new GuidanceDashboardData();
 
-            // Add mock data if empty for demonstration
+            // Add mock data if empty for demonstration mkj87787
             if (dashboardData.StudentsAtRisk == null || !dashboardData.StudentsAtRisk.Any())
             {
                 dashboardData.TotalStudents = 120;

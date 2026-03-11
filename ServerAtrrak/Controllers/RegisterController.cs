@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using AttrackSharedClass.Models;
 using ServerAtrrak.Services;
 using MySql.Data.MySqlClient;
@@ -1066,7 +1066,7 @@ namespace ServerAtrrak.Controllers
                 query = @"
                     SELECT s.StudentId, s.FullName, s.GradeLevel, s.Section, s.Strand, s.SchoolId, s.ParentsNumber, s.Gender, s.QRImage, s.CreatedAt, s.UpdatedAt, s.IsActive, s.EnrollmentStatus, s.AdviserId
                     FROM student s
-                    WHERE s.SchoolId = @SchoolId AND s.Section = @Section AND s.IsActive = 1 AND s.EnrollmentStatus = 'Approved'
+                    WHERE s.SchoolId = @SchoolId AND s.Section = @Section AND s.IsActive = 1
                     ORDER BY s.FullName";
 
                 Console.WriteLine($"DEBUG: Using EXACT query from MySQL Workbench");
@@ -1079,7 +1079,7 @@ namespace ServerAtrrak.Controllers
             else
             {
                 // Get all students if no teacher ID provided
-                query = "SELECT StudentId, FullName, GradeLevel, Section, Strand, SchoolId, ParentsNumber, Gender, QRImage, CreatedAt, UpdatedAt, IsActive, EnrollmentStatus, AdviserId FROM student WHERE IsActive = 1 AND EnrollmentStatus = 'Approved' ORDER BY FullName";
+                query = "SELECT StudentId, FullName, GradeLevel, Section, Strand, SchoolId, ParentsNumber, Gender, QRImage, CreatedAt, UpdatedAt, IsActive, EnrollmentStatus, AdviserId FROM student WHERE IsActive = 1 ORDER BY FullName";
                 command = new MySqlCommand(query, connection);
             }
 
