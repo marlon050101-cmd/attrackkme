@@ -88,5 +88,19 @@ namespace ServerAtrrak.Controllers
                 return StatusCode(500, new List<SubjectAttendanceRecord>());
             }
         }
+        [HttpGet("adviser/{adviserId}/subjects")]
+        public async Task<ActionResult<List<ClassOffering>>> GetAdviserSubjects(string adviserId)
+        {
+            try
+            {
+                var list = await _service.GetAdviserSubjectsAsync(adviserId);
+                return Ok(list);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting adviser subjects");
+                return StatusCode(500, new List<ClassOffering>());
+            }
+        }
     }
 }

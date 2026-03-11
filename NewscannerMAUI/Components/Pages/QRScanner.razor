@@ -201,13 +201,14 @@
     }
     
     .time-badge {
-        font-size: 0.7rem;
+        font-size: 0.75rem;
         font-weight: 800;
-        padding: 4px 8px;
-        border-radius: 8px;
-        margin-bottom: 4px;
-        display: block;
-        text-align: center;
+        padding: 6px 12px;
+        border-radius: 10px;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        white-space: nowrap;
     }
     
     .badge-in { background-color: #ecfdf5; color: #059669; }
@@ -357,25 +358,24 @@
                         <div class="student-info">
                             <span class="student-name">@record.StudentName</span>
                             <div class="d-flex align-items-center gap-2">
-                                <span class="student-id">@record.StudentId</span>
                                 @if (!string.IsNullOrEmpty(record.SubjectName))
                                 {
                                     <span class="badge bg-light text-primary border" style="font-size: 10px;">@record.SubjectName</span>
                                 }
                             </div>
                         </div>
-                        <div class="time-info">
+                        <div class="time-info d-flex flex-column align-items-end gap-1">
                             @if (record.AttendanceType == "TimeIn" || record.AttendanceType == "Both")
                             {
-                                <div class="time-badge badge-in">IN: @record.TimeIn?.ToString("hh:mm tt")</div>
+                                <div class="time-badge badge-in">IN @record.TimeIn?.ToString("hh:mm tt")</div>
                             }
                             @if (record.AttendanceType == "TimeOut" || record.AttendanceType == "Both")
                             {
-                                <div class="time-badge badge-out">OUT: @record.TimeOut?.ToString("hh:mm tt")</div>
+                                <div class="time-badge badge-out">OUT @record.TimeOut?.ToString("hh:mm tt")</div>
                             }
                             @if (record.AttendanceType == "Present")
                             {
-                                <div class="time-badge" style="background-color: #e3f2fd; color: #0d47a1;">SCAN: @record.Timestamp.ToString("hh:mm tt")</div>
+                                <div class="time-badge" style="background-color: #e3f2fd; color: #0d47a1;">SCAN @record.Timestamp.ToString("hh:mm tt")</div>
                             }
                             @if (!string.IsNullOrEmpty(record.Status) && record.Status != "Present")
                             {

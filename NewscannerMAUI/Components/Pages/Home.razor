@@ -117,8 +117,8 @@
         border-radius: 8px;
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     }</style>
-120: 
-121: <style>
+
+<style>
 122:     .modal-backdrop-custom {
 123:         position: fixed;
 124:         top: 0;
@@ -381,6 +381,10 @@
                                 {
                                     Navigation.NavigateTo("/kiosk/student-registration");
                                 }
+                                else if (isSmsHubMode && (result.User.UserType == UserType.Head || result.User.UserType == UserType.Admin))
+                                {
+                                    Navigation.NavigateTo("/sms-hub");
+                                }
                                 else if (result.User.UserType == UserType.SubjectTeacher)
                                 {
                                     Navigation.NavigateTo("/teacher-dashboard");
@@ -401,9 +405,9 @@
                                 {
                                     Navigation.NavigateTo("/head-dashboard");
                                 }
-                                else if (isSmsHubMode)
+                                else if (result.User.UserType == UserType.Admin)
                                 {
-                                    Navigation.NavigateTo("/sms-hub");
+                                    Navigation.NavigateTo("/head-dashboard");
                                 }
                                 else
                                 {

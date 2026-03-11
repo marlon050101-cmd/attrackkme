@@ -13,15 +13,15 @@
     <!-- Header -->
     <header class="app-header">
         <div class="header-left">
-            <button class="menu-toggle" @onclick="ToggleSidebar">
+            <button class="menu-toggle" @onclick="ToggleSidebar" aria-label="Toggle Menu">
                 <i class="fas fa-bars"></i>
             </button>
         </div>
         <div class="header-center">
-            <span class="app-brand">SARDO-TRACKCARE</span>
+            <span class="app-brand">SARDO-TRAKCARE</span>
         </div>
         <div class="header-right">
-            <button class="header-logout-btn" @onclick="HandleLogout">
+            <button class="header-logout-btn" @onclick="HandleLogout" title="Logout">
                 <i class="fas fa-sign-out-alt"></i>
             </button>
         </div>
@@ -34,8 +34,11 @@
     <aside class="app-sidebar">
         <div class="sidebar-header">
             <div class="user-profile">
-                <div class="user-avatar">
-                    <i class="fas fa-user-tie"></i>
+                <div class="avatar-wrapper">
+                    <div class="user-avatar">
+                        <i class="fas fa-user-tie"></i>
+                    </div>
+                    <div class="status-indicator"></div>
                 </div>
                 <div class="user-info">
                     <span class="user-name">@adviserName</span>
@@ -46,21 +49,29 @@
         
         <nav class="sidebar-nav">
             <div class="nav-section">
-                <div class="nav-section-title">Main</div>
+                <div class="nav-section-title">Main Overview</div>
                 <NavLink class="nav-item" href="/adviser-dashboard" Match="NavLinkMatch.All" @onclick="CloseSidebar">
-                    <i class="fas fa-th-large"></i>
+                    <div class="nav-icon-box">
+                        <i class="fas fa-th-large"></i>
+                    </div>
                     <span>Dashboard</span>
                 </NavLink>
                 <NavLink class="nav-item" href="/adviser/attendance-monitoring" @onclick="CloseSidebar">
-                    <i class="fas fa-user-check"></i>
+                    <div class="nav-icon-box">
+                        <i class="fas fa-user-check"></i>
+                    </div>
                     <span>Attendance Monitoring</span>
                 </NavLink>
                 <NavLink class="nav-item" href="/qr-scanner" @onclick="CloseSidebar">
-                    <i class="fas fa-qrcode"></i>
+                    <div class="nav-icon-box">
+                        <i class="fas fa-qrcode"></i>
+                    </div>
                     <span>Scanner</span>
                 </NavLink>
                 <NavLink class="nav-item" href="/adviser/student-approvals" @onclick="CloseSidebar">
-                    <i class="fas fa-user-plus"></i>
+                    <div class="nav-icon-box">
+                        <i class="fas fa-user-plus"></i>
+                    </div>
                     <span class="nav-label">Student Approvals</span>
                     @if (AdviserState.PendingStudentsCount > 0)
                     {
@@ -70,17 +81,25 @@
             </div>
 
             <div class="nav-section mt-4">
-                <div class="nav-section-title">Account</div>
+                <div class="nav-section-title">System & Account</div>
                 <NavLink class="nav-item" href="/adviser-profile" @onclick="CloseSidebar">
-                    <i class="fas fa-user-circle"></i>
+                    <div class="nav-icon-box">
+                        <i class="fas fa-user-circle"></i>
+                    </div>
                     <span>Profile</span>
                 </NavLink>
                 <button class="nav-item logout-nav" @onclick="HandleLogout">
-                    <i class="fas fa-sign-out-alt"></i>
+                    <div class="nav-icon-box">
+                        <i class="fas fa-sign-out-alt"></i>
+                    </div>
                     <span>Logout</span>
                 </button>
             </div>
         </nav>
+        
+        <div class="sidebar-footer">
+            <div class="app-version">Version 2.0.0</div>
+        </div>
     </aside>
 
     <!-- Main Content -->
@@ -151,114 +170,104 @@
 
 <style>
     :root {
-        --adviser-primary: #1cc88a; /* Green for Adviser */
-        --adviser-secondary: #17a673;
-        --sidebar-width: 260px;
-        --header-height: 60px;
+        --adv-primary: #10b981; /* Emerald 500 */
+        --adv-primary-light: #34d399; /* Emerald 400 */
+        --adv-primary-dark: #059669; /* Emerald 600 */
+        --adv-bg: #f9fafb;
+        --sidebar-bg: #ffffff;
+        --sidebar-width: 280px;
+        --header-height: 64px;
         --header-top-offset: 32px;
+        --glass-bg: rgba(255, 255, 255, 0.85);
+        --text-main: #1f2937;
+        --text-muted: #6b7280;
+        --nav-hover: #f3f4f6;
+        --card-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     }
 
     .adviser-layout {
         min-height: 100vh;
         display: flex;
         flex-direction: column;
-        background-color: #f8f9fc;
+        background-color: var(--adv-bg);
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     }
 
-    /* Header */
+    /* Header with Glassmorphism */
     .app-header {
         height: var(--header-height);
-        background: linear-gradient(180deg, var(--adviser-primary) 0%, var(--adviser-secondary) 100%);
-        color: white !important;
+        background: var(--glass-bg);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        color: var(--text-main);
         display: flex;
         align-items: center; 
         justify-content: space-between;
-        padding: 0 1rem;
+        padding: 0 1.25rem;
         position: fixed;
         top: var(--header-top-offset); 
         left: 0;
         right: 0;
         z-index: 1000;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
     }
 
     .header-left, .header-right {
-        flex: 0 0 50px;
         display: flex;
         align-items: center;
-    }
-
-    .header-center {
-        flex: 1;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        perspective: 1000px;
     }
 
     .menu-toggle, .header-logout-btn {
-        background: rgba(255, 255, 255, 0.1);
-        border: 1px solid rgba(255, 255, 255, 0.2);
-        color: white !important;
-        width: 42px;
-        height: 42px;
-        border-radius: 12px;
+        background: transparent;
+        border: none;
+        color: var(--text-main);
+        width: 40px;
+        height: 40px;
+        border-radius: 10px;
         display: flex;
         align-items: center;
         justify-content: center;
         font-size: 1.2rem;
         cursor: pointer;
-        transition: all 0.2s;
+        transition: var(--transition);
     }
 
-    .header-logout-btn {
-        border-radius: 50%;
-    }
-
-    .menu-toggle:active, .header-logout-btn:active {
-        background: rgba(255, 255, 255, 0.2);
-        transform: scale(0.95);
+    .menu-toggle:hover, .header-logout-btn:hover {
+        background: var(--nav-hover);
+        color: var(--adv-primary);
+        transform: translateY(-1px);
     }
 
     .app-brand {
-        font-weight: 850;
-        letter-spacing: 2px;
-        font-size: 1.25rem;
-        color: white !important;
+        font-weight: 800;
+        letter-spacing: 0.05em;
+        font-size: 1.15rem;
         text-align: center;
-        white-space: nowrap;
         text-transform: uppercase;
-        background: linear-gradient(to right, #fff 20%, #A5C9FF 40%, #A5C9FF 60%, #fff 80%);
-        background-size: 200% auto;
-        color: #000;
-        background-clip: text;
-        text-fill-color: transparent;
+        background: linear-gradient(135deg, var(--adv-primary) 0%, var(--adv-primary-dark) 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
-        animation: shine 3s linear infinite;
-        text-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        background-clip: text;
+        text-fill-color: transparent;
+        filter: drop-shadow(0 2px 4px rgba(0,0,0,0.05));
     }
 
-    @@keyframes shine {
-        to {
-            background-position: 200% center;
-        }
-    }
-
-    /* Sidebar */
+    /* Sidebar Redesign */
     .app-sidebar {
         position: fixed;
         top: var(--header-top-offset);
         bottom: 0;
         left: calc(-1 * var(--sidebar-width));
         width: var(--sidebar-width);
-        background: white;
+        background: var(--sidebar-bg);
         z-index: 1002;
-        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
         display: flex;
         flex-direction: column;
-        box-shadow: 4px 0 15px rgba(0,0,0,0.05);
+        border-right: 1px solid rgba(0, 0, 0, 0.05);
+        box-shadow: 10px 0 30px rgba(0,0,0,0.03);
     }
 
     .sidebar-open .app-sidebar {
@@ -271,11 +280,13 @@
         left: 0;
         right: 0;
         bottom: 0;
-        background: rgba(0,0,0,0.5);
+        background: rgba(0,0,0,0.3);
+        backdrop-filter: blur(4px);
+        -webkit-backdrop-filter: blur(4px);
         z-index: 1001;
         opacity: 0;
         pointer-events: none;
-        transition: opacity 0.3s;
+        transition: opacity 0.4s;
     }
 
     .sidebar-open .sidebar-overlay {
@@ -284,27 +295,43 @@
     }
 
     .sidebar-header {
-        padding: 1rem;
-        background: #f8f9fc;
-        border-bottom: 1px solid #e3e6f0;
+        padding: 2rem 1.5rem;
+        background: linear-gradient(180deg, #f9fafb 0%, #ffffff 100%);
+        border-bottom: 1px solid #f3f4f6;
     }
 
     .user-profile {
         display: flex;
         align-items: center;
-        gap: 0.6rem;
+        gap: 1rem;
+    }
+
+    .avatar-wrapper {
+        position: relative;
     }
 
     .user-avatar {
-        width: 32px;
-        height: 32px;
-        background: var(--adviser-primary);
+        width: 48px;
+        height: 48px;
+        background: linear-gradient(135deg, var(--adv-primary) 0%, var(--adv-primary-dark) 100%);
         color: white;
-        border-radius: 6px;
+        border-radius: 14px;
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 1rem;
+        font-size: 1.25rem;
+        box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
+    }
+
+    .status-indicator {
+        position: absolute;
+        bottom: -2px;
+        right: -2px;
+        width: 12px;
+        height: 12px;
+        background: #10b981;
+        border: 2px solid white;
+        border-radius: 50%;
     }
 
     .user-info {
@@ -314,57 +341,100 @@
 
     .user-name {
         font-weight: 700;
-        color: var(--adviser-primary);
-        font-size: 0.9rem;
+        color: var(--text-main);
+        font-size: 1rem;
+        line-height: 1.2;
     }
 
     .user-role {
-        font-size: 0.65rem;
-        color: #858796;
+        font-size: 0.75rem;
+        color: var(--text-muted);
+        font-weight: 500;
     }
 
-    /* Nav Items */
     .sidebar-nav {
-        padding: 0.5rem;
+        padding: 1.5rem 1rem;
         flex: 1;
+        overflow-y: auto;
+    }
+
+    .nav-section {
+        margin-bottom: 2rem;
     }
 
     .nav-section-title {
-        padding: 0 0.6rem;
-        font-size: 0.6rem;
-        font-weight: 800;
-        color: #b7b9cc;
+        padding: 0 0.75rem;
+        font-size: 0.7rem;
+        font-weight: 700;
+        color: var(--text-muted);
         text-transform: uppercase;
-        margin-bottom: 0.3rem;
-        letter-spacing: 0.1em;
+        margin-bottom: 0.75rem;
+        letter-spacing: 0.05em;
     }
 
     .nav-item {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
-        padding: 0.6rem 0.6rem;
-        color: #858796;
+        gap: 0.75rem;
+        padding: 0.75rem 0.75rem;
+        color: var(--text-main);
         text-decoration: none !important;
-        border-radius: 6px;
+        border-radius: 12px;
         font-weight: 600;
-        transition: all 0.2s;
+        transition: var(--transition);
         border: none;
-        background: none;
+        background: transparent;
         width: 100%;
         text-align: left;
-        font-size: 0.85rem;
+        font-size: 0.9rem;
+        margin-bottom: 0.25rem;
+        position: relative;
     }
 
-    .nav-item i {
-        font-size: 0.9rem;
-        width: 18px;
-        text-align: center;
+    .nav-icon-box {
+        width: 32px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 8px;
+        background: #f3f4f6;
+        color: var(--text-muted);
+        transition: var(--transition);
     }
 
     .nav-item:hover {
-        background: #f8f9fc;
-        color: var(--adviser-primary);
+        background: var(--nav-hover);
+        color: var(--adv-primary);
+    }
+
+    .nav-item:hover .nav-icon-box {
+        background: white;
+        color: var(--adv-primary);
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+
+    .nav-item.active {
+        background: rgba(16, 185, 129, 0.08);
+        color: var(--adv-primary);
+    }
+
+    .nav-item.active .nav-icon-box {
+        background: var(--adv-primary);
+        color: white;
+        box-shadow: 0 4px 10px rgba(16, 185, 129, 0.2);
+    }
+
+    /* Active indicator bar */
+    .nav-item.active::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        top: 20%;
+        bottom: 20%;
+        width: 3px;
+        background: var(--adv-primary);
+        border-radius: 0 4px 4px 0;
     }
 
     .nav-label {
@@ -372,36 +442,62 @@
     }
 
     .pending-badge {
-        background: #e74a3b;
+        background: #ef4444;
         color: white;
-        font-size: 0.65rem;
+        font-size: 0.7rem;
         font-weight: 700;
-        padding: 2px 6px;
-        border-radius: 10px;
+        padding: 2px 8px;
+        border-radius: 99px;
         line-height: 1;
-        min-width: 18px;
-        text-align: center;
-        margin-left: auto;
-    }
-
-    .nav-item.active {
-        background: rgba(28, 200, 138, 0.1);
-        color: var(--adviser-primary);
+        box-shadow: 0 2px 4px rgba(239, 68, 68, 0.2);
     }
 
     .logout-nav {
-        color: #e74a3b;
+        color: #ef4444;
     }
 
     .logout-nav:hover {
-        background: rgba(231, 74, 59, 0.05);
-        color: #e74a3b;
+        background: rgba(239, 68, 68, 0.05);
+        color: #ef4444;
     }
 
-    /* Main */
+    .logout-nav:hover .nav-icon-box {
+        color: #ef4444;
+    }
+
+    .sidebar-footer {
+        padding: 1rem 1.5rem;
+        border-top: 1px solid #f3f4f6;
+    }
+
+    .app-version {
+        font-size: 0.65rem;
+        color: var(--text-muted);
+        font-weight: 500;
+        text-align: center;
+    }
+
+    /* Main Content Area */
     .main-content {
         margin-top: calc(var(--header-height) + var(--header-top-offset));
-        padding: 0.5rem;
+        padding: 1rem;
         flex: 1;
+        transition: var(--transition);
     }
+
+    /* Animations */
+    @@keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    .sidebar-nav .nav-item {
+        animation: fadeIn 0.4s ease forwards;
+        opacity: 0;
+    }
+
+    .sidebar-nav .nav-item:nth-child(1) { animation-delay: 0.1s; }
+    .sidebar-nav .nav-item:nth-child(2) { animation-delay: 0.15s; }
+    .sidebar-nav .nav-item:nth-child(3) { animation-delay: 0.2s; }
+    .sidebar-nav .nav-item:nth-child(4) { animation-delay: 0.25s; }
 </style>

@@ -150,11 +150,14 @@
     protected override async Task OnInitializedAsync()
     {
         var user = await AuthService.GetCurrentUserAsync();
-        if (user != null)
+        if (user == null || (user.UserType != UserType.Head && user.UserType != UserType.Admin))
         {
-            currentSchoolId = user.SchoolId;
-            await LoadStats(currentSchoolId);
+            Navigation.NavigateTo("/");
+            return;
         }
+
+        currentSchoolId = user.SchoolId;
+        await LoadStats(currentSchoolId);
     }
 
     private async Task LoadStats(string? schoolId)

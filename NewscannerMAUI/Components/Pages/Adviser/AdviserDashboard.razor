@@ -4,6 +4,8 @@
 @using AttrackSharedClass.Models
 @inject AuthService AuthService
 @inject NavigationManager Navigation
+@inject HttpClient Http
+@inject OfflineDataService OfflineDataService
 
 <div class="dashboard-container">
     <div class="welcome-banner">
@@ -11,27 +13,142 @@
         <p class="text-muted small">Welcome to Sardo-TrackCare Adviser Portal</p>
     </div>
 
-    <!-- Quick Stats -->
-    <div class="stats-grid">
-        <div class="stat-card">
-            <div class="stat-icon section">
-                <i class="fas fa-chalkboard"></i>
-            </div>
-            <div class="stat-info">
-                <span class="stat-value">Section classes</span>
-                <span class="stat-label">Manage your section</span>
-            </div>
-            <i class="fas fa-chevron-right ms-auto text-muted"></i>
+    <!-- Attendance Table Section -->
+    <div class="attendance-table-section mt-1">
+        <div class="section-header-flex">
+            <h5 class="section-title mb-0">Attendance Monitoring</h5>
+            <span class="live-indicator">
+                <span class="dot"></span> LIVE
+            </span>
         </div>
-        <div class="stat-card">
-            <div class="stat-icon monitoring">
-                <i class="fas fa-user-check"></i>
-            </div>
-            <div class="stat-info">
-                <span class="stat-value">Attendance Monitoring</span>
-                <span class="stat-label">Daily student tracking</span>
-            </div>
-            <i class="fas fa-chevron-right ms-auto text-muted"></i>
+        <div class="table-container glass">
+            @if (_isLoadingMonitoring)
+            {
+                <div class="text-center p-4">
+                    <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                    <span class="ms-2 small text-muted">Updating monitored list...</span>
+                </div>
+            }
+            else
+            {
+                <table class="premium-table">
+                    <thead>
+                        <tr>
+                            <th>Student</th>
+                            <th>Status</th>
+                            <th>Time</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (!_sectionStudents.Any())
+                        {
+                            <tr>
+                                <td colspan="3" class="text-center py-4 text-muted small">No students found in your section.</td>
+                            </tr>
+                        }
+                        else
+                        {
+                            @foreach (var student in _sectionStudents.OrderBy(s => s.FullName))
+                            {
+                                var record = _dailyRecords.FirstOrDefault(r => r.StudentId == student.StudentId);
+                                var status = record?.Status ?? "Absent";
+                                var timeDisplay = status == "Absent" ? "--:--" : (record?.TimeIn ?? "--:--");
+
+                                <tr>
+                                    <td>
+                                        <div class="student-cell">
+                                            <div class="student-avatar-sm @GetAvatarClass(status)">@GetInitials(student.FullName)</div>
+                                            <div class="student-meta">
+                                                <span class="student-name">@student.FullName</span>
+                                                <span class="student-id">ID: @student.StudentId</span>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td><span class="status-badge @status.ToLower()">@status</span></td>
+                                    <td>@timeDisplay</td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    </div>
+
+    <!-- Subject Attendance Table Section -->
+    <div class="attendance-table-section mt-4 mb-4">
+        <div class="section-header-flex">
+            <h5 class="section-title mb-0">Subject Attendance</h5>
+            <span class="subject-badge">TABBED VIEW</span>
+        </div>
+        
+        <!-- Subject Tabs -->
+        <div class="subject-tabs-container">
+            @if (_isLoadingSubjects)
+            {
+                <div class="small text-muted p-2"><i class="fas fa-spinner fa-spin"></i> Loading subjects...</div>
+            }
+            else if (!_subjects.Any())
+            {
+                <div class="small text-muted p-2">No subjects assigned.</div>
+            }
+            else
+            {
+                <div class="subject-tabs">
+                    @foreach (var sub in _subjects)
+                    {
+                        <button class="sub-tab @(activeSubjectId == sub.ClassOfferingId ? "active" : "")" @onclick='() => SetSubject(sub)'>
+                            <i class="fas fa-book"></i> @sub.SubjectName
+                        </button>
+                    }
+                </div>
+            }
+        </div>
+
+        <div class="table-container glass">
+            @if (_isLoadingSubjectAttendance)
+            {
+                <div class="text-center p-4">
+                    <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                    <span class="ms-2 small text-muted">Loading attendance...</span>
+                </div>
+            }
+            else
+            {
+                <table class="premium-table">
+                    <thead>
+                        <tr>
+                            <th>Student</th>
+                            <th>Status</th>
+                            <th>Remarks</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (!_subjectAttendanceRecords.Any())
+                        {
+                            <tr>
+                                <td colspan="3" class="text-center py-4 text-muted small">No attendance records for this subject today.</td>
+                            </tr>
+                        }
+                        else
+                        {
+                            @foreach (var record in _subjectAttendanceRecords)
+                            {
+                                <tr>
+                                    <td>
+                                        <div class="student-cell">
+                                            <div class="student-avatar-sm">@GetInitials(record.StudentName)</div>
+                                            <div class="student-name">@record.StudentName</div>
+                                        </div>
+                                    </td>
+                                    <td><span class="status-badge @record.Status.ToLower()">@record.Status</span></td>
+                                    <td><span class="small text-muted">@record.Remarks</span></td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            }
         </div>
     </div>
 
@@ -58,6 +175,17 @@
 
 @code {
     private string adviserName = "Adviser";
+    private string? adviserId;
+    private string? activeSubjectId;
+    
+    private List<ClassOffering> _subjects = new();
+    private List<Student> _sectionStudents = new();
+    private List<DailyAttendanceRecord> _dailyRecords = new();
+    private List<SubjectAttendanceRecord> _subjectAttendanceRecords = new();
+    
+    private bool _isLoadingSubjects = true;
+    private bool _isLoadingMonitoring = true;
+    private bool _isLoadingSubjectAttendance = false;
 
     protected override async Task OnInitializedAsync()
     {
@@ -65,7 +193,93 @@
         if (user != null)
         {
             adviserName = user.Username;
+            adviserId = user.TeacherId;
+            
+            if (!string.IsNullOrEmpty(adviserId))
+            {
+                await LoadDashboardData();
+            }
         }
+    }
+
+    private async Task LoadDashboardData()
+    {
+        _isLoadingSubjects = true;
+        _isLoadingMonitoring = true;
+        try
+        {
+            // Try to load subjects from SQLite first (offline-friendly)
+            _subjects = await OfflineDataService.GetClassOfferingsOfflineAsync(adviserId!);
+            
+            // If empty or if we want the freshest data, try API (using the new dedicated SubjectAttendance endpoint)
+            if (!_subjects.Any())
+            {
+                var list = await Http.GetFromJsonAsync<List<ClassOffering>>($"{ApiConfig.BaseUrl}api/SubjectAttendance/adviser/{adviserId}/subjects");
+                _subjects = list ?? new();
+            }
+
+            // Load monitored students (Section)
+            var studentList = await Http.GetFromJsonAsync<List<Student>>($"{ApiConfig.BaseUrl}api/register/students?teacherId={adviserId}");
+            _sectionStudents = studentList ?? new();
+
+            // Load today's daily records
+            var dailyRecords = await Http.GetFromJsonAsync<List<DailyAttendanceRecord>>($"{ApiConfig.BaseUrl}api/dailyattendance/today/{adviserId}");
+            _dailyRecords = dailyRecords ?? new();
+
+            if (_subjects.Any())
+            {
+                await SetSubject(_subjects.First());
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Error loading dashboard data: {ex.Message}");
+        }
+        finally
+        {
+            _isLoadingSubjects = false;
+            _isLoadingMonitoring = false;
+        }
+    }
+
+    private async Task SetSubject(ClassOffering subject)
+    {
+        activeSubjectId = subject.ClassOfferingId;
+        _isLoadingSubjectAttendance = true;
+        try
+        {
+            var date = DateTime.Today.ToString("yyyy-MM-dd");
+            var attendance = await Http.GetFromJsonAsync<List<SubjectAttendanceRecord>>($"{ApiConfig.BaseUrl}api/SubjectAttendance/class-offering/{activeSubjectId}/date/{date}");
+            _subjectAttendanceRecords = attendance ?? new();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Error loading subject attendance: {ex.Message}");
+            _subjectAttendanceRecords = new();
+        }
+        finally
+        {
+            _isLoadingSubjectAttendance = false;
+        }
+    }
+
+    private string GetInitials(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "??";
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 1) return parts[0].Substring(0, Math.Min(2, parts[0].Length)).ToUpper();
+        return (parts[0][0].ToString() + parts[parts.Length - 1][0].ToString()).ToUpper();
+    }
+
+    private string GetAvatarClass(string status)
+    {
+        return status.ToLower() switch
+        {
+            "present" => "",
+            "late" => "warning",
+            "absent" => "secondary",
+            _ => "info"
+        };
     }
 
     private void GoToClasses() => Navigation.NavigateTo("/adviser/section-classes");
@@ -75,86 +289,247 @@
 <style>
     .dashboard-container {
         padding: 0;
+        animation: fadeIn 0.5s ease-out;
     }
 
     .welcome-banner {
         margin-top: 0;
-        margin-bottom: 0.75rem;
-        padding: 0.5rem 1rem 0.25rem;
+        margin-bottom: 0.5rem;
+        padding: 0.75rem 1.25rem 0.25rem;
     }
 
     .welcome-banner h2 {
-        font-weight: 800;
-        color: #2c3e50;
-        font-size: 1.2rem;
+        font-weight: 850;
+        color: #1a202c;
+        font-size: 1.4rem;
         margin-top: 0;
+        letter-spacing: -0.025em;
     }
 
-    /* Stats Grid */
-    .stats-grid {
+    .section-header-flex {
         display: flex;
-        flex-direction: column;
-        gap: 0.75rem;
-        padding: 0 1rem;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 1.25rem;
+        margin-bottom: 0.75rem;
     }
 
-    .stat-card {
+    .section-title {
+        font-weight: 800;
+        color: #4a5568;
+        font-size: 0.95rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    .live-indicator {
+        font-size: 0.65rem;
+        font-weight: 900;
+        color: #e53e3e;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        background: rgba(229, 62, 62, 0.1);
+        padding: 2px 8px;
+        border-radius: 99px;
+    }
+
+    .live-indicator .dot {
+        width: 6px;
+        height: 6px;
+        background: #e53e3e;
+        border-radius: 50%;
+        animation: pulse 1.5s infinite;
+    }
+
+    @@keyframes pulse {
+        0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(229, 62, 62, 0.7); }
+        70% { transform: scale(1); box-shadow: 0 0 0 4px rgba(229, 62, 62, 0); }
+        100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(229, 62, 62, 0); }
+    }
+
+    .table-container {
+        margin: 0 1rem;
         background: white;
-        padding: 1rem;
-        border-radius: 12px;
+        border-radius: 20px;
+        overflow: hidden;
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05);
+        border: 1px solid #f1f5f9;
+    }
+
+    .premium-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    .premium-table th {
+        background: #f8fafc;
+        padding: 0.85rem 1rem;
+        font-size: 0.75rem;
+        font-weight: 700;
+        color: #64748b;
+        text-align: left;
+        border-bottom: 1px solid #f1f5f9;
+        text-transform: uppercase;
+        letter-spacing: 0.025em;
+    }
+
+    .premium-table td {
+        padding: 0.75rem 1rem;
+        vertical-align: middle;
+        border-bottom: 1px solid #f8fafc;
+    }
+
+    .student-cell {
         display: flex;
         align-items: center;
         gap: 0.75rem;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.03);
-        border: 1px solid #edf2f7;
     }
 
-    .stat-icon {
-        width: 50px;
-        height: 50px;
-        border-radius: 12px;
+    .student-avatar-sm {
+        width: 36px;
+        height: 36px;
+        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        color: white;
+        border-radius: 10px;
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 1.5rem;
+        font-weight: 800;
+        font-size: 0.75rem;
+        box-shadow: 0 4px 6px -1px rgba(16, 185, 129, 0.1);
     }
 
-    .stat-icon.section {
-        background: rgba(28, 200, 138, 0.1);
-        color: #1cc88a;
+    .student-avatar-sm.secondary {
+        background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
     }
 
-    .stat-icon.monitoring {
-        background: rgba(54, 185, 204, 0.1);
-        color: #36b9cc;
+    .student-avatar-sm.warning {
+        background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
     }
 
-    .stat-info {
+    .student-avatar-sm.info {
+        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+    }
+
+    .student-meta {
         display: flex;
         flex-direction: column;
     }
 
-    .stat-value {
+    .student-name {
         font-weight: 700;
-        font-size: 1.1rem;
-        color: #2d3748;
+        color: #1e293b;
+        font-size: 0.85rem;
+        line-height: 1.2;
     }
 
-    .stat-label {
-        font-size: 0.85rem;
-        color: #718096;
+    .student-id {
+        font-size: 0.65rem;
+        color: #94a3b8;
+        font-weight: 600;
+    }
+
+    .status-badge {
+        font-size: 0.7rem;
+        font-weight: 700;
+        padding: 4px 10px;
+        border-radius: 8px;
+        display: inline-block;
+    }
+
+    .status-badge.present {
+        background: #ecfdf5;
+        color: #059669;
+    }
+
+    .status-badge.late {
+        background: #fffbeb;
+        color: #d97706;
+    }
+
+    .status-badge.absent {
+        background: #fef2f2;
+        color: #ef4444;
+    }
+
+    .subject-badge {
+        font-size: 0.65rem;
+        font-weight: 900;
+        color: #10b981;
+        background: rgba(16, 185, 129, 0.1);
+        padding: 2px 8px;
+        border-radius: 99px;
+        letter-spacing: 0.05em;
+    }
+
+    .subject-tag {
+        font-size: 0.7rem;
+        font-weight: 700;
+        padding: 3px 8px;
+        border-radius: 6px;
+        display: inline-block;
+        white-space: nowrap;
+    }
+
+    .subject-tag.math { background: #eff6ff; color: #2563eb; }
+    .subject-tag.science { background: #fdf2f7; color: #db2777; }
+    .subject-tag.english { background: #f5f3ff; color: #7c3aed; }
+
+    /* Subject Tabs Styling */
+    .subject-tabs-container {
+        padding: 0 1rem;
+        margin-bottom: 1rem;
+    }
+
+    .subject-tabs {
+        display: flex;
+        gap: 8px;
+        background: #f1f5f9;
+        padding: 4px;
+        border-radius: 14px;
+        width: fit-content;
+    }
+
+    .sub-tab {
+        border: none;
+        background: transparent;
+        padding: 8px 16px;
+        border-radius: 10px;
+        font-size: 0.8rem;
+        font-weight: 700;
+        color: #64748b;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        transition: all 0.2s;
+        cursor: pointer;
+    }
+
+    .sub-tab i {
+        font-size: 0.9rem;
+        opacity: 0.7;
+    }
+
+    .sub-tab.active {
+        background: white;
+        color: #10b981;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    }
+
+    .sub-tab.active i {
+        opacity: 1;
+    }
+
+    .premium-table td:last-child {
+        font-size: 0.75rem;
+        font-weight: 700;
+        color: #64748b;
     }
 
     /* Actions Grid */
     .actions-section {
         padding: 0 1rem;
-    }
-
-    .section-title {
-        font-weight: 700;
-        color: #4a5568;
-        margin-bottom: 1rem;
-        font-size: 1rem;
     }
 
     .action-buttons-grid {
@@ -165,45 +540,77 @@
 
     .action-card {
         background: white;
-        border: 1px solid #edf2f7;
-        border-radius: 18px;
+        border: 1px solid #f1f5f9;
+        border-radius: 20px;
         padding: 1.5rem 1rem;
         display: flex;
         flex-direction: column;
         align-items: center;
         gap: 0.75rem;
-        transition: transform 0.2s;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.04);
+        transition: all 0.2s;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.02);
         width: 100%;
+        position: relative;
+        overflow: hidden;
     }
 
-    .action-card:active {
-        transform: scale(0.95);
+    .action-card::after {
+        content: '';
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 3px;
+        transform: translateY(100%);
+        transition: transform 0.2s;
+    }
+
+    .action-card.classes::after { background: #10b981; }
+    .action-card.monitoring::after { background: #6366f1; }
+
+    .action-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 20px -5px rgba(0, 0, 0, 0.05);
+    }
+
+    .action-card:hover::after {
+        transform: translateY(0);
     }
 
     .action-icon {
-        width: 60px;
-        height: 60px;
-        border-radius: 50%;
+        width: 50px;
+        height: 50px;
+        border-radius: 14px;
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 1.8rem;
+        font-size: 1.5rem;
+        transition: transform 0.2s;
+    }
+
+    .action-card:hover .action-icon {
+        transform: scale(1.1);
     }
 
     .action-card.classes .action-icon {
-        background: linear-gradient(135deg, #1cc88a 0%, #13855c 100%);
-        color: white;
+        background: rgba(16, 185, 129, 0.1);
+        color: #10b981;
     }
 
     .action-card.monitoring .action-icon {
-        background: linear-gradient(135deg, #36b9cc 0%, #258391 100%);
-        color: white;
+        background: rgba(99, 102, 241, 0.1);
+        color: #6366f1;
     }
 
     .action-text {
-        font-weight: 700;
-        color: #2d3748;
-        font-size: 0.9rem;
+        font-weight: 800;
+        color: #334155;
+        font-size: 0.8rem;
+        text-align: center;
+    }
+
+    @@keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
     }
 </style>

@@ -81,6 +81,8 @@ namespace ServerAtrrak.Services
                 await connection.OpenAsync();
 
                 // Join with guidance_cases to get Status
+                _logger.LogInformation("Getting attendance summary for school {SchoolId}, last {Days} days", schoolId, days);
+
                 var query = @"
                     SELECT s.StudentId, s.FullName, s.GradeLevel, s.Section, s.Strand, s.Gender,
                            COUNT(sa.SubjectAttendanceId) as TotalDays,
@@ -88,28 +90,23 @@ namespace ServerAtrrak.Services
                            SUM(CASE WHEN sa.Status = 'Absent' THEN 1 ELSE 0 END) as AbsentDays,
                            SUM(CASE WHEN sa.Status = 'Late' THEN 1 ELSE 0 END) as LateDays,
                            SUM(CASE WHEN sa.TimeIn IS NOT NULL AND sa.TimeOut IS NULL THEN 1 ELSE 0 END) as IncompleteSessions,
-                           COALESCE(sub_co.SubjectName, sub_ts.SubjectName, 'Unknown') as SubjectName,
+                           COALESCE(sub_co.SubjectName, sub_ts.SubjectName, 'Unknown Subject') as SubjectName,
                            COALESCE(gc.Status, 'Normal') as GuidanceStatus
                     FROM student s
-                    -- Expected subjects via Class Offering (New flow)
-                    LEFT JOIN class_offering co ON s.GradeLevel = co.GradeLevel AND s.Section = co.Section
+                    -- Join to attendance records
+                    INNER JOIN subject_attendance sa ON sa.StudentId = s.StudentId 
+                    
+                    -- Metadata joins (optional)
+                    LEFT JOIN class_offering co ON sa.ClassOfferingId = co.ClassOfferingId
                     LEFT JOIN subject sub_co ON co.SubjectId = sub_co.SubjectId
                     
-                    -- Attendance records (Joins via either ClassOfferingId or TeacherSubjectId)
-                    LEFT JOIN subject_attendance sa ON s.StudentId = sa.StudentId 
-                        AND sa.Date >= DATE_SUB(CURDATE(), INTERVAL @Days DAY)
-                        AND (
-                            (sa.ClassOfferingId IS NOT NULL AND sa.ClassOfferingId = co.ClassOfferingId)
-                            OR 
-                            (sa.TeacherSubjectId IS NOT NULL AND sa.ClassOfferingId IS NULL)
-                        )
-                    
-                    -- Fallback for subjects via TeacherSubject (Old flow)
                     LEFT JOIN teachersubject ts ON sa.TeacherSubjectId = ts.TeacherSubjectId 
                     LEFT JOIN subject sub_ts ON ts.SubjectId = sub_ts.SubjectId
 
                     LEFT JOIN guidance_cases gc ON s.StudentId = gc.StudentId
-                    WHERE s.SchoolId = @SchoolId AND s.IsActive = true
+                    WHERE s.SchoolId = @SchoolId 
+                      AND s.IsActive = true
+                      AND sa.Date >= DATE_SUB(CURDATE(), INTERVAL @Days DAY)
                     GROUP BY s.StudentId, s.FullName, s.GradeLevel, s.Section, s.Strand, s.Gender, SubjectName, gc.Status
                     HAVING AbsentDays > 0 OR IncompleteSessions > 0
                     ORDER BY AbsentDays DESC, IncompleteSessions DESC, s.GradeLevel, s.Section, s.FullName";
