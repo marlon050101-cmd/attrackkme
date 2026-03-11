@@ -61,12 +61,9 @@
                                         <div class="remarks-cell">
                                             <span class="small text-muted">@(string.IsNullOrEmpty(summary.Remarks) ? "No remarks" : summary.Remarks)</span>
                                             <div class="d-flex gap-2">
-                                                @if (summary.Status != "Absent")
-                                                {
-                                                    <button class="btn-mark-absent" title="Mark Absent" @onclick="() => MarkAsAbsent(summary)">
-                                                        <i class="fas fa-times-circle"></i>
-                                                    </button>
-                                                }
+                                                <button class="btn-status-manage" title="Update Attendance Status" @onclick="() => OpenStatusModal(summary)">
+                                                    <i class="fas fa-user-clock"></i>
+                                                </button>
                                                 <button class="btn-edit-remarks" title="Edit Remarks" @onclick="() => OpenRemarksModal(summary)">
                                                     <i class="fas fa-edit"></i>
                                                 </button>
@@ -217,6 +214,38 @@
     </div>
 }
 
+@if (_showStatusModal && _selectedStudent != null)
+{
+    <div class="modal-backdrop-custom">
+        <div class="modal-content-custom">
+            <div class="modal-header-custom bg-primary text-white">
+                <h5 class="mb-0">Update Status: @_selectedStudent.FullName</h5>
+                <button type="button" class="btn-close btn-close-white" @onclick="() => _showStatusModal = false"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small text-center mb-3">Manually mark this student's attendance if they missed their scans:</p>
+                <div class="status-options-grid">
+                    <button class="btn-status-opt opt-absent" @onclick='() => UpdateStatus("Absent")'>
+                        <i class="fas fa-times-circle"></i> 
+                        <span>Absent</span>
+                    </button>
+                    <button class="btn-status-opt opt-half-day" @onclick='() => UpdateStatus("Half Day")'>
+                        <i class="fas fa-adjust"></i>
+                        <span>Half Day</span>
+                    </button>
+                    <button class="btn-status-opt opt-reset" @onclick='() => UpdateStatus("Not yet timed in")'>
+                        <i class="fas fa-undo"></i>
+                        <span>Reset to Default</span>
+                    </button>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => _showStatusModal = false">Cancel</button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     private string adviserName = "Adviser";
     private string? adviserId;
@@ -232,8 +261,9 @@
 
     // Remarks modal state
     private bool _showRemarksModal = false;
-    private string _editRemarksText = "";
+    private bool _showStatusModal = false;
     private DailySubjectSummary? _selectedStudent;
+    private string _editRemarksText = "";
     private bool _isSavingRemarks = false;
 
     protected override async Task OnInitializedAsync()
@@ -377,23 +407,30 @@
         }
     }
 
-    private async Task MarkAsAbsent(DailySubjectSummary summary)
+    private void OpenStatusModal(DailySubjectSummary summary)
     {
+        _selectedStudent = summary;
+        _showStatusModal = true;
+    }
+
+    private async Task UpdateStatus(string status)
+    {
+        if (_selectedStudent == null) return;
+        
         try
         {
             var dateStr = DateTime.Today.ToString("yyyy-MM-dd");
-            var response = await Http.PutAsJsonAsync($"{ApiConfig.BaseUrl}api/SubjectAttendance/daily-summary/status?studentId={summary.StudentId}&date={dateStr}", "Absent");
+            var response = await Http.PutAsJsonAsync($"{ApiConfig.BaseUrl}api/SubjectAttendance/daily-summary/status?studentId={_selectedStudent.StudentId}&date={dateStr}", status);
             
             if (response.IsSuccessStatusCode)
             {
-                summary.Status = "Absent";
-                // Optionally refresh all to ensure numbers sync
-                // await LoadDashboardData(); 
+                _selectedStudent.Status = status;
+                _showStatusModal = false;
             }
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Error marking absent: {ex.Message}");
+            System.Diagnostics.Debug.WriteLine($"Error updating status: {ex.Message}");
         }
     }
 }
@@ -421,10 +458,10 @@
         background: rgba(16, 185, 129, 0.1);
     }
     
-    .btn-mark-absent {
+    .btn-status-manage {
         background: transparent;
         border: none;
-        color: #ef4444;
+        color: #6366f1;
         cursor: pointer;
         padding: 4px;
         border-radius: 4px;
@@ -432,15 +469,62 @@
         font-size: 0.85rem;
     }
     
-    .btn-mark-absent:hover {
-        background: rgba(239, 68, 68, 0.1);
+    .btn-status-manage:hover {
+        background: rgba(99, 102, 241, 0.1);
     }
+
+    .status-options-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+        margin-top: 10px;
+    }
+
+    .btn-status-opt {
+        padding: 15px;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        background: #f8fafc;
+        cursor: pointer;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+        transition: all 0.2s;
+        font-weight: 600;
+        font-size: 0.9rem;
+    }
+
+    .btn-status-opt:hover {
+        border-color: #3b82f6;
+        background: #eff6ff;
+        transform: translateY(-2px);
+    }
+
+    .btn-status-opt i {
+        font-size: 1.2rem;
+    }
+
+    .opt-absent { color: #ef4444; }
+    .opt-half-day { color: #f59e0b; }
+    .opt-reset { color: #64748b; grid-column: span 2; }
 
     .modal-header-custom {
         display: flex;
         flex-direction: column;
         align-items: center;
+        padding: 1rem;
+        position: relative;
         text-align: center;
+    }
+
+    .modal-header-custom h5 {
+        margin-top: 5px;
+        font-weight: 700;
+    }
+
+    .btn-close-white {
+        margin-top: 5px;
     }
 
     .modal-header-custom i {
@@ -534,6 +618,31 @@
     @@keyframes slideUp {
         from { opacity: 0; transform: translateY(20px); }
         to { opacity: 1; transform: translateY(0); }
+    }
+
+    .modal-backdrop-custom {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: rgba(15, 23, 42, 0.6);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 1000;
+        backdrop-filter: blur(4px);
+        animation: fadeIn 0.2s ease-out;
+    }
+
+    .modal-content-custom {
+        background: white;
+        border-radius: 20px;
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+        width: 90%;
+        max-width: 400px;
+        overflow: hidden;
+        animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
     }
 
     .dashboard-container {
@@ -710,6 +819,16 @@
     .status-badge.absent {
         background: #fef2f2;
         color: #ef4444;
+    }
+
+    .status-badge.half-day {
+        background: #fffbeb;
+        color: #d97706;
+    }
+
+    .status-badge.whole-day {
+        background: #ecfdf5;
+        color: #059669;
     }
 
     .status-badge.not-yet-timed-in {
