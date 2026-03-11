@@ -158,7 +158,14 @@
             <div class="sp-modal-body">
                 <div class="sp-search">
                     <i class="fas fa-search"></i>
-                    <input type="text" placeholder="Search teacher…" @oninput="OnTeacherSearch" />
+                    <input type="text"
+                           class="force-uppercase"
+                           placeholder="Search teacher…"
+                           autocomplete="off"
+                           autocorrect="off"
+                           autocapitalize="characters"
+                           spellcheck="false"
+                           @oninput="OnTeacherSearch" />
                 </div>
 
                 @* Notice when slot is already taken *@

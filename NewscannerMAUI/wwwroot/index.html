@@ -15,6 +15,12 @@
         crossorigin="anonymous" referrerpolicy="no-referrer" />
     <link rel="icon" type="image/png" href="favicon.png" />
     <link rel="stylesheet" href="loading.css" />
+    <style>
+        /* Global Uppercase Style - Visual Only to prevent Keyboard Lag */
+        .force-uppercase, .force-uppercase input {
+            text-transform: uppercase !important;
+        }
+    </style>
 </head>
 
 <body>
@@ -46,6 +52,52 @@
     </div>
 
     <script src="_framework/blazor.webview.js" autostart="false"></script>
+
+    <script>
+        // ─── KEYBOARD SCROLL FIX (Android) ───────────────────────────────────────
+        // Scrolls the focused element into view ONLY if it is actually hidden
+        // by the keyboard. Uses visualViewport for modern Android WebView.
+
+        function ensureFocusedVisible() {
+            var el = document.activeElement;
+            if (!el || (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA')) return;
+
+            var rect = el.getBoundingClientRect();
+            var viewHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+
+            // If the bottom of the input is below the visible area (hidden by keyboard)
+            // or very close to it, scroll it up with breathing room.
+            if (rect.bottom > viewHeight - 20) {
+                var offset = rect.bottom - viewHeight + 100; // 100px extra breathing room
+                window.scrollBy({ top: offset, left: 0, behavior: 'smooth' });
+            }
+        }
+
+        // Modern API – fires when keyboard opens/closes (Android Chrome 61+)
+        if (window.visualViewport) {
+            window.visualViewport.addEventListener('resize', function () {
+                // Short delay to let the layout settle
+                setTimeout(ensureFocusedVisible, 80);
+            });
+            
+            // Helpful for layouts that use 100vh - adjust body to visualViewport
+            window.visualViewport.addEventListener('resize', function () {
+                document.documentElement.style.setProperty(
+                    '--keyboard-gap',
+                    Math.max(0, window.innerHeight - window.visualViewport.height) + 'px'
+                );
+            });
+        }
+
+        // Fallback – fires on focus for older Android WebViews
+        document.addEventListener('focusin', function (e) {
+            var el = e.target;
+            if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) {
+                setTimeout(ensureFocusedVisible, 350);
+                setTimeout(ensureFocusedVisible, 700);
+            }
+        }, true);
+    </script>
 
 </body>
 

@@ -185,7 +185,13 @@
                         <div class="premium-field">
                             <label>SUBJECT</label>
                             <div class="subject-autocomplete">
-                                <input type="text" class="premium-input" placeholder="Search or type subject name..."
+                                <input type="text"
+                                       class="premium-input force-uppercase"
+                                       placeholder="Search or type subject name..."
+                                       autocomplete="off"
+                                       autocorrect="off"
+                                       autocapitalize="characters"
+                                       spellcheck="false"
                                        value="@subjectSearchText"
                                        @oninput="OnSubjectSearch"
                                        @onfocus="() => showDropdown = true" />
@@ -1148,7 +1154,7 @@
             {
                 AdviserId = selectedAdviser.TeacherId,
                 SubjectId = selectedSubjectId ?? "",
-                SubjectName = string.IsNullOrEmpty(selectedSubjectId) ? subjectSearchText : null,
+                SubjectName = string.IsNullOrEmpty(selectedSubjectId) ? subjectSearchText?.Trim().ToUpper() : null,
                 GradeLevel = selectedAdviser.GradeLevel ?? 7,
                 Section = selectedAdviser.Section ?? "",
                 Strand = string.IsNullOrEmpty(selectedAdviser.Strand) ? null : selectedAdviser.Strand,

@@ -104,7 +104,7 @@
         --teacher-bg: #f8fafc; /* Slate 50 */
         --sidebar-width: 280px;
         --header-height: 64px;
-        --header-top-offset: 32px; 
+        --status-bar-height: 28px; 
     }
 
     .teacher-layout {
@@ -117,15 +117,15 @@
 
     /* Header */
     .app-header {
-        height: var(--header-height);
+        height: calc(var(--header-height) + var(--status-bar-height));
         background: white;
         color: var(--teacher-secondary) !important;
         display: flex;
-        align-items: center; 
+        align-items: flex-end; 
         justify-content: space-between;
-        padding: 0 1.25rem;
+        padding: 0 1.25rem 0.5rem 1.25rem;
         position: fixed;
-        top: var(--header-top-offset); 
+        top: 0; 
         left: 0;
         right: 0;
         z-index: 1000;
@@ -178,7 +178,7 @@
     /* Sidebar */
     .app-sidebar {
         position: fixed;
-        top: var(--header-top-offset);
+        top: 0;
         bottom: 0;
         left: calc(-1 * var(--sidebar-width));
         width: var(--sidebar-width);
@@ -189,6 +189,7 @@
         flex-direction: column;
         box-shadow: 10px 0 15px -3px rgba(0, 0, 0, 0.05);
         border-right: 1px solid #e2e8f0;
+        padding-top: var(--status-bar-height);
     }
 
     .sidebar-open .app-sidebar {
@@ -340,7 +341,7 @@
 
     /* Main */
     .main-content {
-        margin-top: calc(var(--header-height) + var(--header-top-offset));
+        margin-top: calc(var(--header-height) + var(--status-bar-height));
         padding: 1rem;
         flex: 1;
     }

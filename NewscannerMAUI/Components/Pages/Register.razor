@@ -40,7 +40,7 @@
         outline: none;
     }
 
-    .text-uppercase-input {
+    .force-uppercase {
         text-transform: uppercase;
     }
 
@@ -236,8 +236,14 @@
 
             <div class="mb-2">
                 <label class="form-label">Full Name</label>
-                <input class="form-control text-uppercase-input @(IsInvalid("FullName") ? "is-invalid" : "")" type="text" placeholder="E.G. DELA CRUZ, JUAN"
-                       value="@fullName" @oninput="(e) => fullName = e.Value?.ToString()?.ToUpper() ?? string.Empty" />
+                <input class="form-control force-uppercase @(IsInvalid("FullName") ? "is-invalid" : "")"
+                       type="text"
+                       placeholder="E.G. DELA CRUZ, JUAN"
+                       autocomplete="off"
+                       autocorrect="off"
+                       autocapitalize="characters"
+                       spellcheck="false"
+                       @bind="fullName" />
             </div>
 
             <div class="row g-2 mb-2">
@@ -349,10 +355,14 @@
                     <div class="col-4">
                         <label class="form-label">Section</label>
                         <div class="search-wrapper">
-                            <input class="form-control text-uppercase-input @(IsInvalid("Section") ? "is-invalid" : "")"
+                            <input class="form-control force-uppercase @(IsInvalid("Section") ? "is-invalid" : "")"
                                    type="text"
                                    placeholder="E.G. ZEUS"
-                                   @bind="userSection"
+                                   autocomplete="off"
+                                   autocorrect="off"
+                                   autocapitalize="characters"
+                                   spellcheck="false"
+                                   value="@userSection"
                                    @oninput="OnSectionSearchInput"
                                    @onfocus="OnSectionSearchFocus" />
 
@@ -699,8 +709,9 @@
     private void OnSectionSearchInput(ChangeEventArgs e)
     {
         userSection = e.Value?.ToString() ?? string.Empty;
+        var searchUpper = userSection.ToUpper();
         
-        if (string.IsNullOrEmpty(userSection))
+        if (string.IsNullOrEmpty(searchUpper))
         {
             sectionSearchResults = allSectionsInGrade.Take(10).ToList();
             return;
@@ -709,10 +720,31 @@
         if (allSectionsInGrade.Any())
         {
             sectionSearchResults = allSectionsInGrade
-                .Where(s => s.Contains(userSection, StringComparison.OrdinalIgnoreCase))
-                .OrderBy(s => s.StartsWith(userSection, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+                .Where(s => s.Contains(searchUpper, StringComparison.OrdinalIgnoreCase))
                 .Take(10)
                 .ToList();
+
+            // If the typed text exactly matches a section, try auto-selecting the adviser
+            if (sectionSearchResults.Any(s => string.Equals(s.Trim(), searchUpper.Trim(), StringComparison.OrdinalIgnoreCase)))
+            {
+                TryAutoSelectAdviser(searchUpper);
+            }
+        }
+    }
+
+    private void TryAutoSelectAdviser(string sectionName)
+    {
+        if (selectedUserType == "Student" && isAdvisersPreloaded && allAdvisersInSchool.Any())
+        {
+            var match = allAdvisersInSchool.FirstOrDefault(a => 
+                a.GradeLevel == gradeLevel && 
+                string.Equals(a.Section?.Trim(), sectionName?.Trim(), StringComparison.OrdinalIgnoreCase));
+            
+            if (match != null)
+            {
+                selectedAdviserId = match.TeacherId;
+                selectedAdviserName = match.FullName;
+            }
         }
     }
 
@@ -752,6 +784,7 @@
     {
         userSection = section;
         sectionSearchResults.Clear();
+        TryAutoSelectAdviser(section);
         StateHasChanged();
     }
 

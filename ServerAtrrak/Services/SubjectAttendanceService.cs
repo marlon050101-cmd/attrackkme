@@ -372,42 +372,67 @@ namespace ServerAtrrak.Services
             {
                 using var connection = new MySqlConnection(_dbConnection.GetConnection());
                 await connection.OpenAsync();
+                
+                // Using LEFT JOIN for subject to ensure we still see the offering even if subject link is missing (though SubjectName will be "Unknown")
+                // Added TRIM() to ID comparisons just in case there are leading/trailing spaces in the DB
                 var query = @"
-                    SELECT co.ClassOfferingId, co.SubjectId, s.SubjectName, co.AdviserId, co.TeacherId, 
+                    SELECT co.ClassOfferingId, co.SubjectId, COALESCE(s.SubjectName, 'Unknown Subject') as SubjectName, 
+                           co.AdviserId, co.TeacherId, 
                            co.GradeLevel, co.Section, co.Strand, co.ScheduleStart, co.ScheduleEnd, co.DayOfWeek,
                            t.FullName as AdviserName, t2.FullName as TeacherName
                     FROM class_offering co
-                    INNER JOIN subject s ON co.SubjectId = s.SubjectId
+                    LEFT JOIN subject s ON co.SubjectId = s.SubjectId
                     LEFT JOIN teacher t ON co.AdviserId = t.TeacherId
                     LEFT JOIN teacher t2 ON co.TeacherId = t2.TeacherId
-                    WHERE co.AdviserId = @AdviserId OR co.TeacherId = @AdviserId
+                    WHERE TRIM(co.AdviserId) = @AdviserId OR TRIM(co.TeacherId) = @AdviserId
                     ORDER BY co.GradeLevel, co.Section, co.ScheduleStart";
+
                 using var cmd = new MySqlCommand(query, connection);
-                cmd.Parameters.AddWithValue("@AdviserId", adviserId);
+                cmd.Parameters.AddWithValue("@AdviserId", adviserId.Trim());
+                
                 using var reader = await cmd.ExecuteReaderAsync();
                 while (await reader.ReadAsync())
                 {
-                    list.Add(new ClassOffering
+                    try
                     {
-                        ClassOfferingId = reader.GetString(0),
-                        SubjectId = reader.GetString(1),
-                        SubjectName = reader.GetString(2),
-                        AdviserId = reader.IsDBNull(3) ? null : reader.GetString(3),
-                        TeacherId = reader.IsDBNull(4) ? null : reader.GetString(4),
-                        GradeLevel = reader.GetInt32(5),
-                        Section = reader.GetString(6),
-                        Strand = reader.IsDBNull(7) ? null : reader.GetString(7),
-                        ScheduleStart = reader.IsDBNull(8) ? TimeSpan.Zero : TimeSpan.Parse(reader.GetString(8)),
-                        ScheduleEnd = reader.IsDBNull(9) ? TimeSpan.Zero : TimeSpan.Parse(reader.GetString(9)),
-                        DayOfWeek = reader.IsDBNull(10) ? null : reader.GetString(10),
-                        AdviserName = reader.IsDBNull(11) ? null : reader.GetString(11),
-                        TeacherName = reader.IsDBNull(12) ? null : reader.GetString(12)
-                    });
+                        var item = new ClassOffering
+                        {
+                            ClassOfferingId = reader.GetString(0),
+                            SubjectId = reader.IsDBNull(1) ? "" : reader.GetString(1),
+                            SubjectName = reader.GetString(2),
+                            AdviserId = reader.IsDBNull(3) ? null : reader.GetString(3),
+                            TeacherId = reader.IsDBNull(4) ? null : reader.GetString(4),
+                            GradeLevel = reader.IsDBNull(5) ? 0 : reader.GetInt32(5),
+                            Section = reader.IsDBNull(6) ? "" : reader.GetString(6),
+                            Strand = reader.IsDBNull(7) ? null : reader.GetString(7),
+                            DayOfWeek = reader.IsDBNull(10) ? null : reader.GetString(10),
+                            AdviserName = reader.IsDBNull(11) ? null : reader.GetString(11),
+                            TeacherName = reader.IsDBNull(12) ? null : reader.GetString(12)
+                        };
+
+                        // Safer TimeSpan handling
+                        if (!reader.IsDBNull(8))
+                        {
+                            item.ScheduleStart = reader.GetTimeSpan(8);
+                        }
+                        if (!reader.IsDBNull(9))
+                        {
+                            item.ScheduleEnd = reader.GetTimeSpan(9);
+                        }
+
+                        list.Add(item);
+                    }
+                    catch (Exception rowEx)
+                    {
+                        _logger.LogWarning(rowEx, "Error parsing a class offering row for adviser {AdviserId}", adviserId);
+                        // Continue to next row instead of failing everything
+                    }
                 }
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error getting subjects for adviser {AdviserId}", adviserId);
+                throw; // Re-throw to let controller handle or return meaningful error
             }
             return list;
         }

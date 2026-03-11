@@ -31,12 +31,64 @@ namespace NewscannerMAUI
                 System.Diagnostics.Debug.WriteLine($"Error hiding action bar: {ex.Message}");
             }
 
-            // Fix keyboard lag on Android 14
-            if (Build.VERSION.SdkInt >= BuildVersionCodes.UpsideDownCake) // Android 14+
+            // ─── STATUS BAR & EDGE-TO-EDGE ───────────────────────────────────────────
+            try
             {
-                Window?.SetSoftInputMode(SoftInput.AdjustResize | SoftInput.StateHidden);
+                if (Build.VERSION.SdkInt >= BuildVersionCodes.Lollipop)
+                {
+                    Window?.AddFlags(WindowManagerFlags.DrawsSystemBarBackgrounds);
+                    Window?.ClearFlags(WindowManagerFlags.TranslucentStatus);
+                    
+                    // Set a default solid color that matches our primary brand (Purple/Indigo)
+                    // We use #6f42c1 (Head Primary) as a safe cohesive default.
+                    Window?.SetStatusBarColor(Android.Graphics.Color.ParseColor("#6f42c1"));
+
+                    // Ensure status bar icons are light (white) for our dark headers
+                    if (Build.VERSION.SdkInt >= BuildVersionCodes.M)
+                    {
+                        var decorView = Window?.DecorView;
+                        if (decorView != null)
+                        {
+                            // Remove LightStatusBar flag to keep icons white
+                            decorView.SystemUiVisibility &= ~(StatusBarVisibility)SystemUiFlags.LightStatusBar;
+                        }
+                    }
+                }
             }
-            
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Status bar fix error: {ex.Message}");
+            }
+
+            // ─── KEYBOARD SCROLL FIX ──────────────────────────────────────────────────
+            // AdjustResize is deprecated on Android 11+ for edge-to-edge apps.
+            // We manually detect keyboard height via GlobalLayout and pad the WebView
+            // so focused inputs are always visible above the keyboard.
+            try
+            {
+                var rootView = Window?.DecorView?.RootView;
+                if (rootView != null)
+                {
+                    var prevKeyboardHeight = 0;
+
+                    rootView.ViewTreeObserver?.AddOnGlobalLayoutListener(
+                        new GlobalLayoutListener(rootView, (keyboardHeight) =>
+                        {
+                            if (keyboardHeight != prevKeyboardHeight)
+                            {
+                                prevKeyboardHeight = keyboardHeight;
+                                // Apply bottom padding equal to keyboard height so content scrolls up
+                                rootView.SetPadding(0, 0, 0, keyboardHeight);
+                                rootView.RequestLayout();
+                            }
+                        }));
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Keyboard fix error: {ex.Message}");
+            }
+
             // Auto-setup permissions with better handling
             SetupPermissions();
             
@@ -262,6 +314,44 @@ namespace NewscannerMAUI
             {
                 System.Diagnostics.Debug.WriteLine($"Error during configuration change: {ex.Message}");
                 // Continue execution even if there's an error
+            }
+        }
+    }
+
+    /// <summary>
+    /// Detects keyboard appearance by measuring the visible display frame each layout pass.
+    /// Works on Android 5.0–14+ regardless of edge-to-edge / AdjustResize state.
+    /// </summary>
+    internal class GlobalLayoutListener : Java.Lang.Object, Android.Views.ViewTreeObserver.IOnGlobalLayoutListener
+    {
+        private readonly Android.Views.View _rootView;
+        private readonly Action<int> _onKeyboardHeightChanged;
+
+        public GlobalLayoutListener(Android.Views.View rootView, Action<int> onKeyboardHeightChanged)
+        {
+            _rootView = rootView;
+            _onKeyboardHeightChanged = onKeyboardHeightChanged;
+        }
+
+        public void OnGlobalLayout()
+        {
+            try
+            {
+                var rect = new Android.Graphics.Rect();
+                _rootView.GetWindowVisibleDisplayFrame(rect);
+
+                // Screen height
+                int screenHeight = _rootView.RootView?.Height ?? 0;
+
+                // The portion hidden by the keyboard
+                int keyboardHeight = screenHeight - rect.Bottom;
+                if (keyboardHeight < 0) keyboardHeight = 0;
+
+                _onKeyboardHeightChanged(keyboardHeight);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"GlobalLayoutListener error: {ex.Message}");
             }
         }
     }

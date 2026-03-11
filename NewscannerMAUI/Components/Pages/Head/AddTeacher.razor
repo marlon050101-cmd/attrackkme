@@ -81,7 +81,14 @@
                         <label>Assigned Section</label>
                         <div class="input-wrapper">
                             <i class="fas fa-chalkboard-user"></i>
-                            <input type="text" @bind="newTeacher.Section" @oninput='(e) => { newTeacher.Section = e.Value?.ToString()?.ToUpper(); }' placeholder="e.g. Einstein" />
+                            <input type="text"
+                                   class="force-uppercase"
+                                   autocomplete="off"
+                                   autocorrect="off"
+                                   autocapitalize="characters"
+                                   spellcheck="false"
+                                   @bind="newTeacher.Section"
+                                   placeholder="e.g. EINSTEIN" />
                         </div>
                     </div>
 
@@ -105,7 +112,14 @@
                     <label>Full Name <span class="hint"><i>(Last name, First name MI)</i></span></label>
                     <div class="input-wrapper">
                         <i class="fas fa-user"></i>
-                        <input type="text" @bind="newTeacher.FullName" placeholder="e.g. Doe, John D." @oninput='(e) => { newTeacher.FullName = e.Value?.ToString()?.ToUpper(); UpdateGeneratedUsername(e); }' />
+                        <input type="text"
+                               class="force-uppercase"
+                               autocomplete="off"
+                               autocorrect="off"
+                               autocapitalize="characters"
+                               spellcheck="false"
+                               placeholder="e.g. DOE, JOHN D."
+                               @oninput='UpdateGeneratedUsername' />
                     </div>
                 </div>
 
@@ -238,7 +252,13 @@
                     {
                         <div class="edit-group full-width">
                             <label>Full Name</label>
-                            <input type="text" @bind="editModel.FullName" @oninput='(e) => { editModel.FullName = e.Value?.ToString()?.ToUpper(); }' class="edit-input" />
+                            <input type="text"
+                                   class="edit-input force-uppercase"
+                                   autocomplete="off"
+                                   autocorrect="off"
+                                   autocapitalize="characters"
+                                   spellcheck="false"
+                                   @bind="editModel.FullName" />
                         </div>
                         <div class="edit-group">
                             <label>Email Address</label>
@@ -260,7 +280,13 @@
                             </div>
                             <div class="edit-group">
                                 <label>Section</label>
-                                <input type="text" @bind="editModel.Section" @oninput='(e) => { editModel.Section = e.Value?.ToString()?.ToUpper(); }' class="edit-input" />
+                                <input type="text"
+                                       class="edit-input force-uppercase"
+                                       autocomplete="off"
+                                       autocorrect="off"
+                                       autocapitalize="characters"
+                                       spellcheck="false"
+                                       @bind="editModel.Section" />
                             </div>
                             @if (editModel.GradeLevel >= 11)
                             {
@@ -1082,6 +1108,10 @@
 
             if (response.IsSuccessStatusCode)
             {
+                // Normalize to Uppercase
+                editModel.FullName = editModel.FullName?.Trim()?.ToUpper() ?? "";
+                editModel.Section = editModel.Section?.Trim()?.ToUpper() ?? "";
+
                 // Update local list
                 selectedTeacher.FullName = editModel.FullName;
                 selectedTeacher.Email = editModel.Email;
@@ -1201,6 +1231,8 @@
     private void UpdateGeneratedUsername(ChangeEventArgs e)
     {
         var name = e.Value?.ToString() ?? "";
+        newTeacher.FullName = name; // Update model while typing without forcing Case
+        
         if (string.IsNullOrWhiteSpace(name))
         {
             generatedUsername = "";
@@ -1242,6 +1274,12 @@
         {
             isSubmitting = true;
             errorMessage = null;
+
+            // Normalize values to Uppercase before saving
+            newTeacher.FullName = newTeacher.FullName?.Trim().ToUpper() ?? "";
+            newTeacher.Section = newTeacher.Section?.Trim().ToUpper() ?? "";
+            if (!string.IsNullOrEmpty(newTeacher.Strand)) newTeacher.Strand = newTeacher.Strand.ToUpper();
+
             newTeacher.UserType = (UserType)selectedUserType;
 
             // Pre-fill from Head's info
