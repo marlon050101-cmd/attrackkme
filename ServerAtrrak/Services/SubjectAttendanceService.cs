@@ -31,51 +31,74 @@ namespace ServerAtrrak.Services
                 using var connection = new MySqlConnection(_dbConnection.GetConnection());
                 await connection.OpenAsync();
 
-                // --- SCHEMA MIGRATION: Ensure correct indexes ---
-                // The previous index (StudentId, Date) was too broad, preventing multiple subjects per day.
-                // We upgrade it to (StudentId, ClassOfferingId, Date).
+                // --- ROBUST SCHEMA MIGRATION: Ensure Granular Index ---
                 try
                 {
-                    // Check if old index exists
-                    var checkIdxSql = @"
-                        SELECT COUNT(*) 
+                    // 1. Get all unique indexes for subject_attendance (except PRIMARY)
+                    var getIndexesSql = @"
+                        SELECT DISTINCT index_name 
                         FROM information_schema.statistics 
                         WHERE table_schema = DATABASE() 
                           AND table_name = 'subject_attendance' 
-                          AND index_name = 'unique_subject_student_date'";
-                    using var cidx = new MySqlCommand(checkIdxSql, connection);
-                    var idxCount = Convert.ToInt32(await cidx.ExecuteScalarAsync());
-
-                    if (idxCount > 0)
+                          AND non_unique = 0 
+                          AND index_name <> 'PRIMARY'";
+                    
+                    var existingIndexes = new List<string>();
+                    using (var cmdIdx = new MySqlCommand(getIndexesSql, connection))
+                    using (var reader = await cmdIdx.ExecuteReaderAsync())
                     {
-                        // Check if it's the 'old' specific one (just 2 columns)
-                        var checkColsSql = @"
-                            SELECT COUNT(*) 
+                        while (await reader.ReadAsync()) existingIndexes.Add(reader.GetString(0));
+                    }
+
+                    bool hasCorrectIndex = false;
+                    foreach (var idxName in existingIndexes)
+                    {
+                        // Check columns of this index
+                        var getColsSql = "SHOW COLUMNS FROM subject_attendance"; // We'll just check statistics for this index
+                        var colsQuery = $@"
+                            SELECT column_name 
                             FROM information_schema.statistics 
                             WHERE table_schema = DATABASE() 
                               AND table_name = 'subject_attendance' 
-                              AND index_name = 'unique_subject_student_date'";
-                        // We'll just drop and recreate it to be safe if it exists
-                        using (var dropCmd = new MySqlCommand("ALTER TABLE subject_attendance DROP INDEX unique_subject_student_date", connection))
+                              AND index_name = @IdxName 
+                            ORDER BY seq_in_index";
+                        
+                        var cols = new List<string>();
+                        using (var cmdCols = new MySqlCommand(colsQuery, connection))
                         {
+                            cmdCols.Parameters.AddWithValue("@IdxName", idxName);
+                            using (var rdr = await cmdCols.ExecuteReaderAsync())
+                            {
+                                while (await rdr.ReadAsync()) cols.Add(rdr.GetString(0).ToLower());
+                            }
+                        }
+
+                        // If it's the old one (StudentId, Date) or missing ClassOfferingId, we drop it
+                        if (!cols.Contains("classofferingid"))
+                        {
+                            _logger.LogInformation("Dropping broad unique index: {IdxName}", idxName);
+                            using var dropCmd = new MySqlCommand($"ALTER TABLE subject_attendance DROP INDEX {idxName}", connection);
                             await dropCmd.ExecuteNonQueryAsync();
-                            _logger.LogInformation("Dropped old unique_subject_student_date index.");
+                        }
+                        else if (cols.Count == 3 && cols.Contains("studentid") && cols.Contains("classofferingid") && cols.Contains("date"))
+                        {
+                            hasCorrectIndex = true;
                         }
                     }
 
-                    // Create/Re-create the granular index
-                    var createIdxSql = @"
-                        CREATE UNIQUE INDEX unique_subject_student_date 
-                        ON subject_attendance (StudentId, ClassOfferingId, Date)";
-                    using (var createCmd = new MySqlCommand(createIdxSql, connection))
+                    if (!hasCorrectIndex)
                     {
-                        try { await createCmd.ExecuteNonQueryAsync(); } catch { /* Already exists */ }
+                        _logger.LogInformation("Creating granular unique index: unique_subject_student_date_v2");
+                        var createIdxSql = "CREATE UNIQUE INDEX unique_subject_student_date_v2 ON subject_attendance (StudentId, ClassOfferingId, Date)";
+                        using var createCmd = new MySqlCommand(createIdxSql, connection);
+                        await createCmd.ExecuteNonQueryAsync();
                     }
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning("Schema migration ignored or already applied: {Msg}", ex.Message);
+                    _logger.LogWarning("Index migration info: {Msg}", ex.Message);
                 }
+
 
                 var date = request.Date.Date;
 

@@ -864,10 +864,12 @@
     {
         if (teacherClasses == null || !teacherClasses.Any()) return;
         
-        var now = DateTime.Now.TimeOfDay;
+        // Only auto-select if nothing is selected yet to avoid jumping while scanning
+        if (selectedClass != null) return;
+
         var active = teacherClasses.FirstOrDefault(c => IsClassActive(c));
         
-        if (active != null && (selectedClass == null || selectedClass.ClassOfferingId != active.ClassOfferingId))
+        if (active != null)
         {
             selectedClass = active;
             _ = LoadTodayAttendance();
