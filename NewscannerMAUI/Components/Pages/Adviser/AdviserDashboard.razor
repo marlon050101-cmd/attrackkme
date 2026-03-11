@@ -296,9 +296,12 @@
         _isLoadingSubjectAttendance = true;
         try
         {
-            var date = DateTime.Today.ToString("yyyy-MM-dd");
-            var attendance = await Http.GetFromJsonAsync<List<SubjectAttendanceRecord>>($"{ApiConfig.BaseUrl}api/SubjectAttendance/class-offering/{activeSubjectId}/date/{date}");
-            _subjectAttendanceRecords = attendance ?? new();
+            var dateStr = DateTime.Today.ToString("yyyy-MM-dd");
+            var response = await Http.GetFromJsonAsync<List<SubjectAttendanceRecord>>($"{ApiConfig.BaseUrl}api/SubjectAttendance/class-offering/{subject.ClassOfferingId}/date/{dateStr}?adviserId={adviserId}");
+            if (response != null)
+            {
+                _subjectAttendanceRecords = response;
+            }
         }
         catch (Exception ex)
         {

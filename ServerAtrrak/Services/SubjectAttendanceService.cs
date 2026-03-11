@@ -283,7 +283,7 @@ namespace ServerAtrrak.Services
             return list;
         }
 
-        public async Task<List<SubjectAttendanceRecord>> GetByClassOfferingAndDateAsync(string classOfferingId, DateTime date)
+        public async Task<List<SubjectAttendanceRecord>> GetByClassOfferingAndDateAsync(string classOfferingId, DateTime date, string? adviserId = null)
         {
             var list = new List<SubjectAttendanceRecord>();
             try
@@ -295,11 +295,17 @@ namespace ServerAtrrak.Services
                            sa.Date, sa.Status, sa.Remarks, sa.CreatedAt, sa.UpdatedAt, sa.TimeIn, sa.TimeOut, sa.ClassOfferingId
                     FROM subject_attendance sa
                     INNER JOIN student st ON sa.StudentId = st.StudentId
-                    WHERE sa.ClassOfferingId = @ClassOfferingId AND sa.Date = @Date
+                    WHERE sa.ClassOfferingId = @ClassOfferingId 
+                      AND sa.Date = @Date
+                      AND (@AdviserId IS NULL OR (
+                          TRIM(st.AdviserId) = @AdviserId
+                          OR st.Section IN (SELECT DISTINCT Section FROM class_offering WHERE TRIM(AdviserId) = @AdviserId)
+                      ))
                     ORDER BY sa.UpdatedAt DESC, st.FullName";
                 using var cmd = new MySqlCommand(query, connection);
                 cmd.Parameters.AddWithValue("@ClassOfferingId", classOfferingId);
                 cmd.Parameters.AddWithValue("@Date", date.Date);
+                cmd.Parameters.AddWithValue("@AdviserId", string.IsNullOrEmpty(adviserId) ? (object)DBNull.Value : adviserId.Trim());
                 using var reader = await cmd.ExecuteReaderAsync();
                 while (await reader.ReadAsync())
                 {
@@ -644,12 +650,11 @@ namespace ServerAtrrak.Services
                         ds.Remarks,
                         ds.UpdatedAt as LastSeen
                     FROM student s
-                    LEFT JOIN teacher t ON TRIM(t.TeacherId) = @AdviserId
                     LEFT JOIN student_daily_summary ds ON s.StudentId = ds.StudentId AND ds.Date = @Date
                     WHERE s.IsActive = 1
                       AND (
                         TRIM(s.AdviserId) = @AdviserId
-                        OR (t.TeacherId IS NOT NULL AND s.SchoolId = t.SchoolId AND s.Section = t.Section AND (t.Gradelvl IS NULL OR s.GradeLevel = t.Gradelvl))
+                        OR s.Section IN (SELECT DISTINCT Section FROM class_offering WHERE TRIM(AdviserId) = @AdviserId)
                       )
                     ORDER BY s.FullName";
 

@@ -44,12 +44,15 @@ namespace ServerAtrrak.Controllers
             }
         }
 
-        [HttpGet("class-offering/{classOfferingId}/date/{date:datetime}")]
-        public async Task<ActionResult<List<SubjectAttendanceRecord>>> GetByClassOfferingAndDate(string classOfferingId, DateTime date)
+        [HttpGet("class-offering/{classOfferingId}/date/{date}")]
+        public async Task<ActionResult<List<SubjectAttendanceRecord>>> GetByClassOfferingAndDate(string classOfferingId, string date, [FromQuery] string? adviserId = null)
         {
             try
             {
-                var list = await _service.GetByClassOfferingAndDateAsync(classOfferingId, date.Date);
+                if (!DateTime.TryParse(date, out var parsedDate))
+                    return BadRequest("Invalid date format. Use YYYY-MM-DD");
+
+                var list = await _service.GetByClassOfferingAndDateAsync(classOfferingId, parsedDate, adviserId);
                 return Ok(list);
             }
             catch (Exception ex)
