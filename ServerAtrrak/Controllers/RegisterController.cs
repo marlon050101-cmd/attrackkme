@@ -1062,19 +1062,18 @@ namespace ServerAtrrak.Controllers
                     return students; // Return empty list if teacher not found
                 }
 
-                // Use the EXACT query that works in MySQL Workbench
+                // Adviser should ONLY see students assigned directly to them via AdviserId
                 query = @"
                     SELECT s.StudentId, s.FullName, s.GradeLevel, s.Section, s.Strand, s.SchoolId, s.ParentsNumber, s.Gender, s.QRImage, s.CreatedAt, s.UpdatedAt, s.IsActive, s.EnrollmentStatus, s.AdviserId
                     FROM student s
-                    WHERE s.SchoolId = @SchoolId AND s.Section = @Section AND s.IsActive = 1
+                    WHERE s.IsActive = 1
+                      AND s.AdviserId = @TeacherId
                     ORDER BY s.FullName";
 
-                Console.WriteLine($"DEBUG: Using EXACT query from MySQL Workbench");
-                Console.WriteLine($"DEBUG: SchoolId: '{schoolId}', Section: '{section}'");
+                Console.WriteLine($"DEBUG: Adviser student query — TeacherId: '{teacherId}'");
 
                 command = new MySqlCommand(query, connection);
-                command.Parameters.AddWithValue("@SchoolId", schoolId);
-                command.Parameters.AddWithValue("@Section", section);
+                command.Parameters.AddWithValue("@TeacherId", teacherId);
             }
             else
             {
