@@ -638,13 +638,30 @@ namespace ServerAtrrak.Services
                 using var connection = new MySqlConnection(_dbConnection.GetConnection());
                 await connection.OpenAsync();
 
+                var dayFull = date.DayOfWeek.ToString();
+                var dayShort = dayFull.Substring(0, 3);
+
                 var query = @"
                     SELECT 
                         s.StudentId, 
                         s.FullName,
-                        COALESCE(ds.TotalSubjects, 0),
+                        COALESCE(ds.TotalSubjects, (
+                            SELECT COUNT(*) 
+                            FROM class_offering co
+                            WHERE co.GradeLevel = s.GradeLevel 
+                              AND co.Section = s.Section
+                              AND (co.Strand IS NULL OR s.Strand IS NULL OR co.Strand = s.Strand)
+                              AND (
+                                   co.DayOfWeek IS NULL 
+                                   OR co.DayOfWeek = '' 
+                                   OR FIND_IN_SET(@DayFull, co.DayOfWeek) 
+                                   OR FIND_IN_SET(@DayShort, co.DayOfWeek)
+                                   OR co.DayOfWeek LIKE CONCAT('%', @DayFull, '%')
+                                   OR co.DayOfWeek LIKE CONCAT('%', @DayShort, '%')
+                              )
+                        )),
                         COALESCE(ds.AttendedSubjects, 0),
-                        COALESCE(ds.Status, 'Absent') as Status,
+                        COALESCE(ds.Status, 'Not yet timed in') as Status,
                         ds.TimeIn,
                         ds.TimeOut,
                         ds.Remarks,
@@ -714,6 +731,35 @@ namespace ServerAtrrak.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error updating daily summary remarks for student {Id}", studentId);
+                return false;
+            }
+        }
+
+        public async Task<bool> UpdateDailySummaryStatusAsync(string studentId, DateTime date, string status)
+        {
+            try
+            {
+                using var connection = new MySqlConnection(_dbConnection.GetConnection());
+                await connection.OpenAsync();
+
+                var sql = @"
+                    INSERT INTO student_daily_summary (StudentId, Date, Status, TotalSubjects, AttendedSubjects, UpdatedAt)
+                    VALUES (@StudentId, @Date, @Status, 0, 0, NOW())
+                    ON DUPLICATE KEY UPDATE 
+                        Status = @Status,
+                        UpdatedAt = NOW()";
+
+                using var cmd = new MySqlCommand(sql, connection);
+                cmd.Parameters.AddWithValue("@StudentId", studentId);
+                cmd.Parameters.AddWithValue("@Date", date.Date);
+                cmd.Parameters.AddWithValue("@Status", status);
+
+                await cmd.ExecuteNonQueryAsync();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating daily summary status for student {Id}", studentId);
                 return false;
             }
         }

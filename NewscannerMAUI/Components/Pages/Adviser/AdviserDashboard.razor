@@ -60,9 +60,17 @@
                                     <td>
                                         <div class="remarks-cell">
                                             <span class="small text-muted">@(string.IsNullOrEmpty(summary.Remarks) ? "No remarks" : summary.Remarks)</span>
-                                            <button class="btn-edit-remarks" @onclick="() => OpenRemarksModal(summary)">
-                                                <i class="fas fa-edit"></i>
-                                            </button>
+                                            <div class="d-flex gap-2">
+                                                @if (summary.Status != "Absent")
+                                                {
+                                                    <button class="btn-mark-absent" title="Mark Absent" @onclick="() => MarkAsAbsent(summary)">
+                                                        <i class="fas fa-times-circle"></i>
+                                                    </button>
+                                                }
+                                                <button class="btn-edit-remarks" title="Edit Remarks" @onclick="() => OpenRemarksModal(summary)">
+                                                    <i class="fas fa-edit"></i>
+                                                </button>
+                                            </div>
                                         </div>
                                     </td>
                                 </tr>
@@ -368,6 +376,26 @@
             _isSavingRemarks = false;
         }
     }
+
+    private async Task MarkAsAbsent(DailySubjectSummary summary)
+    {
+        try
+        {
+            var dateStr = DateTime.Today.ToString("yyyy-MM-dd");
+            var response = await Http.PutAsJsonAsync($"{ApiConfig.BaseUrl}api/SubjectAttendance/daily-summary/status?studentId={summary.StudentId}&date={dateStr}", "Absent");
+            
+            if (response.IsSuccessStatusCode)
+            {
+                summary.Status = "Absent";
+                // Optionally refresh all to ensure numbers sync
+                // await LoadDashboardData(); 
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Error marking absent: {ex.Message}");
+        }
+    }
 }
 
 <style>
@@ -392,6 +420,21 @@
     .btn-edit-remarks:hover {
         background: rgba(16, 185, 129, 0.1);
     }
+    
+    .btn-mark-absent {
+        background: transparent;
+        border: none;
+        color: #ef4444;
+        cursor: pointer;
+        padding: 4px;
+        border-radius: 4px;
+        transition: background 0.2s;
+        font-size: 0.85rem;
+    }
+    
+    .btn-mark-absent:hover {
+        background: rgba(239, 68, 68, 0.1);
+    }
 
     .modal-header-custom {
         display: flex;
@@ -415,6 +458,82 @@
     .custom-textarea:focus {
         border-color: #10b981;
         box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+        outline: none;
+    }
+
+    /* Modal Styling */
+    .confirm-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: rgba(15, 23, 42, 0.6);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 1000;
+        backdrop-filter: blur(4px);
+        animation: fadeIn 0.2s ease-out;
+    }
+
+    .confirm-box {
+        background: white;
+        padding: 2rem;
+        border-radius: 24px;
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        width: 90%;
+        max-width: 400px;
+        animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    
+    .confirm-btns {
+        display: flex;
+        gap: 12px;
+        margin-top: 1.5rem;
+    }
+
+    .btn-confirm-no, .btn-confirm-yes {
+        flex: 1;
+        padding: 0.75rem;
+        border-radius: 12px;
+        font-weight: 700;
+        font-size: 0.95rem;
+        transition: all 0.2s;
+        border: none;
+    }
+
+    .btn-confirm-no {
+        background: #f1f5f9;
+        color: #64748b;
+    }
+
+    .btn-confirm-no:hover {
+        background: #e2e8f0;
+        color: #334155;
+    }
+
+    .btn-confirm-yes {
+        background: #10b981;
+        color: white;
+    }
+
+    .btn-confirm-yes:hover {
+        background: #059669;
+        transform: translateY(-1px);
+        box-shadow: 0 4px 6px -1px rgba(16, 185, 129, 0.2);
+    }
+    
+    .btn-confirm-yes:disabled {
+        background: #6ee7b7;
+        cursor: not-allowed;
+        transform: none;
+        box-shadow: none;
+    }
+
+    @@keyframes slideUp {
+        from { opacity: 0; transform: translateY(20px); }
+        to { opacity: 1; transform: translateY(0); }
     }
 
     .dashboard-container {
@@ -591,6 +710,11 @@
     .status-badge.absent {
         background: #fef2f2;
         color: #ef4444;
+    }
+
+    .status-badge.not-yet-timed-in {
+        background: #f1f5f9;
+        color: #64748b;
     }
 
     .subject-badge {
