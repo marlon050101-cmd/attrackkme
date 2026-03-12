@@ -151,20 +151,20 @@
     <div class="content-section">
             <div class="filter-groups">
                 <div class="filter-group">
-                    <span class="filter-group-label">Risk Profile:</span>
-                    <div class="filter-pills">
-                        <button class="filter-pill @(activeFilter == "all" ? "active" : "")" @onclick='() => SetFilter("all")'>All Risks</button>
-                        <button class="filter-pill @(activeFilter == "consecutive" ? "active" : "")" @onclick='() => SetFilter("consecutive")'>3+ Straight Absences</button>
-                        <button class="filter-pill @(activeFilter == "pending" ? "active" : "")" @onclick='() => SetFilter("pending")'>Pending Cases</button>
-                    </div>
+                    <label class="filter-label"><i class="fas fa-filter"></i> Risk Profile</label>
+                    <select class="custom-select" @onchange='(e) => SetFilter(e.Value?.ToString() ?? "all")'>
+                        <option value="all" selected="@(activeFilter == "all")">All Risks</option>
+                        <option value="consecutive" selected="@(activeFilter == "consecutive")">3+ Straight Absences</option>
+                        <option value="pending" selected="@(activeFilter == "pending")">Pending Cases</option>
+                    </select>
                 </div>
                 <div class="filter-group">
-                    <span class="filter-group-label">Timeframe:</span>
-                    <div class="filter-pills">
-                        <button class="filter-pill @(timeRange == 1 ? "active" : "")" @onclick='() => SetTimeRange(1)'>Today</button>
-                        <button class="filter-pill @(timeRange == 7 ? "active" : "")" @onclick='() => SetTimeRange(7)'>Weekly</button>
-                        <button class="filter-pill @(timeRange == 30 ? "active" : "")" @onclick='() => SetTimeRange(30)'>Monthly</button>
-                    </div>
+                    <label class="filter-label"><i class="fas fa-calendar-alt"></i> Timeframe</label>
+                    <select class="custom-select" @onchange='(e) => SetTimeRange(int.Parse(e.Value?.ToString() ?? "30"))'>
+                        <option value="1" selected="@(timeRange == 1)">Today</option>
+                        <option value="7" selected="@(timeRange == 7)">Weekly (Last 7 Days)</option>
+                        <option value="30" selected="@(timeRange == 30)">Monthly (Last 30 Days)</option>
+                    </select>
                 </div>
             </div>
 
@@ -186,76 +186,75 @@
         }
         else
         {
-            <div class="risk-list">
-                @foreach (var student in filteredRisks)
-                {
-                    <div class="risk-card @(student.IsConsecutiveRisk ? "critical" : "")">
-                        <div class="status-indicator @student.GuidanceStatus.ToLower()"></div>
-                        <div class="risk-card-content">
-                            <div class="student-main">
-                                <div class="student-avatar">
-                                    @(student.FullName.Substring(0, 1))
-                                </div>
-                                <div class="student-details">
-                                    <h3 class="student-name">@student.FullName</h3>
-                                    <span class="student-meta">@student.GradeLevel - @student.Section (@student.Strand)</span>
-                                </div>
-                                <div class="risk-badge">
+            <div class="table-responsive formal-table-container">
+                <table class="formal-table">
+                    <thead>
+                        <tr>
+                            <th>Student Information</th>
+                            <th>Risk Indicator</th>
+                            <th>Subject / Scope</th>
+                            <th class="text-center">Rate</th>
+                            <th class="text-center">Last Incident/Absent</th>
+                            <th class="text-center">Status</th>
+                            <th class="text-center">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var student in filteredRisks)
+                        {
+                            <tr class="@(student.IsConsecutiveRisk ? "row-critical" : "")">
+                                <td>
+                                    <div class="student-info-cell">
+                                        <div class="student-avatar-small">@(student.FullName.Substring(0, 1))</div>
+                                        <div>
+                                            <div class="student-name-small">@student.FullName</div>
+                                            <div class="student-meta-small">Grade @student.GradeLevel - @student.Section</div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>
                                     @if (student.IsConsecutiveRisk)
                                     {
-                                        <span class="consecutive-tag"><i class="fas fa-fire"></i> @student.ConsecutiveAbsences STRAIGHT</span>
+                                        <span class="badge badge-danger"><i class="fas fa-fire"></i> @student.ConsecutiveAbsences STRAIGHT</span>
                                     }
                                     else if (student.IncompleteSessions > 0)
                                     {
-                                        <span class="cutting-tag"><i class="fas fa-running"></i> @student.IncompleteSessions CUTTING CLASS?</span>
+                                        <span class="badge badge-purple"><i class="fas fa-running"></i> CUTTING CLASS?</span>
                                     }
                                     else
                                     {
-                                        <span class="absent-tag">@student.AbsentDays TOTAL ABSENCES</span>
+                                        <span class="badge badge-warning">@student.AbsentDays TOTAL ABSENCES</span>
                                     }
-                                </div>
-                            </div>
-                            
-                            <div class="risk-info-row">
-                                <div class="info-item">
-                                    <span class="info-label">Subject</span>
-                                    <span class="info-value">@student.SubjectName</span>
-                                </div>
-                                <div class="info-item">
-                                    <span class="info-label">Rate</span>
-                                    <span class="info-value">@student.AttendanceRate.ToString("F1")%</span>
-                                </div>
-                                <div class="info-item">
-                                    <span class="info-label">Last Absent</span>
-                                    <span class="info-value">@student.LastAbsentDate?.ToString("MMM dd")</span>
-                                </div>
-                            </div>
-
-                            <div class="card-actions">
-                                <div class="status-badge-container">
-                                    <span class="status-badge @student.GuidanceStatus.ToLower()">Status: @student.GuidanceStatus</span>
-                                </div>
-                                <div class="btn-group">
-                                    @if (student.GuidanceStatus != "Pending")
-                                    {
-                                        <button class="btn-action pending" @onclick='() => UpdateStatus(student.StudentId, "Pending")'>Mark Pending</button>
-                                    }
-                                    @if (student.GuidanceStatus != "Resolved")
-                                    {
-                                        <button class="btn-action resolve" @onclick='() => UpdateStatus(student.StudentId, "Resolved")'>Resolve</button>
-                                    }
-                                    @if (student.IncompleteSessions > 0)
-                                    {
-                                        <button class="btn-action aware" @onclick='() => NotifyStudent(student.StudentId, "Cutting Class Awareness")'>
-                                            <i class="fas fa-bullhorn"></i> Aware
+                                </td>
+                                <td><span class="subject-text">@student.SubjectName</span></td>
+                                <td class="text-center"><span class="rate-text">@student.AttendanceRate.ToString("F1")%</span></td>
+                                <td class="text-center"><span class="date-text">@(student.LastAbsentDate?.ToString("MMM dd, yyyy") ?? "—")</span></td>
+                                <td class="text-center">
+                                    <span class="status-pill @student.GuidanceStatus.ToLower()">@student.GuidanceStatus</span>
+                                </td>
+                                <td class="text-center">
+                                    <div class="action-buttons-cell">
+                                        @if (student.GuidanceStatus != "Pending")
+                                        {
+                                            <button class="btn-icon circle pending" title="Mark Pending" @onclick='() => UpdateStatus(student.StudentId, "Pending")'>
+                                                <i class="fas fa-history"></i>
+                                            </button>
+                                        }
+                                        @if (student.GuidanceStatus != "Resolved")
+                                        {
+                                            <button class="btn-icon circle resolve" title="Resolve" @onclick='() => UpdateStatus(student.StudentId, "Resolved")'>
+                                                <i class="fas fa-check"></i>
+                                            </button>
+                                        }
+                                        <button class="btn-icon circle view" title="Details" @onclick="() => ViewDetails(student.StudentId)">
+                                            <i class="fas fa-external-link-alt"></i>
                                         </button>
-                                    }
-                                    <button class="btn-action view" @onclick="() => ViewDetails(student.StudentId)">Details</button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                }
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
             </div>
         }
     </div>
@@ -753,359 +752,171 @@
         margin: 0;
     }
 
-    .filter-groups {
-        display: flex;
-        flex-direction: column;
-        gap: 1.2rem;
+    /* Table Styles */
+    .formal-table-container {
         background: white;
-        padding: 1.5rem;
         border-radius: 20px;
         box-shadow: var(--card-shadow);
+        overflow: hidden;
+        border: 1px solid #e2e8f0;
     }
 
-    .filter-group {
-        display: flex;
-        align-items: center;
-        gap: 1.5rem;
-        flex-wrap: wrap;
+    .formal-table {
+        width: 100%;
+        border-collapse: collapse;
+        text-align: left;
     }
 
-    .filter-group-label {
-        font-size: 0.9rem;
+    .formal-table th {
+        background: #f8fafc;
+        padding: 1.2rem 1.5rem;
+        font-size: 0.8rem;
         font-weight: 700;
         color: #64748b;
-        min-width: 100px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        border-bottom: 2px solid #e2e8f0;
     }
 
-    .filter-pills {
+    .formal-table td {
+        padding: 1.2rem 1.5rem;
+        border-bottom: 1px solid #f1f5f9;
+        vertical-align: middle;
+    }
+
+    .formal-table tr:hover {
+        background: #f8fafc;
+    }
+
+    .formal-table tr.row-critical {
+        background: #fff5f5;
+    }
+
+    .student-info-cell {
         display: flex;
-        gap: 10px;
-        flex-wrap: wrap;
-    }
-
-    .filter-pill {
-        padding: 8px 16px;
-        border-radius: 20px;
-        border: none;
-        background: #e2e8f0;
-        color: #64748b;
-        font-weight: 600;
-        font-size: 0.85rem;
-    }
-
-    .filter-pill.active {
-        background: #3b82f6;
-        color: white;
-    }
-
-    .risk-list {
-        display: flex;
-        flex-direction: column;
+        align-items: center;
         gap: 1rem;
     }
 
-    .risk-card {
-        background: white;
-        border-radius: 20px;
-        display: flex;
-        overflow: hidden;
-        box-shadow: var(--card-shadow);
-        border: 1px solid #f1f5f9;
-        transition: transform 0.2s;
-    }
-
-    .risk-card:hover {
-        transform: translateY(-4px);
-    }
-
-    .risk-card.critical {
-        border-left: 5px solid #ef4444;
-    }
-
-    .status-indicator {
-        width: 10px;
-        background: #e2e8f0;
-    }
-
-    .status-indicator.pending { background: #f59e0b; }
-    .status-indicator.resolved { background: #10b981; }
-
-    .risk-card-content {
-        flex: 1;
-        padding: 1.5rem;
-    }
-
-    .student-main {
-        display: flex;
-        align-items: center;
-        margin-bottom: 1.2rem;
-    }
-
-    .student-avatar {
-        width: 50px;
-        height: 50px;
-        background: #f1f5f9;
-        border-radius: 12px;
+    .student-avatar-small {
+        width: 40px;
+        height: 40px;
+        background: #eff6ff;
+        color: #3b82f6;
+        border-radius: 10px;
         display: flex;
         align-items: center;
         justify-content: center;
         font-weight: 800;
-        color: #3b82f6;
-        margin-right: 1rem;
+        font-size: 1rem;
     }
 
-    .student-name {
-        margin: 0;
-        font-size: 1.1rem;
+    .student-name-small {
         font-weight: 700;
         color: #1e293b;
+        font-size: 0.95rem;
     }
 
-    .student-meta {
-        font-size: 0.85rem;
-        color: #64748b;
-    }
-
-    .risk-badge {
-        margin-left: auto;
-    }
-
-    .consecutive-tag {
-        background: #fee2e2;
-        color: #ef4444;
-        padding: 6px 12px;
-        border-radius: 10px;
-        font-weight: 800;
-        font-size: 0.75rem;
-    }
-
-    .absent-tag {
-        background: #fef3c7;
-        color: #d97706;
-        padding: 6px 12px;
-        border-radius: 10px;
-        font-weight: 800;
-        font-size: 0.75rem;
-    }
-
-    .cutting-tag {
-        background: #f3e8ff;
-        color: #9333ea;
-        padding: 6px 12px;
-        border-radius: 10px;
-        font-weight: 800;
-        font-size: 0.75rem;
-    }
-
-    .risk-info-row {
-        display: flex;
-        gap: 2rem;
-        padding: 1rem 0;
-        border-top: 1px solid #f1f5f9;
-        border-bottom: 1px solid #f1f5f9;
-        margin-bottom: 1.2rem;
-    }
-
-    .info-item {
-        display: flex;
-        flex-direction: column;
-    }
-
-    .info-label {
-        font-size: 0.75rem;
-        color: #94a3b8;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-    }
-
-    .info-value {
-        font-weight: 700;
-        color: #475569;
-    }
-
-    .card-actions {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-    }
-
-    .btn-action {
-        padding: 8px 16px;
-        border-radius: 10px;
-        border: none;
-        font-weight: 700;
-        font-size: 0.85rem;
-        margin-left: 8px;
-        transition: all 0.2s;
-    }
-
-    .btn-action.pending { background: #fef3c7; color: #d97706; }
-    .btn-action.resolve { background: #dcfce7; color: #16a34a; }
-    .btn-action.view { background: #e0f2fe; color: #2563eb; }
-
-    .status-badge {
-        font-size: 0.75rem;
-        font-weight: 700;
-        color: #64748b;
-    }
-
-    .status-badge.pending { color: #f59e0b; }
-    .status-badge.resolved { color: #10b981; }
-
-    .metric-card.warning .metric-icon { background: #fff7ed; color: #f97316; }
-    .btn-action.aware { background: #fee2e2; color: #dc2626; border: 1px solid #fecaca; }
-    .btn-action.aware:hover { background: #fecaca; transform: scale(1.05); }
-
-    .search-overlay {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        padding: 2rem;
-        z-index: 100;
-        background: rgba(0,0,0,0.4);
-        backdrop-filter: blur(8px);
-        display: flex;
-        justify-content: center;
-    }
-
-    .search-box {
-        background: white;
-        width: 100%;
-        max-width: 600px;
-        padding: 1rem;
-        border-radius: 20px;
-        display: flex;
-        align-items: center;
-        box-shadow: 0 20px 50px rgba(0,0,0,0.2);
-    }
-
-    .search-box input {
-        border: none;
-        flex: 1;
-        padding: 0 1rem;
-        font-size: 1.1rem;
-        outline: none;
-    }
-
-    /* Modal Styles */
-    .modal-backdrop-custom {
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background-color: rgba(15, 23, 42, 0.6);
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        z-index: 1000;
-        backdrop-filter: blur(4px);
-    }
-    .modal-content-custom {
-        background: white;
-        border-radius: 20px;
-        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
-        width: 90%;
-        max-width: 450px;
-        overflow: hidden;
-    }
-    .modal-header-custom {
-        padding: 1.5rem;
-        border-bottom: 1px solid #f1f5f9;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        background: #f8fafc;
-    }
-    .modal-title {
-        margin: 0;
-        font-size: 1.25rem;
-        font-weight: 700;
-        color: #1e293b;
-    }
-    .btn-close-custom {
-        background: none;
-        border: none;
-        font-size: 1.25rem;
-        color: #64748b;
-        cursor: pointer;
-        padding: 0.5rem;
-    }
-    .modal-body-custom {
-        padding: 1.5rem;
-    }
-    .student-info-section {
-        text-align: center;
-        margin-bottom: 1.5rem;
-    }
-    .avatar-large {
-        width: 80px;
-        height: 80px;
-        background: var(--primary-gradient);
-        color: white;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 2rem;
-        font-weight: bold;
-        margin: 0 auto 1rem;
-    }
-    .grade-section {
-        color: #64748b;
-        margin: 0;
-    }
-    .stats-row {
-        display: flex;
-        justify-content: space-around;
-        background: #f8fafc;
-        border-radius: 15px;
-        padding: 1rem;
-        margin-bottom: 1.5rem;
-    }
-    .stat-box {
-        text-align: center;
-    }
-    .stat-num {
-        display: block;
-        font-size: 1.5rem;
-        font-weight: 800;
-        color: #3b82f6;
-    }
-    .stat-label {
+    .student-meta-small {
         font-size: 0.8rem;
         color: #64748b;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
     }
-    .details-list h6 {
+
+    .badge {
+        padding: 6px 12px;
+        border-radius: 8px;
+        font-size: 0.75rem;
+        font-weight: 800;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+    }
+
+    .badge-danger { background: #fee2e2; color: #ef4444; }
+    .badge-warning { background: #fef3c7; color: #d97706; }
+    .badge-purple { background: #f3e8ff; color: #9333ea; }
+
+    .subject-text { font-weight: 600; color: #475569; font-size: 0.9rem; }
+    .rate-text { font-weight: 700; color: #3b82f6; }
+    .date-text { color: #64748b; font-size: 0.85rem; }
+
+    .status-pill {
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 0.75rem;
         font-weight: 700;
-        color: #1e293b;
-        margin-bottom: 1rem;
+        background: #e2e8f0;
+        color: #64748b;
     }
-    .date-list {
-        list-style: none;
-        padding: 0;
-        margin: 0;
-        max-height: 150px;
-        overflow-y: auto;
+
+    .status-pill.pending { background: #fffbeb; color: #d97706; }
+    .status-pill.resolved { background: #f0fdf4; color: #16a34a; }
+
+    .action-buttons-cell {
+        display: flex;
+        justify-content: center;
+        gap: 8px;
     }
-    .date-list li {
-        padding: 0.75rem;
-        background: #f1f5f9;
-        border-radius: 10px;
-        margin-bottom: 0.5rem;
-        color: #334155;
-        font-weight: 500;
+
+    .btn-icon.circle {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        border: none;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s;
+        cursor: pointer;
     }
-    .date-list li i {
-        color: #3b82f6;
-        margin-right: 0.5rem;
+
+    .btn-icon.circle.pending { background: #fef3c7; color: #d97706; }
+    .btn-icon.circle.resolve { background: #dcfce7; color: #16a34a; }
+    .btn-icon.circle.view { background: #eff6ff; color: #3b82f6; }
+
+    .btn-icon.circle:hover {
+        transform: scale(1.1);
+        filter: brightness(0.95);
     }
-    .modal-footer-custom {
-        padding: 1.5rem;
-        border-top: 1px solid #f1f5f9;
+
+    /* Custom Select Style */
+    .custom-select {
+        padding: 10px 15px;
+        border-radius: 12px;
+        border: 1px solid #e2e8f0;
         background: #f8fafc;
+        color: #1e293b;
+        font-weight: 600;
+        font-size: 0.9rem;
+        min-width: 220px;
+        outline: none;
+        transition: border-color 0.2s;
+        cursor: pointer;
     }
+
+    .custom-select:focus {
+        border-color: #3b82f6;
+    }
+
+    .filter-label {
+        font-size: 0.85rem;
+        font-weight: 700;
+        color: #64748b;
+        margin-bottom: 5px;
+        display: block;
+    }
+
+    .filter-groups {
+        background: white;
+        padding: 1.5rem;
+        border-radius: 20px;
+        box-shadow: var(--card-shadow);
+        display: flex;
+        flex-direction: row;
+        gap: 2rem;
+        flex-wrap: wrap;
+    }
+
+    .header-actions { display: flex; align-items: center; }
+    .text-center { text-align: center; }
 </style>

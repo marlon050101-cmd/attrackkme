@@ -135,6 +135,7 @@ namespace ServerAtrrak.Services
                 var subjectQuery = @"
                     SELECT s.StudentId, s.FullName, s.GradeLevel, s.Section, s.Strand, s.Gender,
                            COUNT(sa.SubjectAttendanceId) as IncompleteSessions,
+                           MAX(sa.Date) as LastAbsentDate,
                            COALESCE(sub_co.SubjectName, sub_ts.SubjectName, 'Unknown Subject') as SubjectName,
                            COALESCE((SELECT Status FROM guidance_cases WHERE StudentId = s.StudentId ORDER BY UpdatedAt DESC LIMIT 1), 'Normal') as GuidanceStatus
                     FROM student s
@@ -163,7 +164,8 @@ namespace ServerAtrrak.Services
                             Section = reader.GetString("Section"),
                             IncompleteSessions = reader.IsDBNull("IncompleteSessions") ? 0 : Convert.ToInt32(reader["IncompleteSessions"]),
                             SubjectName = reader.GetString("SubjectName"),
-                            GuidanceStatus = reader.GetString("GuidanceStatus")
+                            GuidanceStatus = reader.GetString("GuidanceStatus"),
+                            LastAbsentDate = reader.IsDBNull("LastAbsentDate") ? null : reader.GetDateTime("LastAbsentDate")
                         });
                     }
                 }
