@@ -309,11 +309,11 @@ namespace ServerAtrrak.Controllers
                 using var connection = new MySqlConnection(_dbConnection.GetConnection());
                 await connection.OpenAsync();
 
-                // Check teacher join first, but also select SchoolId directly from user table as fallback
+                // Check teacher join first
                 var query = @"
-                    SELECT COALESCE(t.SchoolId, u.SchoolId) as SchoolId
+                    SELECT t.SchoolId
                     FROM user u
-                    LEFT JOIN teacher t ON u.TeacherId = t.TeacherId
+                    INNER JOIN teacher t ON u.TeacherId = t.TeacherId
                     WHERE u.UserId = @UserId AND u.IsActive = true";
                     
                 using var command = new MySqlCommand(query, connection);
@@ -322,23 +322,13 @@ namespace ServerAtrrak.Controllers
                 var result = await command.ExecuteScalarAsync();
                 var schoolId = result?.ToString();
 
-                // Second Fallback: Just get any schoolId from user table for this user
+                // Fallback: If still nothing, try to find ANY school this user might be related to via teacher table even if inactive
                 if (string.IsNullOrEmpty(schoolId))
                 {
-                    var fallbackQuery = "SELECT SchoolId FROM user WHERE UserId = @UserId2 LIMIT 1";
-                    using var fallbackCmd = new MySqlCommand(fallbackQuery, connection);
-                    fallbackCmd.Parameters.AddWithValue("@UserId2", userId);
-                    var fallbackResult = await fallbackCmd.ExecuteScalarAsync();
-                    schoolId = fallbackResult?.ToString();
-                }
-                
-                // Third Fallback: If still nothing, try to find ANY school this user might be related to via teacher table even if inactive
-                if (string.IsNullOrEmpty(schoolId))
-                {
-                    var query3 = "SELECT t.SchoolId FROM teacher t INNER JOIN user u ON u.TeacherId = t.TeacherId WHERE u.UserId = @UserId3 LIMIT 1";
-                    using var cmd3 = new MySqlCommand(query3, connection);
-                    cmd3.Parameters.AddWithValue("@UserId3", userId);
-                    schoolId = (await cmd3.ExecuteScalarAsync())?.ToString();
+                    var queryFallback = "SELECT t.SchoolId FROM teacher t INNER JOIN user u ON u.TeacherId = t.TeacherId WHERE u.UserId = @UserIdF LIMIT 1";
+                    using var cmdFallback = new MySqlCommand(queryFallback, connection);
+                    cmdFallback.Parameters.AddWithValue("@UserIdF", userId);
+                    schoolId = (await cmdFallback.ExecuteScalarAsync())?.ToString();
                 }
                 
                 _logger.LogInformation("School ID for guidance counselor {UserId}: {SchoolId}", userId, schoolId ?? "null");

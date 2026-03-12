@@ -365,8 +365,8 @@ namespace ServerAtrrak.Services
                 using var reader = await cmd.ExecuteReaderAsync();
                 if (await reader.ReadAsync())
                 {
-                    long total = reader.IsDBNull(0) ? 0 : reader.GetInt64(0);
-                    long present = reader.IsDBNull(1) ? 0 : reader.GetInt64(1);
+                    long total = reader.IsDBNull(0) ? 0 : Convert.ToInt64(reader[0]);
+                    long present = reader.IsDBNull(1) ? 0 : Convert.ToInt64(reader[1]);
                     return total > 0 ? (double)present / total * 100 : 0;
                 }
                 return 0;
@@ -396,8 +396,8 @@ namespace ServerAtrrak.Services
                 using var reader = await cmd.ExecuteReaderAsync();
                 if (await reader.ReadAsync())
                 {
-                    long total = reader.IsDBNull(0) ? 0 : reader.GetInt64(0);
-                    long present = reader.IsDBNull(1) ? 0 : reader.GetInt64(1);
+                    long total = reader.IsDBNull(0) ? 0 : Convert.ToInt64(reader[0]);
+                    long present = reader.IsDBNull(1) ? 0 : Convert.ToInt64(reader[1]);
                     return total > 0 ? (double)present / total * 100 : 0;
                 }
                 return 0;
@@ -423,8 +423,8 @@ namespace ServerAtrrak.Services
                 using var reader = await cmd.ExecuteReaderAsync();
                 if (await reader.ReadAsync())
                 {
-                    long total = reader.IsDBNull(0) ? 0 : reader.GetInt64(0);
-                    long resolved = reader.IsDBNull(1) ? 0 : reader.GetInt64(1);
+                    long total = reader.IsDBNull(0) ? 0 : Convert.ToInt64(reader[0]);
+                    long resolved = reader.IsDBNull(1) ? 0 : Convert.ToInt64(reader[1]);
                     return total > 0 ? (double)resolved / total * 100 : 0;
                 }
                 return 0;
@@ -451,8 +451,8 @@ namespace ServerAtrrak.Services
                 using var reader = await cmd.ExecuteReaderAsync();
                 if (await reader.ReadAsync())
                 {
-                    long attended = reader.IsDBNull(0) ? 0 : reader.GetInt64(0);
-                    long onTime = reader.IsDBNull(1) ? 0 : reader.GetInt64(1);
+                    long attended = reader.IsDBNull(0) ? 0 : Convert.ToInt64(reader[0]);
+                    long onTime = reader.IsDBNull(1) ? 0 : Convert.ToInt64(reader[1]);
                     return attended > 0 ? (double)onTime / attended * 100 : 0;
                 }
                 return 0;
