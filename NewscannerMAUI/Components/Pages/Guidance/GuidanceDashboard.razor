@@ -20,11 +20,8 @@
             <button class="btn-search-toggle" @onclick="ToggleSearch">
                 <i class="fas fa-search"></i>
             </button>
-            <button class="btn-test" @onclick="TestDatabaseConnection" title="Test database connection">
-                <i class="fas fa-database"></i>
-            </button>
             <button class="btn-refresh" @onclick="RefreshData" disabled="@isLoading">
-                <i class="fas fa-sync-alt @(isLoading ? "fa-spin" : "")"></i>
+                <i class="fas fa-sync-alt @(isLoading ? "fa-spin" : "")"></i> Refresh
             </button>
         </div>
     </div>
@@ -482,57 +479,14 @@
         if (currentUser == null) return;
         try
         {
-            var userId = await AuthService.GetUserIdAsync();
-            var response = await Http.GetAsync($"api/guidance/test/{userId}");
+            var userId = currentUser.UserId;
+            var response = await Http.GetAsync($"{ApiConfig.BaseUrl}api/guidance/test/{userId}");
             var result = await response.Content.ReadAsStringAsync();
-            
-            // Try to parse basic info
-            using var jsonDoc = System.Text.Json.JsonDocument.Parse(result);
-            var root = jsonDoc.RootElement;
-            var status = root.GetProperty("status").GetString();
-            var message = root.GetProperty("message").GetString();
-            
-            if (status == "School not found" && root.TryGetProperty("schoolCount", out var sc) && sc.GetInt32() > 0)
-            {
-                bool repair = await JSRuntime.InvokeAsync<bool>("confirm", 
-                    $"{message}\n\nDetected {sc.GetInt32()} schools in DB. Gusto mo ba i-auto-repair at i-link ang account mo sa unang school na mahanap?");
-                
-                if (repair)
-                {
-                    await RepairGuidanceSetup(userId);
-                }
-            }
-            else
-            {
-                await JSRuntime.InvokeVoidAsync("alert", $"STATUS: {status}\nSchool ID: {(root.TryGetProperty("schoolId", out var sid) ? sid.GetString() : "N/A")}\nStudents: {(root.TryGetProperty("studentCount", out var stc) ? stc.GetInt32().ToString() : "N/A")}\n\n{message}");
-            }
+            await JSRuntime.InvokeVoidAsync("alert", $"Diagnostic Result:\n{result}");
         }
         catch (Exception ex)
         {
             await JSRuntime.InvokeVoidAsync("alert", $"Test failed: {ex.Message}");
-        }
-    }
-
-    private async Task RepairGuidanceSetup(string userId)
-    {
-        try
-        {
-            var response = await Http.PostAsync($"api/guidance/repair-setup/{userId}", null);
-            var result = await response.Content.ReadAsStringAsync();
-            
-            if (response.IsSuccessStatusCode)
-            {
-                await JSRuntime.InvokeVoidAsync("alert", "SUCCESS: Setup Repaired! I-refresh natin ang dashboard.");
-                await RefreshData();
-            }
-            else
-            {
-                await JSRuntime.InvokeVoidAsync("alert", $"REPAIR FAILED: {result}");
-            }
-        }
-        catch (Exception ex)
-        {
-            await JSRuntime.InvokeVoidAsync("alert", $"Error during repair: {ex.Message}");
         }
     }
 

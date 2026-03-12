@@ -30,10 +30,23 @@ namespace ServerAtrrak.Controllers
                 
                 // Get the guidance counselor's school ID
                 var schoolId = await GetGuidanceCounselorSchoolIdAsync(userId);
+                
+                // If still missing, try an "Auto-Repair" once before giving up
                 if (string.IsNullOrEmpty(schoolId))
                 {
-                    _logger.LogWarning("No school found for guidance counselor {UserId}", userId);
-                    return Ok(new GuidanceDashboardData()); // Return empty (not 404) so dashboard still loads
+                    _logger.LogWarning("Missing SchoolId for {UserId}. Attempting auto-repair...", userId);
+                    var repairResult = await FixGuidanceSetupInternal(userId);
+                    if (repairResult.Success)
+                    {
+                        schoolId = repairResult.SchoolId;
+                        _logger.LogInformation("Auto-repair successful. Linked to school {SchoolId}", schoolId);
+                    }
+                }
+
+                if (string.IsNullOrEmpty(schoolId))
+                {
+                    _logger.LogWarning("No school found for guidance counselor {UserId} and auto-repair failed", userId);
+                    return Ok(new GuidanceDashboardData()); 
                 }
 
                 _logger.LogInformation("Found school {SchoolId} for guidance counselor {UserId}", schoolId, userId);
@@ -228,11 +241,19 @@ namespace ServerAtrrak.Controllers
         }
 
         [HttpPost("repair-setup/{userId}")]
-        public async Task<ActionResult> FixGuidanceSetup(string userId)
+        public async Task<ActionResult> RepairSetup(string userId)
+        {
+            var result = await FixGuidanceSetupInternal(userId);
+            if (result.Success)
+                return Ok(new { success = true, schoolId = result.SchoolId, message = result.Message });
+            
+            return BadRequest(new { message = result.Message });
+        }
+
+        private async Task<(bool Success, string? SchoolId, string Message)> FixGuidanceSetupInternal(string userId)
         {
             try
             {
-                _logger.LogInformation("Attempting to auto-repair guidance setup for {UserId}", userId);
                 using var connection = new MySqlConnection(_dbConnection.GetConnection());
                 await connection.OpenAsync();
 
@@ -245,7 +266,7 @@ namespace ServerAtrrak.Controllers
 
                 if (string.IsNullOrEmpty(schoolId))
                 {
-                    return BadRequest(new { message = "No schools found in database to link to." });
+                    return (false, null, "No schools found in database to link to.");
                 }
 
                 // 2. Get the TeacherId tied to this user
@@ -258,47 +279,24 @@ namespace ServerAtrrak.Controllers
 
                 if (string.IsNullOrEmpty(teacherId))
                 {
-                    // Create a dummy teacher record if missing? 
-                    // No, let's just fail and tell them to register properly or manually link.
-                    // But for "Auto-Fix", let's try to be helpful.
-                    return BadRequest(new { message = "User has no TeacherId. Account might be corrupt or incomplete." });
+                    return (false, null, "User has no TeacherId. Account might be incomplete.");
                 }
 
-                // 3. Update both tables
-                using var transaction = await connection.BeginTransactionAsync();
-                try
+                // 3. Update the teacher table
+                var updateT = "UPDATE teacher SET SchoolId = @Sid WHERE TeacherId = @Tid";
+                using (var cmd = new MySqlCommand(updateT, connection))
                 {
-                    // Update user table
-                    var updateU = "UPDATE user SET SchoolId = @Sid WHERE UserId = @Uid";
-                    using (var cmd = new MySqlCommand(updateU, connection, transaction))
-                    {
-                        cmd.Parameters.AddWithValue("@Sid", schoolId);
-                        cmd.Parameters.AddWithValue("@Uid", userId);
-                        await cmd.ExecuteNonQueryAsync();
-                    }
-
-                    // Update teacher table
-                    var updateT = "UPDATE teacher SET SchoolId = @Sid WHERE TeacherId = @Tid";
-                    using (var cmd = new MySqlCommand(updateT, connection, transaction))
-                    {
-                        cmd.Parameters.AddWithValue("@Sid", schoolId);
-                        cmd.Parameters.AddWithValue("@Tid", teacherId);
-                        await cmd.ExecuteNonQueryAsync();
-                    }
-
-                    await transaction.CommitAsync();
-                    return Ok(new { success = true, schoolId = schoolId, message = "Successfully linked to first available school." });
+                    cmd.Parameters.AddWithValue("@Sid", schoolId);
+                    cmd.Parameters.AddWithValue("@Tid", teacherId);
+                    await cmd.ExecuteNonQueryAsync();
                 }
-                catch (Exception ex)
-                {
-                    await transaction.RollbackAsync();
-                    throw ex;
-                }
+
+                return (true, schoolId, "Successfully linked to first available school.");
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error repairing guidance setup for {UserId}", userId);
-                return StatusCode(500, new { message = ex.Message });
+                _logger.LogError(ex, "Error in FixGuidanceSetupInternal for {UserId}", userId);
+                return (false, null, ex.Message);
             }
         }
 
