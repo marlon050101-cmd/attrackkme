@@ -422,6 +422,7 @@ namespace ServerAtrrak.Controllers
                 _logger.LogError(ex, "Error notifying student");
                 return StatusCode(500, "Internal server error");
             }
+        }
         [HttpGet("check-summoned/{studentId}")]
         public async Task<ActionResult<bool>> IsStudentSummoned(string studentId)
         {
