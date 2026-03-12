@@ -412,8 +412,33 @@
         apiError = null;
         try
         {
-            var data = await Http.GetFromJsonAsync<GuidanceDashboardData>($"{ApiConfig.BaseUrl}api/guidance/dashboard/{currentUser.UserId}?days={timeRange}");
-            dashboardData = data ?? new GuidanceDashboardData();
+            var response = await Http.GetAsync($"{ApiConfig.BaseUrl}api/guidance/dashboard/{currentUser.UserId}?days={timeRange}");
+            
+            if (response.IsSuccessStatusCode)
+            {
+                dashboardData = await response.Content.ReadFromJsonAsync<GuidanceDashboardData>() ?? new GuidanceDashboardData();
+            }
+            else
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                try 
+                {
+                    using var jsonDoc = System.Text.Json.JsonDocument.Parse(errorContent);
+                    if (jsonDoc.RootElement.TryGetProperty("message", out var msg))
+                    {
+                        apiError = msg.GetString();
+                    }
+                    else 
+                    {
+                        apiError = $"Server Error ({response.StatusCode}): {errorContent}";
+                    }
+                }
+                catch 
+                {
+                    apiError = $"Server Error ({response.StatusCode}): {errorContent}";
+                }
+                dashboardData = new GuidanceDashboardData();
+            }
         }
         catch (Exception ex)
         {

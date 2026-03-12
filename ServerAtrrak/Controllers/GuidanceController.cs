@@ -60,7 +60,8 @@ namespace ServerAtrrak.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error getting dashboard data for guidance counselor {UserId}: {Message}", userId, ex.Message);
-                return StatusCode(500, new { message = $"An error occurred while retrieving dashboard data: {ex.Message}" });
+                var detail = ex.InnerException != null ? $"{ex.Message} -> {ex.InnerException.Message}" : ex.Message;
+                return StatusCode(500, new { message = $"Backend Error: {detail}" });
             }
         }
 
