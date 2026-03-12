@@ -422,6 +422,24 @@ namespace ServerAtrrak.Controllers
                 _logger.LogError(ex, "Error notifying student");
                 return StatusCode(500, "Internal server error");
             }
+        [HttpGet("check-summoned/{studentId}")]
+        public async Task<ActionResult<bool>> IsStudentSummoned(string studentId)
+        {
+            try
+            {
+                using var connection = new MySqlConnection(_dbConnection.GetConnection());
+                await connection.OpenAsync();
+                var query = "SELECT COUNT(*) FROM guidance_cases WHERE StudentId = @Id AND Status = 'Summoned'";
+                using var cmd = new MySqlCommand(query, connection);
+                cmd.Parameters.AddWithValue("@Id", studentId);
+                var count = Convert.ToInt32(await cmd.ExecuteScalarAsync());
+                return Ok(count > 0);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error checking summon status for student {StudentId}", studentId);
+                return StatusCode(500, false);
+            }
         }
     }
 

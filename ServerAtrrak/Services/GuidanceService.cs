@@ -331,7 +331,7 @@ namespace ServerAtrrak.Services
                     if (!string.IsNullOrEmpty(phone))
                     {
                         // Log the awareness action in guidance_cases
-                        await UpdateCaseStatusAsync(studentId, "Pending", $"User clicked 'Aware' for {type}");
+                        await UpdateCaseStatusAsync(studentId, "Summoned", $"Guidance notification sent: {type}");
                         
                         // Fire and forget SMS
                         _ = _smsQueueService.QueueSmsAsync(phone, name, type, DateTime.Now, studentId, "Attendance Awareness");

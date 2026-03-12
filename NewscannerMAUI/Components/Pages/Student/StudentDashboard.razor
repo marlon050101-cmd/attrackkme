@@ -30,6 +30,24 @@
     }
     else
     {
+        @if (isSummoned)
+        {
+            <div class="summon-alert-container mb-3">
+                <div class="summon-alert glass-card">
+                    <div class="summon-icon pulse-ring">
+                        <i class="fas fa-bullhorn"></i>
+                    </div>
+                    <div class="summon-text">
+                        <h6 class="mb-1 text-white">Guidance Summon (Patawag)</h6>
+                        <p class="mb-0 extra-small">You are requested to visit the Guidance Office at your earliest convenience.</p>
+                    </div>
+                    <div class="summon-action">
+                        <i class="fas fa-chevron-right"></i>
+                    </div>
+                </div>
+            </div>
+        }
+
         <!-- Header Banner (Mobile Friendly) -->
         <div class="header-section mb-3">
             <div class="day-banner glass-card p-3 p-md-4 d-flex align-items-center justify-content-between overflow-hidden position-relative">
@@ -288,6 +306,41 @@
     @@keyframes pulse-ring { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(2.2); opacity: 0; } }
     @@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
+    /* Summon Alert Styles */
+    .summon-alert-container {
+        animation: slideInDown 0.5s ease-out;
+    }
+
+    .summon-alert {
+        background: linear-gradient(135deg, #ea580c 0%, #c2410c 100%);
+        padding: 1rem 1.25rem;
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        border: none;
+        color: white;
+        box-shadow: 0 10px 20px rgba(234, 88, 12, 0.2);
+    }
+
+    .summon-alert .summon-icon {
+        width: 45px;
+        height: 45px;
+        background: rgba(255, 255, 255, 0.2);
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.2rem;
+    }
+
+    .summon-text { flex: 1; }
+    .summon-text h6 { font-weight: 800; }
+    
+    @@keyframes slideInDown {
+        from { transform: translateY(-20px); opacity: 0; }
+        to { transform: translateY(0); opacity: 1; }
+    }
+
     /* Mobile (Phone/Android) Specific Fixes */
     @@media (max-width: 576px) {
         .dashboard-container { padding: 0.5rem; }
@@ -307,6 +360,7 @@
     private StudentDisplayInfo? student;
     private List<ClassOffering> classOfferings = new();
     private bool isLoading = true;
+    private bool isSummoned = false;
 
     protected override async Task OnInitializedAsync()
     {
@@ -326,6 +380,9 @@
                 
                 if (student != null && student.EnrollmentStatus == "Approved" && !string.IsNullOrEmpty(student.AdviserId))
                 {
+                    // Check if summoned
+                    isSummoned = await http.GetFromJsonAsync<bool>($"api/guidance/check-summoned/{currentUser.StudentId}");
+
                     // Fetch only today's subjects
                     var todayName = DateTime.Now.DayOfWeek.ToString();
                     try
