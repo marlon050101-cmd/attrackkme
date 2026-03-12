@@ -243,6 +243,15 @@ namespace ServerAtrrak.Services
 
                 // Calculate School-wide Weekly Attendance Rate
                 double weeklyRate = await GetSchoolWeeklyAttendanceRateAsync(schoolId);
+                
+                // NEW: Calculate Daily Presence Rate
+                double dailyPresence = await GetDailyPresenceRateAsync(schoolId);
+                
+                // NEW: Calculate Case Resolution Rate
+                double resolutionRate = await GetCaseResolutionRateAsync(schoolId);
+                
+                // NEW: Calculate On-Time Arrival Rate
+                double onTimeRate = await GetOnTimeArrivalRateAsync(schoolId);
 
                 return new GuidanceDashboardData
                 {
@@ -253,7 +262,10 @@ namespace ServerAtrrak.Services
                     SectionsMonitored = sections,
                     StudentsAtRisk = flaggedStudents,
                     AllStudents = students,
-                    WeeklyAttendanceRate = weeklyRate
+                    WeeklyAttendanceRate = weeklyRate,
+                    DailyPresenceRate = dailyPresence,
+                    CaseResolutionRate = resolutionRate,
+                    OnTimeArrivalRate = onTimeRate
                 };
             }
             catch (Exception ex)
@@ -329,6 +341,86 @@ namespace ServerAtrrak.Services
                 _logger.LogError(ex, "Error notifying student {Id}", studentId);
                 return false;
             }
+        private async Task<double> GetDailyPresenceRateAsync(string schoolId)
+        {
+            try
+            {
+                using var connection = new MySqlConnection(_dbConnection.GetConnection());
+                await connection.OpenAsync();
+                var query = @"
+                    SELECT 
+                        COUNT(sa.SubjectAttendanceId) as Total,
+                        SUM(CASE WHEN sa.Status IN ('Present', 'Late') THEN 1 ELSE 0 END) as Present
+                    FROM subject_attendance sa
+                    INNER JOIN student s ON sa.StudentId = s.StudentId
+                    WHERE s.SchoolId = @SchoolId AND sa.Date = CURDATE()";
+                using var cmd = new MySqlCommand(query, connection);
+                cmd.Parameters.AddWithValue("@SchoolId", schoolId);
+                using var reader = await cmd.ExecuteReaderAsync();
+                if (await reader.ReadAsync())
+                {
+                    long total = reader.IsDBNull(0) ? 0 : reader.GetInt64(0);
+                    long present = reader.IsDBNull(1) ? 0 : reader.GetInt64(1);
+                    return total > 0 ? (double)present / total * 100 : 0;
+                }
+                return 0;
+            }
+            catch { return 0; }
+        }
+
+        private async Task<double> GetCaseResolutionRateAsync(string schoolId)
+        {
+            try
+            {
+                using var connection = new MySqlConnection(_dbConnection.GetConnection());
+                await connection.OpenAsync();
+                var query = @"
+                    SELECT 
+                        COUNT(*) as Total,
+                        SUM(CASE WHEN Status = 'Resolved' THEN 1 ELSE 0 END) as Resolved
+                    FROM guidance_cases gc
+                    INNER JOIN student s ON gc.StudentId = s.StudentId
+                    WHERE s.SchoolId = @SchoolId";
+                using var cmd = new MySqlCommand(query, connection);
+                cmd.Parameters.AddWithValue("@SchoolId", schoolId);
+                using var reader = await cmd.ExecuteReaderAsync();
+                if (await reader.ReadAsync())
+                {
+                    long total = reader.IsDBNull(0) ? 0 : reader.GetInt64(0);
+                    long resolved = reader.IsDBNull(1) ? 0 : reader.GetInt64(1);
+                    return total > 0 ? (double)resolved / total * 100 : 0;
+                }
+                return 0;
+            }
+            catch { return 0; }
+        }
+
+        private async Task<double> GetOnTimeArrivalRateAsync(string schoolId)
+        {
+            try
+            {
+                using var connection = new MySqlConnection(_dbConnection.GetConnection());
+                await connection.OpenAsync();
+                var query = @"
+                    SELECT 
+                        SUM(CASE WHEN sa.Status IN ('Present', 'Late') THEN 1 ELSE 0 END) as Attended,
+                        SUM(CASE WHEN sa.Status = 'Present' THEN 1 ELSE 0 END) as OnTime
+                    FROM subject_attendance sa
+                    INNER JOIN student s ON sa.StudentId = s.StudentId
+                    WHERE s.SchoolId = @SchoolId 
+                      AND sa.Date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)";
+                using var cmd = new MySqlCommand(query, connection);
+                cmd.Parameters.AddWithValue("@SchoolId", schoolId);
+                using var reader = await cmd.ExecuteReaderAsync();
+                if (await reader.ReadAsync())
+                {
+                    long attended = reader.IsDBNull(0) ? 0 : reader.GetInt64(0);
+                    long onTime = reader.IsDBNull(1) ? 0 : reader.GetInt64(1);
+                    return attended > 0 ? (double)onTime / attended * 100 : 0;
+                }
+                return 0;
+            }
+            catch { return 0; }
         }
     }
 

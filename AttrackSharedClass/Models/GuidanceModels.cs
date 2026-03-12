@@ -49,6 +49,9 @@ namespace AttrackSharedClass.Models
         public int GradeLevelsAffected { get; set; }
         public int SectionsMonitored { get; set; }
         public double WeeklyAttendanceRate { get; set; }
+        public double DailyPresenceRate { get; set; }
+        public double CaseResolutionRate { get; set; }
+        public double OnTimeArrivalRate { get; set; }
         public List<AttendanceSummary> StudentsAtRisk { get; set; } = new();
         public List<StudentInfo> AllStudents { get; set; } = new();
     }

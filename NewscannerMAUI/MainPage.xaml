@@ -4,7 +4,7 @@
              xmlns:local="clr-namespace:NewscannerMAUI"
              xmlns:components="clr-namespace:NewscannerMAUI.Components"
              x:Class="NewscannerMAUI.MainPage"
-             Title="Sardo-TrackCare"
+             Title="Sardo-Trakcare"
              NavigationPage.HasNavigationBar="False">
 
     <BlazorWebView x:Name="blazorWebView" HostPage="wwwroot/index.html">

@@ -13,7 +13,7 @@
     <div class="welcome-banner d-flex justify-content-between align-items-center">
         <div>
             <h2 class="mb-1">Hello, @adviserName!</h2>
-            <p class="text-muted small">Welcome to Sardo-TrackCare Adviser Portal</p>
+            <p class="text-muted small">Welcome to Sardo-Trakcare Adviser Portal</p>
         </div>
         <div class="header-actions">
             <button class="btn-report-circle" @onclick="GenerateReport" title="Generate PDF Report">
@@ -452,11 +452,38 @@
             var now = DateTime.Now;
             var html = BuildReportHtml(section, subjectName, now, _dailySummaries, _subjectAttendanceRecords);
             var filename = "Attendance_Report_" + section + "_" + now.ToString("yyyyMMdd") + ".html";
-            await JSRuntime.InvokeVoidAsync("downloadHtmlReport", html, filename);
+
+#if ANDROID
+            // Direct save to Android Downloads folder
+            var downloadPath = Android.OS.Environment.GetExternalStoragePublicDirectory(Android.OS.Environment.DirectoryDownloads).AbsolutePath;
+            var filePath = System.IO.Path.Combine(downloadPath, filename);
+            
+            // Handle unique filename if exists
+            int count = 1;
+            while (System.IO.File.Exists(filePath))
+            {
+                var nameOnly = System.IO.Path.GetFileNameWithoutExtension(filename);
+                filePath = System.IO.Path.Combine(downloadPath, $"{nameOnly}_{count}.html");
+                count++;
+            }
+
+            await System.IO.File.WriteAllTextAsync(filePath, html);
+            await JSRuntime.InvokeVoidAsync("alert", "Download Successful!\n\nFile saved to: Phone/Download/" + System.IO.Path.GetFileName(filePath));
+#else
+            // Fallback for Windows or other platforms
+            var cachePath = System.IO.Path.Combine(FileSystem.CacheDirectory, filename);
+            await System.IO.File.WriteAllTextAsync(cachePath, html);
+            await Launcher.Default.OpenAsync(new OpenFileRequest
+            {
+                Title = "Attendance Report",
+                File = new ReadOnlyFile(cachePath, "text/html")
+            });
+#endif
         }
         catch (Exception ex)
         {
             Console.WriteLine("Report Error: " + ex.Message);
+            await JSRuntime.InvokeVoidAsync("alert", "Download Error: " + ex.Message);
         }
     }
 
@@ -502,23 +529,24 @@
         sb.Append("h1{font-size:20px}h2{font-size:15px;color:#555}");
         sb.Append("h3{margin:20px 0 8px;border-left:4px solid #10b981;padding-left:8px;font-size:14px}");
         sb.Append("h3.s{border-left-color:#3b82f6}");
-        sb.Append("table{width:100%;border-collapse:collapse;margin-bottom:24px}");
-        sb.Append("th{background:#f8fafc;padding:9px;text-align:left;border-bottom:2px solid #ddd;font-size:12px;color:#555}");
-        sb.Append("td{padding:9px;border-bottom:1px solid #eee;font-size:13px}");
+        sb.Append("table{width:100%;border-collapse:collapse;margin-bottom:24px;table-layout:fixed}");
+        sb.Append("th,td{padding:9px;border-bottom:1px solid #eee;font-size:13px;word-wrap:break-word}");
+        sb.Append("th{background:#f8fafc;text-align:left;border-bottom:2px solid #ddd;font-size:12px;color:#555}");
+        sb.Append(".col-name{width:35%}.col-status{width:15%}.col-time{width:12%}.col-remarks{width:auto}");
         sb.Append(".footer{font-size:11px;color:#999;text-align:right;margin-top:20px}</style></head><body>");
         sb.Append("<div style='text-align:center;border-bottom:2px solid #ccc;padding-bottom:14px;margin-bottom:20px'>");
         sb.Append("<h1>Adviser Attendance Report</h1>");
         sb.Append("<h2>Section: " + System.Net.WebUtility.HtmlEncode(section) + "</h2>");
         sb.Append("<p style='font-size:12px;color:#999'>Date: " + now.ToString("MMMM dd, yyyy") + " | Generated: " + now.ToString("hh:mm tt") + "</p></div>");
         sb.Append("<h3>General Attendance Monitoring</h3>");
-        sb.Append("<table><thead><tr><th>Student Name</th><th>Status</th><th>Remarks</th></tr></thead><tbody>");
+        sb.Append("<table><thead><tr><th class='col-name'>Student Name</th><th class='col-status' style='text-align:center'>Status</th><th class='col-remarks'>Remarks</th></tr></thead><tbody>");
         sb.Append(mRows);
         sb.Append("</tbody></table>");
         sb.Append("<h3 class='s'>Subject Attendance: " + System.Net.WebUtility.HtmlEncode(subjectName) + "</h3>");
-        sb.Append("<table><thead><tr><th>Student Name</th><th>Status</th><th>Time In</th><th>Time Out</th><th>Remarks</th></tr></thead><tbody>");
+        sb.Append("<table><thead><tr><th class='col-name'>Student Name</th><th class='col-status' style='text-align:center'>Status</th><th class='col-time' style='text-align:center'>Time In</th><th class='col-time' style='text-align:center'>Time Out</th><th class='col-remarks'>Remarks</th></tr></thead><tbody>");
         sb.Append(sRows);
         sb.Append("</tbody></table>");
-        sb.Append("<div class='footer'>Generated by SARDO-TRACKCARE Adviser Portal</div>");
+        sb.Append("<div class='footer'>Generated by SARDO-TRAKCARE Adviser Portal</div>");
         sb.Append("</body></html>");
         return sb.ToString();
     }

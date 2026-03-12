@@ -97,6 +97,46 @@
                 <span class="text-success"><i class="fas fa-calendar-week"></i> Last 7 days</span>
             </div>
         </div>
+        
+        <!-- NEW DYNAMIC PERCENTAGE METRICS -->
+        <div class="metric-card success">
+            <div class="metric-icon">
+                <i class="fas fa-user-check"></i>
+            </div>
+            <div class="metric-data">
+                <span class="metric-value">@dashboardData.DailyPresenceRate.ToString("F1")%</span>
+                <span class="metric-label">Daily Presence</span>
+            </div>
+            <div class="metric-trend">
+                <span class="text-success"><i class="fas fa-caret-up"></i> Live</span>
+            </div>
+        </div>
+
+        <div class="metric-card warning">
+            <div class="metric-icon">
+                <i class="fas fa-clipboard-check"></i>
+            </div>
+            <div class="metric-data">
+                <span class="metric-value">@dashboardData.CaseResolutionRate.ToString("F1")%</span>
+                <span class="metric-label">Case Resolution</span>
+            </div>
+            <div class="metric-trend">
+                <span class="text-info"><i class="fas fa-tasks"></i> Efficiency</span>
+            </div>
+        </div>
+
+        <div class="metric-card info">
+            <div class="metric-icon">
+                <i class="fas fa-clock"></i>
+            </div>
+            <div class="metric-data">
+                <span class="metric-value">@dashboardData.OnTimeArrivalRate.ToString("F1")%</span>
+                <span class="metric-label">On-Time Arrival</span>
+            </div>
+            <div class="metric-trend">
+                <span class="text-success"><i class="fas fa-bolt"></i> Punctuality</span>
+            </div>
+        </div>
     </div>
 
     <!-- Attendance Risks -->
@@ -321,7 +361,7 @@
     </table>
     
     <div style="margin-top: 40px; font-size: 12px; color: #777; text-align: right;">
-        Report extracted from SARDO-TRACKCARE system.
+        Report extracted from SARDO-TRAKCARE system.
     </div>
     </div>
 </div>
@@ -363,17 +403,14 @@
         {
             var data = await Http.GetFromJsonAsync<GuidanceDashboardData>($"{ApiConfig.BaseUrl}api/guidance/dashboard/{currentUser.UserId}?days={timeRange}");
             dashboardData = data ?? new GuidanceDashboardData();
-
-            // Remove mock data block
         }
         catch (Exception ex)
         {
-            Console.WriteLine("Error: " + ex.Message);
-            
-            // Fallback empty state on connection error
+            Console.WriteLine("Error fetching guidance data: " + ex.Message);
             dashboardData ??= new GuidanceDashboardData();
-            dashboardData.StudentsAtRisk ??= new List<AttendanceSummary>();
         }
+        finally
+        {
         finally
         {
             isLoading = false;
@@ -444,8 +481,97 @@
 
     private async Task GenerateReport()
     {
-        string filename = $"Guidance_Risk_Report_{DateTime.Now:yyyyMMdd_HHmm}.pdf";
-        await JSRuntime.InvokeVoidAsync("generatePdf", "formal-report-container", filename);
+        try
+        {
+            var now = DateTime.Now;
+            var html = BuildGuidanceReportHtml(now, filteredRisks, dashboardData);
+            var filename = "Guidance_Risk_Report_" + now.ToString("yyyyMMdd") + ".html";
+
+#if ANDROID
+            var downloadPath = Android.OS.Environment.GetExternalStoragePublicDirectory(Android.OS.Environment.DirectoryDownloads).AbsolutePath;
+            var filePath = System.IO.Path.Combine(downloadPath, filename);
+            
+            int count = 1;
+            while (System.IO.File.Exists(filePath))
+            {
+                var nameOnly = System.IO.Path.GetFileNameWithoutExtension(filename);
+                filePath = System.IO.Path.Combine(downloadPath, $"{nameOnly}_{count}.html");
+                count++;
+            }
+
+            await System.IO.File.WriteAllTextAsync(filePath, html);
+            await JSRuntime.InvokeVoidAsync("alert", "Guidance Report Downloaded!\n\nSaved to: Phone/Download/" + System.IO.Path.GetFileName(filePath));
+#else
+            var cachePath = System.IO.Path.Combine(FileSystem.CacheDirectory, filename);
+            await System.IO.File.WriteAllTextAsync(cachePath, html);
+            await Launcher.Default.OpenAsync(new OpenFileRequest
+            {
+                Title = "Guidance Risk Report",
+                File = new ReadOnlyFile(cachePath, "text/html")
+            });
+#endif
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("Guidance Report Error: " + ex.Message);
+            await JSRuntime.InvokeVoidAsync("alert", "Download Error: " + ex.Message);
+        }
+    }
+
+    private static string BuildGuidanceReportHtml(DateTime now, IEnumerable<AttendanceSummary> risks, GuidanceDashboardData data)
+    {
+        var sb = new System.Text.StringBuilder();
+        var rows = new System.Text.StringBuilder();
+
+        foreach (var s in risks)
+        {
+            var statusColor = s.GuidanceStatus == "Resolved" ? "#16a34a" : (s.GuidanceStatus == "Pending" ? "#d97706" : "#dc2626");
+            rows.Append("<tr>");
+            rows.Append("<td class='col-name'><b>" + System.Net.WebUtility.HtmlEncode(s.FullName) + "</b><br/><small>" + s.GradeLevel + "-" + s.Section + "</small></td>");
+            rows.Append("<td class='col-status' style='text-align:center'><span style='color:" + statusColor + ";font-weight:bold'>" + s.GuidanceStatus + "</span></td>");
+            rows.Append("<td class='col-time' style='text-align:center'>" + s.AbsentDays + "</td>");
+            rows.Append("<td class='col-time' style='text-align:center'>" + s.ConsecutiveAbsences + "</td>");
+            rows.Append("<td class='col-time' style='text-align:center'>" + s.IncompleteSessions + "</td>");
+            rows.Append("<td class='col-remarks'>" + (s.LastAbsentDate?.ToString("MMM dd") ?? "-") + "</td>");
+            rows.Append("</tr>");
+        }
+
+        sb.Append("<!DOCTYPE html><html><head><meta charset='UTF-8'>");
+        sb.Append("<style>body{font-family:Arial,sans-serif;padding:30px;color:#334155;background:#f8fafc}");
+        sb.Append(".report-container{background:white;padding:40px;border-radius:15px;box-shadow:0 4px 6px -1px rgba(0,0,0,0.1)}");
+        sb.Append(".header{text-align:center;border-bottom:2px solid #6366f1;padding-bottom:20px;margin-bottom:30px}");
+        sb.Append(".header h1{margin:0;color:#1e293b;font-size:24px}.header p{margin:5px 0;color:#64748b;font-size:14px}");
+        sb.Append(".metrics-summary{display:grid;grid-template-columns:repeat(4, 1fr);gap:15px;margin-bottom:30px}");
+        sb.Append(".summary-item{background:#f1f5f9;padding:15px;border-radius:12px;text-align:center}");
+        sb.Append(".summary-value{display:block;font-size:18px;font-weight:bold;color:#1e293b}");
+        sb.Append(".summary-label{font-size:11px;color:#64748b;text-transform:uppercase}");
+        sb.Append("table{width:100%;border-collapse:collapse;margin-top:20px;table-layout:fixed}");
+        sb.Append("th,td{padding:12px;border-bottom:1px solid #e2e8f0;font-size:13px;word-wrap:break-word}");
+        sb.Append("th{background:#f8fafc;text-align:left;border-bottom:2px solid #cbd5e1;color:#475569;font-size:12px;font-weight:bold}");
+        sb.Append(".col-name{width:30%}.col-status{width:15%}.col-time{width:12%}.col-remarks{width:auto}");
+        sb.Append(".footer{font-size:11px;color:#94a3b8;text-align:right;margin-top:40px;border-top:1px solid #e2e8f0;padding-top:15px}</style></head><body>");
+        
+        sb.Append("<div class='report-container'>");
+        sb.Append("<div class='header'><h1>Guidance Counselor Risk Report</h1>");
+        sb.Append("<p>Date: " + now.ToString("MMMM dd, yyyy") + " | Generated: " + now.ToString("hh:mm tt") + "</p></div>");
+        
+        // Add Summary Metrics Section
+        sb.Append("<div class='metrics-summary'>");
+        sb.Append("<div class='summary-item'><span class='summary-value'>" + data.TotalStudents + "</span><span class='summary-label'>Total Students</span></div>");
+        sb.Append("<div class='summary-item'><span class='summary-value'>" + data.FlaggedStudents + "</span><span class='summary-label'>At Risk</span></div>");
+        sb.Append("<div class='summary-item'><span class='summary-value'>" + data.WeeklyAttendanceRate.ToString("F1") + "%</span><span class='summary-label'>Attendance</span></div>");
+        sb.Append("<div class='summary-item'><span class='summary-value'>" + data.DailyPresenceRate.ToString("F1") + "%</span><span class='summary-label'>Presence</span></div>");
+        sb.Append("</div>");
+        
+        sb.Append("<table><thead><tr><th class='col-name'>Student Name</th><th class='col-status' style='text-align:center'>Status</th>");
+        sb.Append("<th class='col-time' style='text-align:center'>Absences</th><th class='col-time' style='text-align:center'>Straight</th>");
+        sb.Append("<th class='col-time' style='text-align:center'>Cutting</th><th class='col-remarks'>Last Active</th></tr></thead><tbody>");
+        sb.Append(rows);
+        sb.Append("</tbody></table>");
+        sb.Append("<div class='footer'>Generated by SARDO-TRAKCARE Guidance Portal | System-Generated Report</div>");
+        sb.Append("</div></body></html>");
+        
+        return sb.ToString();
     }
 }
 
@@ -505,9 +631,9 @@
 
     .metrics-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-        gap: 1.5rem;
-        padding: 2rem;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1rem;
+        padding: 1rem 2rem;
         margin-top: -30px;
     }
 
