@@ -105,8 +105,8 @@ namespace ServerAtrrak.Services
                     
                     while (await reader.ReadAsync())
                     {
-                        var totalDays = reader.IsDBNull("TotalDays") ? 0 : reader.GetInt32("TotalDays");
-                        var presentDays = reader.IsDBNull("PresentDays") ? 0 : reader.GetInt32("PresentDays");
+                        var totalDays = reader.IsDBNull("TotalDays") ? 0 : Convert.ToInt32(reader["TotalDays"]);
+                        var presentDays = reader.IsDBNull("PresentDays") ? 0 : Convert.ToInt32(reader["PresentDays"]);
                         
                         summaries.Add(new AttendanceSummary
                         {
@@ -118,8 +118,8 @@ namespace ServerAtrrak.Services
                             Gender = reader.IsDBNull("Gender") ? string.Empty : reader.GetString("Gender"),
                             TotalDays = totalDays,
                             PresentDays = presentDays,
-                            AbsentDays = reader.IsDBNull("AbsentDays") ? 0 : reader.GetInt32("AbsentDays"),
-                            LateDays = reader.IsDBNull("LateDays") ? 0 : reader.GetInt32("LateDays"),
+                            AbsentDays = reader.IsDBNull("AbsentDays") ? 0 : Convert.ToInt32(reader["AbsentDays"]),
+                            LateDays = reader.IsDBNull("LateDays") ? 0 : Convert.ToInt32(reader["LateDays"]),
                             IncompleteSessions = 0, // Daily has no incomplete sessions concept, it's subject level
                             SubjectName = "All", // Represents all subjects for a full day
                             AttendanceRate = totalDays > 0 ? (double)presentDays / totalDays * 100 : 0,
@@ -163,8 +163,8 @@ namespace ServerAtrrak.Services
                     
                     while (await reader.ReadAsync())
                     {
-                        var totalDays = reader.IsDBNull("TotalDays") ? 0 : reader.GetInt32("TotalDays");
-                        var presentDays = reader.IsDBNull("PresentDays") ? 0 : reader.GetInt32("PresentDays");
+                        var totalDays = reader.IsDBNull("TotalDays") ? 0 : Convert.ToInt32(reader["TotalDays"]);
+                        var presentDays = reader.IsDBNull("PresentDays") ? 0 : Convert.ToInt32(reader["PresentDays"]);
                         
                         summaries.Add(new AttendanceSummary
                         {
@@ -176,9 +176,9 @@ namespace ServerAtrrak.Services
                             Gender = reader.IsDBNull("Gender") ? string.Empty : reader.GetString("Gender"),
                             TotalDays = totalDays,
                             PresentDays = presentDays,
-                            AbsentDays = reader.IsDBNull("AbsentDays") ? 0 : reader.GetInt32("AbsentDays"),
-                            LateDays = reader.IsDBNull("LateDays") ? 0 : reader.GetInt32("LateDays"),
-                            IncompleteSessions = reader.IsDBNull("DaysWithIncompleteSessions") ? 0 : reader.GetInt32("DaysWithIncompleteSessions"),
+                            AbsentDays = reader.IsDBNull("AbsentDays") ? 0 : Convert.ToInt32(reader["AbsentDays"]),
+                            LateDays = reader.IsDBNull("LateDays") ? 0 : Convert.ToInt32(reader["LateDays"]),
+                            IncompleteSessions = reader.IsDBNull("DaysWithIncompleteSessions") ? 0 : Convert.ToInt32(reader["DaysWithIncompleteSessions"]),
                             SubjectName = reader.IsDBNull("SubjectName") ? "Unknown Subject" : reader.GetString("SubjectName"),
                             AttendanceRate = totalDays > 0 ? (double)presentDays / totalDays * 100 : 0,
                             FirstAbsentDate = reader.IsDBNull("FirstAbsentDate") ? null : reader.GetDateTime("FirstAbsentDate"),
