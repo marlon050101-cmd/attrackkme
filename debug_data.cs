@@ -1,66 +1,70 @@
 using MySql.Data.MySqlClient;
-using System;
-using System.Threading.Tasks;
+using ServerAtrrak.Data;
 
-class Program
+var db = new Dbconnection();
+string connString = db.GetConnection();
+
+using (var conn = new MySqlConnection(connString))
 {
-    static string connString = "Server=shinkansen.proxy.rlwy.net;Port=42561;Database=attrackme;User=root;Password=IllOmAVXDrPmHvZuvFvzmKBLlJzEKMvV;";
-
-    static async Task Main()
+    await conn.OpenAsync();
+    
+    string guidanceUserId = "844f15d2-1c1b-11f1-935b-e2aaab582b53";
+    
+    Console.WriteLine($"--- DEBUGGING FOR USER: {guidanceUserId} ---");
+    
+    // 1. Check Counselor User and Teacher record
+    using (var cmd = new MySqlCommand(@"
+        SELECT u.UserId, u.UserName, u.UserType, t.TeacherId, t.FullName, t.SchoolId 
+        FROM user u 
+        INNER JOIN teacher t ON u.TeacherId = t.TeacherId 
+        WHERE u.UserId = @UserId", conn))
     {
-        try
+        cmd.Parameters.AddWithValue("@UserId", guidanceUserId);
+        using (var reader = await cmd.ExecuteReaderAsync())
         {
-            using var connection = new MySqlConnection(connString);
-            await connection.OpenAsync();
-            Console.WriteLine("Connected to DB.");
-
-            // 1. Get Head user info
-            var headCmd = new MySqlCommand("SELECT UserId, Username, UserType, TeacherId FROM user WHERE Username = 'head'", connection);
-            using (var reader = await headCmd.ExecuteReaderAsync())
+            if (await reader.ReadAsync())
             {
-                if (await reader.ReadAsync())
-                {
-                    Console.WriteLine($"Head User: {reader["Username"]}, Type: {reader["UserType"]}, TeacherId: {reader["TeacherId"]}");
-                }
+                Console.WriteLine($"User Found: {reader["UserName"]} ({reader["UserType"]})");
+                Console.WriteLine($"Teacher: {reader["FullName"]}");
+                Console.WriteLine($"School ID: {reader["SchoolId"]}");
             }
-
-            // 2. Get Head teacher info to see SchoolId
-            var headTeacherCmd = new MySqlCommand("SELECT t.SchoolId, s.SchoolName FROM teacher t LEFT JOIN school s ON t.SchoolId = s.SchoolId JOIN user u ON u.TeacherId = t.TeacherId WHERE u.Username = 'head'", connection);
-            string headSchoolId = "";
-            using (var reader = await headTeacherCmd.ExecuteReaderAsync())
+            else
             {
-                if (await reader.ReadAsync())
-                {
-                    headSchoolId = reader["SchoolId"]?.ToString() ?? "NULL";
-                    Console.WriteLine($"Head SchoolId: '{headSchoolId}', SchoolName: '{reader["SchoolName"]}'");
-                }
-            }
-
-            // 3. Dump some teachers
-            var pCmd = new MySqlCommand("SELECT TeacherId, FullName, SchoolId, Gradelvl, Section FROM teacher LIMIT 5", connection);
-            Console.WriteLine("\n--- Sample Teachers ---");
-            using (var reader = await pCmd.ExecuteReaderAsync())
-            {
-                while (await reader.ReadAsync())
-                {
-                    Console.WriteLine($"TeacherId: {reader["TeacherId"]}, Name: {reader["FullName"]}, SchoolId: '{reader["SchoolId"]}', Section: '{reader["Section"]}'");
-                }
-            }
-
-            // 4. Dump some users joined to teachers
-            var uCmd = new MySqlCommand("SELECT u.Username, u.UserType, u.IsActive, t.SchoolId FROM user u JOIN teacher t ON u.TeacherId = t.TeacherId LIMIT 5", connection);
-            Console.WriteLine("\n--- Sample Users + Teachers ---");
-            using (var reader = await uCmd.ExecuteReaderAsync())
-            {
-                while (await reader.ReadAsync())
-                {
-                    Console.WriteLine($"User: {reader["Username"]}, Type: {reader["UserType"]}, IsActive: {reader["IsActive"]}, SchoolId: '{reader["SchoolId"]}'");
-                }
+                Console.WriteLine("User/Teacher record NOT FOUND in DB!");
             }
         }
-        catch (Exception ex)
+    }
+    
+    // 2. Check Students for that school
+    // We'll just check a few students in the database regardless of school first
+    Console.WriteLine("\n--- SAMPLE STUDENTS ---");
+    using (var cmd = new MySqlCommand("SELECT StudentId, FullName, SchoolId FROM student LIMIT 5", conn))
+    {
+        using (var reader = await cmd.ExecuteReaderAsync())
         {
-            Console.WriteLine($"Error: {ex.Message}");
+            while (await reader.ReadAsync())
+            {
+                Console.WriteLine($"Student: {reader["FullName"]} | ID: {reader["StudentId"]} | School: {reader["SchoolId"]}");
+            }
+        }
+    }
+
+    // 3. Check the specific student from user's screenshot
+    string specificStudentId = "b280477f-8a8b-47b1-aab8-bcee87d3ec3c";
+    Console.WriteLine($"\n--- CHECKING SPECIFIC STUDENT: {specificStudentId} ---");
+    using (var cmd = new MySqlCommand("SELECT StudentId, FullName, SchoolId FROM student WHERE StudentId = @Id", conn))
+    {
+        cmd.Parameters.AddWithValue("@Id", specificStudentId);
+        using (var reader = await cmd.ExecuteReaderAsync())
+        {
+            if (await reader.ReadAsync())
+            {
+                Console.WriteLine($"Found Student: {reader["FullName"]} | School: {reader["SchoolId"]}");
+            }
+            else
+            {
+                Console.WriteLine("Student NOT FOUND in database!");
+            }
         }
     }
 }

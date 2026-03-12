@@ -33,7 +33,7 @@ namespace ServerAtrrak.Controllers
                 if (string.IsNullOrEmpty(schoolId))
                 {
                     _logger.LogWarning("No school found for guidance counselor {UserId}", userId);
-                    return NotFound(new { message = "Guidance counselor not found or no school assigned" });
+                    return Ok(new GuidanceDashboardData()); // Return empty (not 404) so dashboard still loads
                 }
 
                 _logger.LogInformation("Found school {SchoolId} for guidance counselor {UserId}", schoolId, userId);
@@ -220,13 +220,23 @@ namespace ServerAtrrak.Controllers
                     SELECT t.SchoolId 
                     FROM user u
                     INNER JOIN teacher t ON u.TeacherId = t.TeacherId
-                    WHERE u.UserId = @UserId AND u.UserType IN ('GuidanceCounselor', 'Adviser') AND u.IsActive = true";
-
+                    WHERE u.UserId = @UserId AND u.IsActive = true";
+                    
                 using var command = new MySqlCommand(query, connection);
                 command.Parameters.AddWithValue("@UserId", userId);
 
                 var result = await command.ExecuteScalarAsync();
                 var schoolId = result?.ToString();
+
+                // Fallback: try without IsActive check if not found
+                if (string.IsNullOrEmpty(schoolId))
+                {
+                    var fallbackQuery = @"SELECT t.SchoolId FROM user u INNER JOIN teacher t ON u.TeacherId = t.TeacherId WHERE u.UserId = @UserId2 LIMIT 1";
+                    using var fallbackCmd = new MySqlCommand(fallbackQuery, connection);
+                    fallbackCmd.Parameters.AddWithValue("@UserId2", userId);
+                    var fallbackResult = await fallbackCmd.ExecuteScalarAsync();
+                    schoolId = fallbackResult?.ToString();
+                }
                 
                 _logger.LogInformation("School ID for guidance counselor {UserId}: {SchoolId}", userId, schoolId ?? "null");
                 return schoolId;

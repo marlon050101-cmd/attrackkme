@@ -15,8 +15,6 @@
         crossorigin="anonymous" referrerpolicy="no-referrer" />
     <link rel="icon" type="image/png" href="favicon.png" />
     <link rel="stylesheet" href="loading.css" />
-    <!-- PDF Generation Library -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" integrity="sha512-GsLlZN/3F2ErC5ifS5QtgpiJtWd43JWSuIgh7mbzZ8zBps+dvLusV+eNQATqgA/HdeKFVgA5v3S/cIrLF7QnIg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <style>
         /* Global Uppercase Style - Visual Only to prevent Keyboard Lag */
         .force-uppercase, .force-uppercase input {
@@ -100,32 +98,25 @@
             }
         }, true);
 
-        // PDF Generation Helper
-        window.generatePdf = function (elementId, filename) {
-            var originalElement = document.getElementById(elementId);
-            if (!originalElement) return;
-
-            // Clone the hidden element so we can make it visible off-screen for html2canvas
-            var clonedElement = originalElement.cloneNode(true);
-            clonedElement.id = elementId + "-clone";
-            clonedElement.style.display = 'block';
-            clonedElement.style.position = 'absolute';
-            clonedElement.style.left = '-9999px';
-            clonedElement.style.top = '0';
-            document.body.appendChild(clonedElement);
-
-            var opt = {
-                margin:       0.5,
-                filename:     filename,
-                image:        { type: 'jpeg', quality: 0.98 },
-                html2canvas:  { scale: 2, useCORS: true },
-                jsPDF:        { unit: 'in', format: 'letter', orientation: 'landscape' }
-            };
-
-            html2pdf().set(opt).from(clonedElement).save().then(function() {
-                // Cleanup clone after PDF is generated
-                document.body.removeChild(clonedElement);
-            });
+        // Report Download Helper - works on Android MAUI WebView
+        window.downloadHtmlReport = function (htmlContent, filename) {
+            try {
+                var blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8;' });
+                var url = URL.createObjectURL(blob);
+                var link = document.createElement('a');
+                link.setAttribute('href', url);
+                link.setAttribute('download', filename);
+                link.style.display = 'none';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                setTimeout(function() { URL.revokeObjectURL(url); }, 1000);
+            } catch(e) {
+                console.error('Download error:', e);
+                // Fallback: open in new tab
+                var win = window.open();
+                if (win) { win.document.write(htmlContent); win.document.close(); }
+            }
         }
     </script>
 </body>

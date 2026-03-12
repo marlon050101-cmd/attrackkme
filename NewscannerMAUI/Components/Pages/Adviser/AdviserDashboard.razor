@@ -6,11 +6,20 @@
 @inject NavigationManager Navigation
 @inject HttpClient Http
 @inject OfflineDataService OfflineDataService
+@inject IJSRuntime JSRuntime
+
 
 <div class="dashboard-container">
-    <div class="welcome-banner">
-        <h2 class="mb-1">Hello, @adviserName!</h2>
-        <p class="text-muted small">Welcome to Sardo-TrackCare Adviser Portal</p>
+    <div class="welcome-banner d-flex justify-content-between align-items-center">
+        <div>
+            <h2 class="mb-1">Hello, @adviserName!</h2>
+            <p class="text-muted small">Welcome to Sardo-TrackCare Adviser Portal</p>
+        </div>
+        <div class="header-actions">
+            <button class="btn-report-circle" @onclick="GenerateReport" title="Generate PDF Report">
+                <i class="fas fa-file-pdf"></i>
+            </button>
+        </div>
     </div>
 
     <!-- Attendance Table Section -->
@@ -178,6 +187,8 @@
                 <span class="action-text">View Attendance</span>
             </button>
         </div>
+    </div>
+
     </div>
 </div>
 
@@ -433,9 +444,117 @@
             System.Diagnostics.Debug.WriteLine($"Error updating status: {ex.Message}");
         }
     }
+
+    private async Task GenerateReport()
+    {
+        try
+        {
+            var section = _subjects.FirstOrDefault()?.Section ?? "Section";
+            var activeSub = _subjects.FirstOrDefault(s => s.ClassOfferingId == activeSubjectId);
+            var subjectName = activeSub?.SubjectName ?? "All Subjects";
+            var now = DateTime.Now;
+
+            // Build student rows for Attendance Monitoring table
+            var monitoringRows = new System.Text.StringBuilder();
+            foreach (var s in _dailySummaries.OrderBy(x => x.FullName))
+            {
+                var statusColor = s.Status.ToLower() switch {
+                    "present" or "whole-day" => "#065f46",
+                    "absent" => "#991b1b",
+                    _ => "#854d0e"
+                };
+                var statusBg = s.Status.ToLower() switch {
+                    "present" or "whole-day" => "#ecfdf5",
+                    "absent" => "#fef2f2",
+                    _ => "#fefce8"
+                };
+                monitoringRows.Append($"""<tr style="border-bottom:1px solid #f1f5f9">""");
+                monitoringRows.Append($"""<td style="padding:10px;font-weight:bold">{s.FullName}</td>""");
+                monitoringRows.Append($"""<td style="padding:10px;text-align:center"><span style="padding:4px 8px;border-radius:4px;font-size:11px;font-weight:bold;background:{statusBg};color:{statusColor}">{s.Status}</span></td>""");
+                monitoringRows.Append($"""<td style="padding:10px;color:#64748b">{(string.IsNullOrEmpty(s.Remarks) ? "-" : s.Remarks)}</td>""");
+                monitoringRows.Append("</tr>");
+            }
+
+            // Build student rows for Subject Attendance table
+            var subjectRows = new System.Text.StringBuilder();
+            foreach (var r in _subjectAttendanceRecords)
+            {
+                subjectRows.Append($"""<tr style="border-bottom:1px solid #f1f5f9">""");
+                subjectRows.Append($"""<td style="padding:10px;font-weight:bold">{r.StudentName}</td>""");
+                subjectRows.Append($"""<td style="padding:10px;text-align:center">{r.Status}</td>""");
+                subjectRows.Append($"""<td style="padding:10px;text-align:center">{r.TimeIn?.ToString("HH:mm") ?? "--:--"}</td>""");
+                subjectRows.Append($"""<td style="padding:10px;text-align:center">{r.TimeOut?.ToString("HH:mm") ?? "--:--"}</td>""");
+                subjectRows.Append($"""<td style="padding:10px;color:#64748b">{(string.IsNullOrEmpty(r.Remarks) ? "-" : r.Remarks)}</td>""");
+                subjectRows.Append("</tr>");
+            }
+
+            var html = $"""
+                <!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+                <title>Attendance Report - {section}</title>
+                <style>
+                  body {{ font-family: Arial, sans-serif; color: #222; padding: 30px; }}
+                  h1 {{ font-size: 22px; margin: 0; }}
+                  h2 {{ font-size: 16px; color: #555; margin: 4px 0 0; }}
+                  p.meta {{ font-size: 12px; color: #999; margin: 4px 0 0; }}
+                  .header {{ text-align:center; border-bottom: 2px solid #ccc; padding-bottom: 16px; margin-bottom: 24px; }}
+                  h3 {{ font-size: 14px; border-left: 4px solid #10b981; padding-left: 8px; margin: 20px 0 10px; }}
+                  h3.subject {{ border-color: #3b82f6; }}
+                  table {{ width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 28px; }}
+                  th {{ background: #f8fafc; padding: 10px; text-align: left; color: #64748b; border-bottom: 2px solid #e2e8f0; }}
+                  td {{ padding: 10px; border-bottom: 1px solid #f1f5f9; }}
+                  .footer {{ font-size: 11px; color: #94a3b8; text-align: right; border-top: 1px solid #e2e8f0; padding-top: 8px; margin-top: 30px; }}
+                </style></head><body>
+                <div class="header">
+                  <h1>Adviser Attendance Report</h1>
+                  <h2>Section: {section}</h2>
+                  <p class="meta">Date: {now:MMMM dd, yyyy} &nbsp;|&nbsp; Generated: {now:hh:mm tt}</p>
+                </div>
+                <h3>General Attendance Monitoring</h3>
+                <table><thead><tr>
+                  <th>Student Name</th><th style="text-align:center">Status</th><th>Remarks</th>
+                </tr></thead><tbody>{monitoringRows}</tbody></table>
+                <h3 class="subject">Subject Attendance: {subjectName}</h3>
+                <table><thead><tr>
+                  <th>Student Name</th><th style="text-align:center">Status</th>
+                  <th style="text-align:center">Time In</th><th style="text-align:center">Time Out</th><th>Remarks</th>
+                </tr></thead><tbody>{subjectRows}</tbody></table>
+                <div class="footer">Generated by SARDO-TRACKCARE Adviser Portal</div>
+                </body></html>
+                """;
+
+            var filename = $"Attendance_Report_{section}_{now:yyyyMMdd}.html";
+            await JSRuntime.InvokeVoidAsync("downloadHtmlReport", html, filename);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("Report Error: " + ex.Message);
+        }
+    }
 }
 
 <style>
+    .btn-report-circle {
+        width: 45px;
+        height: 45px;
+        border-radius: 50%;
+        background: white;
+        border: 1px solid #e2e8f0;
+        color: #ef4444; /* PDF Red */
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.2rem;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        transition: all 0.2s;
+        cursor: pointer;
+    }
+
+    .btn-report-circle:hover {
+        transform: scale(1.1);
+        background: #fef2f2;
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+    }
+
     .remarks-cell {
         display: flex;
         align-items: center;
