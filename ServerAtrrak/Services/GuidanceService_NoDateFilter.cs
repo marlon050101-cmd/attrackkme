@@ -82,20 +82,19 @@ namespace ServerAtrrak.Services
                 // Query 1: Daily Summaries from student_daily_summary
                 var dailyQuery = @"
                     SELECT s.StudentId, s.FullName, s.GradeLevel, s.Section, s.Strand, s.Gender,
-                           COUNT(sds.Date) as TotalDays,
-                           SUM(CASE WHEN sds.Status IN ('Present', 'Late', 'Partial') THEN 1 ELSE 0 END) as PresentDays,
-                           SUM(CASE WHEN sds.Status = 'Absent' THEN 1 ELSE 0 END) as AbsentDays,
-                           SUM(CASE WHEN sds.Status = 'Late' THEN 1 ELSE 0 END) as LateDays,
+                           COUNT(DISTINCT sds.Date) as TotalDays,
+                           COUNT(DISTINCT CASE WHEN sds.Status IN ('Present', 'Late', 'Partial') THEN sds.Date ELSE NULL END) as PresentDays,
+                           COUNT(DISTINCT CASE WHEN sds.Status = 'Absent' THEN sds.Date ELSE NULL END) as AbsentDays,
+                           COUNT(DISTINCT CASE WHEN sds.Status = 'Late' THEN sds.Date ELSE NULL END) as LateDays,
                            MIN(CASE WHEN sds.Status = 'Absent' THEN sds.Date ELSE NULL END) as FirstAbsentDate,
                            MAX(CASE WHEN sds.Status = 'Absent' THEN sds.Date ELSE NULL END) as LastAbsentDate,
-                           GROUP_CONCAT(CASE WHEN sds.Status = 'Absent' THEN sds.Date ELSE NULL END ORDER BY sds.Date SEPARATOR ', ') as AbsentDates,
-                           COALESCE(gc.Status, 'Normal') as GuidanceStatus
+                           GROUP_CONCAT(DISTINCT CASE WHEN sds.Status = 'Absent' THEN sds.Date ELSE NULL END ORDER BY sds.Date SEPARATOR ', ') as AbsentDates,
+                           COALESCE((SELECT Status FROM guidance_cases WHERE StudentId = s.StudentId ORDER BY DateCreated DESC LIMIT 1), 'Normal') as GuidanceStatus
                     FROM student s
                     LEFT JOIN student_daily_summary sds ON s.StudentId = sds.StudentId 
                          AND sds.Date >= DATE_SUB(CURDATE(), INTERVAL @Days DAY)
-                    LEFT JOIN guidance_cases gc ON s.StudentId = gc.StudentId
                     WHERE s.SchoolId = @SchoolId AND s.IsActive = true
-                    GROUP BY s.StudentId, s.FullName, s.GradeLevel, s.Section, s.Strand, s.Gender, gc.Status
+                    GROUP BY s.StudentId, s.FullName, s.GradeLevel, s.Section, s.Strand, s.Gender
                     HAVING AbsentDays > 0";
 
                 using (var command = new MySqlCommand(dailyQuery, connection))
@@ -135,16 +134,16 @@ namespace ServerAtrrak.Services
                 // Query 2: Subject Summaries from subject_attendance (Cutting Class Risk)
                 var subjectQuery = @"
                     SELECT s.StudentId, s.FullName, s.GradeLevel, s.Section, s.Strand, s.Gender,
-                           COUNT(sa.Date) as TotalDays,
-                           SUM(CASE WHEN sa.Status IN ('Present', 'Late', 'Partial') THEN 1 ELSE 0 END) as PresentDays,
-                           SUM(CASE WHEN sa.Status = 'Absent' THEN 1 ELSE 0 END) as AbsentDays,
-                           SUM(CASE WHEN sa.Status = 'Late' THEN 1 ELSE 0 END) as LateDays,
-                           SUM(CASE WHEN sa.TimeIn IS NOT NULL AND sa.TimeOut IS NULL THEN 1 ELSE 0 END) as DaysWithIncompleteSessions,
+                           COUNT(DISTINCT sa.Date) as TotalDays,
+                           COUNT(DISTINCT CASE WHEN sa.Status IN ('Present', 'Late', 'Partial') THEN sa.Date ELSE NULL END) as PresentDays,
+                           COUNT(DISTINCT CASE WHEN sa.Status = 'Absent' THEN sa.Date ELSE NULL END) as AbsentDays,
+                           COUNT(DISTINCT CASE WHEN sa.Status = 'Late' THEN sa.Date ELSE NULL END) as LateDays,
+                           COUNT(DISTINCT CASE WHEN sa.TimeIn IS NOT NULL AND sa.TimeOut IS NULL THEN sa.Date ELSE NULL END) as DaysWithIncompleteSessions,
                            COALESCE(sub_co.SubjectName, sub_ts.SubjectName, 'Unknown Subject') as SubjectName,
                            MIN(CASE WHEN sa.Status = 'Absent' THEN sa.Date ELSE NULL END) as FirstAbsentDate,
                            MAX(CASE WHEN sa.Status = 'Absent' THEN sa.Date ELSE NULL END) as LastAbsentDate,
-                           GROUP_CONCAT(CASE WHEN sa.Status = 'Absent' THEN sa.Date ELSE NULL END ORDER BY sa.Date SEPARATOR ', ') as AbsentDates,
-                           COALESCE(gc.Status, 'Normal') as GuidanceStatus
+                           GROUP_CONCAT(DISTINCT CASE WHEN sa.Status = 'Absent' THEN sa.Date ELSE NULL END ORDER BY sa.Date SEPARATOR ', ') as AbsentDates,
+                           COALESCE((SELECT Status FROM guidance_cases WHERE StudentId = s.StudentId ORDER BY DateCreated DESC LIMIT 1), 'Normal') as GuidanceStatus
                     FROM student s
                     INNER JOIN subject_attendance sa ON sa.StudentId = s.StudentId 
                           AND sa.Date >= DATE_SUB(CURDATE(), INTERVAL @Days DAY)
@@ -152,9 +151,8 @@ namespace ServerAtrrak.Services
                     LEFT JOIN subject sub_co ON co.SubjectId = sub_co.SubjectId
                     LEFT JOIN teachersubject ts ON sa.TeacherSubjectId = ts.TeacherSubjectId 
                     LEFT JOIN subject sub_ts ON ts.SubjectId = sub_ts.SubjectId
-                    LEFT JOIN guidance_cases gc ON s.StudentId = gc.StudentId
                     WHERE s.SchoolId = @SchoolId AND s.IsActive = true
-                    GROUP BY s.StudentId, s.FullName, s.GradeLevel, s.Section, s.Strand, s.Gender, SubjectName, gc.Status
+                    GROUP BY s.StudentId, s.FullName, s.GradeLevel, s.Section, s.Strand, s.Gender, SubjectName
                     HAVING AbsentDays > 0 OR DaysWithIncompleteSessions > 0";
 
                 using (var command = new MySqlCommand(subjectQuery, connection))

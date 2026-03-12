@@ -15,6 +15,8 @@
         crossorigin="anonymous" referrerpolicy="no-referrer" />
     <link rel="icon" type="image/png" href="favicon.png" />
     <link rel="stylesheet" href="loading.css" />
+    <!-- PDF Generation Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" integrity="sha512-GsLlZN/3F2ErC5ifS5QtgpiJtWd43JWSuIgh7mbzZ8zBps+dvLusV+eNQATqgA/HdeKFVgA5v3S/cIrLF7QnIg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <style>
         /* Global Uppercase Style - Visual Only to prevent Keyboard Lag */
         .force-uppercase, .force-uppercase input {
@@ -97,8 +99,21 @@
                 setTimeout(ensureFocusedVisible, 700);
             }
         }, true);
-    </script>
 
+        // PDF Generation Helper
+        window.generatePdf = function (elementId, filename) {
+            var element = document.getElementById(elementId);
+            if (!element) return;
+            var opt = {
+                margin:       0.5,
+                filename:     filename,
+                image:        { type: 'jpeg', quality: 0.98 },
+                html2canvas:  { scale: 2 },
+                jsPDF:        { unit: 'in', format: 'letter', orientation: 'landscape' }
+            };
+            html2pdf().set(opt).from(element.innerHTML).save();
+        }
+    </script>
 </body>
 
 </html>
