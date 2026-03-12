@@ -188,8 +188,6 @@
             </button>
         </div>
     </div>
-
-    </div>
 </div>
 
 <!-- Manual Remarks Modal -->
@@ -450,79 +448,10 @@
         try
         {
             var section = _subjects.FirstOrDefault()?.Section ?? "Section";
-            var activeSub = _subjects.FirstOrDefault(s => s.ClassOfferingId == activeSubjectId);
-            var subjectName = activeSub?.SubjectName ?? "All Subjects";
+            var subjectName = _subjects.FirstOrDefault(s => s.ClassOfferingId == activeSubjectId)?.SubjectName ?? "All Subjects";
             var now = DateTime.Now;
-
-            // Build student rows for Attendance Monitoring table
-            var monitoringRows = new System.Text.StringBuilder();
-            foreach (var s in _dailySummaries.OrderBy(x => x.FullName))
-            {
-                var statusColor = s.Status.ToLower() switch {
-                    "present" or "whole-day" => "#065f46",
-                    "absent" => "#991b1b",
-                    _ => "#854d0e"
-                };
-                var statusBg = s.Status.ToLower() switch {
-                    "present" or "whole-day" => "#ecfdf5",
-                    "absent" => "#fef2f2",
-                    _ => "#fefce8"
-                };
-                monitoringRows.Append($"""<tr style="border-bottom:1px solid #f1f5f9">""");
-                monitoringRows.Append($"""<td style="padding:10px;font-weight:bold">{s.FullName}</td>""");
-                monitoringRows.Append($"""<td style="padding:10px;text-align:center"><span style="padding:4px 8px;border-radius:4px;font-size:11px;font-weight:bold;background:{statusBg};color:{statusColor}">{s.Status}</span></td>""");
-                monitoringRows.Append($"""<td style="padding:10px;color:#64748b">{(string.IsNullOrEmpty(s.Remarks) ? "-" : s.Remarks)}</td>""");
-                monitoringRows.Append("</tr>");
-            }
-
-            // Build student rows for Subject Attendance table
-            var subjectRows = new System.Text.StringBuilder();
-            foreach (var r in _subjectAttendanceRecords)
-            {
-                subjectRows.Append($"""<tr style="border-bottom:1px solid #f1f5f9">""");
-                subjectRows.Append($"""<td style="padding:10px;font-weight:bold">{r.StudentName}</td>""");
-                subjectRows.Append($"""<td style="padding:10px;text-align:center">{r.Status}</td>""");
-                subjectRows.Append($"""<td style="padding:10px;text-align:center">{r.TimeIn?.ToString("HH:mm") ?? "--:--"}</td>""");
-                subjectRows.Append($"""<td style="padding:10px;text-align:center">{r.TimeOut?.ToString("HH:mm") ?? "--:--"}</td>""");
-                subjectRows.Append($"""<td style="padding:10px;color:#64748b">{(string.IsNullOrEmpty(r.Remarks) ? "-" : r.Remarks)}</td>""");
-                subjectRows.Append("</tr>");
-            }
-
-            var html = $"""
-                <!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
-                <title>Attendance Report - {section}</title>
-                <style>
-                  body {{ font-family: Arial, sans-serif; color: #222; padding: 30px; }}
-                  h1 {{ font-size: 22px; margin: 0; }}
-                  h2 {{ font-size: 16px; color: #555; margin: 4px 0 0; }}
-                  p.meta {{ font-size: 12px; color: #999; margin: 4px 0 0; }}
-                  .header {{ text-align:center; border-bottom: 2px solid #ccc; padding-bottom: 16px; margin-bottom: 24px; }}
-                  h3 {{ font-size: 14px; border-left: 4px solid #10b981; padding-left: 8px; margin: 20px 0 10px; }}
-                  h3.subject {{ border-color: #3b82f6; }}
-                  table {{ width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 28px; }}
-                  th {{ background: #f8fafc; padding: 10px; text-align: left; color: #64748b; border-bottom: 2px solid #e2e8f0; }}
-                  td {{ padding: 10px; border-bottom: 1px solid #f1f5f9; }}
-                  .footer {{ font-size: 11px; color: #94a3b8; text-align: right; border-top: 1px solid #e2e8f0; padding-top: 8px; margin-top: 30px; }}
-                </style></head><body>
-                <div class="header">
-                  <h1>Adviser Attendance Report</h1>
-                  <h2>Section: {section}</h2>
-                  <p class="meta">Date: {now:MMMM dd, yyyy} &nbsp;|&nbsp; Generated: {now:hh:mm tt}</p>
-                </div>
-                <h3>General Attendance Monitoring</h3>
-                <table><thead><tr>
-                  <th>Student Name</th><th style="text-align:center">Status</th><th>Remarks</th>
-                </tr></thead><tbody>{monitoringRows}</tbody></table>
-                <h3 class="subject">Subject Attendance: {subjectName}</h3>
-                <table><thead><tr>
-                  <th>Student Name</th><th style="text-align:center">Status</th>
-                  <th style="text-align:center">Time In</th><th style="text-align:center">Time Out</th><th>Remarks</th>
-                </tr></thead><tbody>{subjectRows}</tbody></table>
-                <div class="footer">Generated by SARDO-TRACKCARE Adviser Portal</div>
-                </body></html>
-                """;
-
-            var filename = $"Attendance_Report_{section}_{now:yyyyMMdd}.html";
+            var html = BuildReportHtml(section, subjectName, now, _dailySummaries, _subjectAttendanceRecords);
+            var filename = "Attendance_Report_" + section + "_" + now.ToString("yyyyMMdd") + ".html";
             await JSRuntime.InvokeVoidAsync("downloadHtmlReport", html, filename);
         }
         catch (Exception ex)
@@ -530,7 +459,71 @@
             Console.WriteLine("Report Error: " + ex.Message);
         }
     }
+
+    private static string BuildReportHtml(
+        string section,
+        string subjectName,
+        DateTime now,
+        IEnumerable<DailySubjectSummary> monitoring,
+        IEnumerable<SubjectAttendanceRecord> subjects)
+    {
+        var sb = new System.Text.StringBuilder();
+
+        // Monitoring rows
+        var mRows = new System.Text.StringBuilder();
+        foreach (var s in monitoring.OrderBy(x => x.FullName))
+        {
+            var bg = s.Status.ToLower() is "present" or "whole-day" ? "#ecfdf5" : s.Status.ToLower() == "absent" ? "#fef2f2" : "#fefce8";
+            var fg = s.Status.ToLower() is "present" or "whole-day" ? "#065f46" : s.Status.ToLower() == "absent" ? "#991b1b" : "#854d0e";
+            var rem = string.IsNullOrEmpty(s.Remarks) ? "-" : s.Remarks;
+            mRows.Append("<tr>");
+            mRows.Append("<td>" + System.Net.WebUtility.HtmlEncode(s.FullName) + "</td>");
+            mRows.Append("<td style='text-align:center'><b style='background:" + bg + ";color:" + fg + ";padding:2px 8px;border-radius:4px'>" + System.Net.WebUtility.HtmlEncode(s.Status) + "</b></td>");
+            mRows.Append("<td>" + System.Net.WebUtility.HtmlEncode(rem) + "</td>");
+            mRows.Append("</tr>");
+        }
+
+        // Subject rows
+        var sRows = new System.Text.StringBuilder();
+        foreach (var r in subjects)
+        {
+            sRows.Append("<tr>");
+            sRows.Append("<td>" + System.Net.WebUtility.HtmlEncode(r.StudentName) + "</td>");
+            sRows.Append("<td style='text-align:center'>" + System.Net.WebUtility.HtmlEncode(r.Status) + "</td>");
+            sRows.Append("<td style='text-align:center'>" + (r.TimeIn?.ToString("HH:mm") ?? "--:--") + "</td>");
+            sRows.Append("<td style='text-align:center'>" + (r.TimeOut?.ToString("HH:mm") ?? "--:--") + "</td>");
+            sRows.Append("<td>" + System.Net.WebUtility.HtmlEncode(string.IsNullOrEmpty(r.Remarks) ? "-" : r.Remarks) + "</td>");
+            sRows.Append("</tr>");
+        }
+
+        sb.Append("<!DOCTYPE html><html><head><meta charset='UTF-8'>");
+        sb.Append("<title>Attendance Report</title>");
+        sb.Append("<style>body{font-family:Arial,sans-serif;padding:24px;color:#222}");
+        sb.Append("h1{font-size:20px}h2{font-size:15px;color:#555}");
+        sb.Append("h3{margin:20px 0 8px;border-left:4px solid #10b981;padding-left:8px;font-size:14px}");
+        sb.Append("h3.s{border-left-color:#3b82f6}");
+        sb.Append("table{width:100%;border-collapse:collapse;margin-bottom:24px}");
+        sb.Append("th{background:#f8fafc;padding:9px;text-align:left;border-bottom:2px solid #ddd;font-size:12px;color:#555}");
+        sb.Append("td{padding:9px;border-bottom:1px solid #eee;font-size:13px}");
+        sb.Append(".footer{font-size:11px;color:#999;text-align:right;margin-top:20px}</style></head><body>");
+        sb.Append("<div style='text-align:center;border-bottom:2px solid #ccc;padding-bottom:14px;margin-bottom:20px'>");
+        sb.Append("<h1>Adviser Attendance Report</h1>");
+        sb.Append("<h2>Section: " + System.Net.WebUtility.HtmlEncode(section) + "</h2>");
+        sb.Append("<p style='font-size:12px;color:#999'>Date: " + now.ToString("MMMM dd, yyyy") + " | Generated: " + now.ToString("hh:mm tt") + "</p></div>");
+        sb.Append("<h3>General Attendance Monitoring</h3>");
+        sb.Append("<table><thead><tr><th>Student Name</th><th>Status</th><th>Remarks</th></tr></thead><tbody>");
+        sb.Append(mRows);
+        sb.Append("</tbody></table>");
+        sb.Append("<h3 class='s'>Subject Attendance: " + System.Net.WebUtility.HtmlEncode(subjectName) + "</h3>");
+        sb.Append("<table><thead><tr><th>Student Name</th><th>Status</th><th>Time In</th><th>Time Out</th><th>Remarks</th></tr></thead><tbody>");
+        sb.Append(sRows);
+        sb.Append("</tbody></table>");
+        sb.Append("<div class='footer'>Generated by SARDO-TRACKCARE Adviser Portal</div>");
+        sb.Append("</body></html>");
+        return sb.ToString();
+    }
 }
+
 
 <style>
     .btn-report-circle {
