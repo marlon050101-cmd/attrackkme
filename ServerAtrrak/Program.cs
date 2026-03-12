@@ -41,7 +41,7 @@ namespace ServerAtrrak
             builder.Services.AddScoped<QRValidationService>();
             
             // Register guidance services
-            builder.Services.AddScoped<IGuidanceService, GuidanceServiceNoDateFilter>();
+            builder.Services.AddScoped<IGuidanceService, GuidanceService>();
             
             // Register teacher services
             builder.Services.AddScoped<TeacherService>();

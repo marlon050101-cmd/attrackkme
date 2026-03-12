@@ -87,6 +87,8 @@ namespace ServerAtrrak.Services
                            COUNT(DISTINCT sa.Date) as TotalDays,
                            COUNT(DISTINCT CASE WHEN sa.Status IN ('Present','Late') THEN sa.Date END) as PresentDays,
                            COUNT(DISTINCT CASE WHEN sa.Status = 'Absent' THEN sa.Date END) as AbsentDays,
+                           COUNT(DISTINCT CASE WHEN sa.Status = 'Late' THEN sa.Date END) as LateDays,
+                           MIN(CASE WHEN sa.Status = 'Absent' THEN sa.Date END) as FirstAbsentDate,
                            MAX(CASE WHEN sa.Status = 'Absent' THEN sa.Date END) as LastAbsentDate,
                            GROUP_CONCAT(DISTINCT CASE WHEN sa.Status = 'Absent' THEN DATE_FORMAT(sa.Date, '%Y-%m-%d') END ORDER BY sa.Date DESC SEPARATOR ',') as AbsentDates,
                            COALESCE((SELECT Status FROM guidance_cases WHERE StudentId = s.StudentId ORDER BY UpdatedAt DESC LIMIT 1), 'Normal') as GuidanceStatus
@@ -118,9 +120,11 @@ namespace ServerAtrrak.Services
                             TotalDays = totalDays,
                             PresentDays = presentDays,
                             AbsentDays = reader.IsDBNull("AbsentDays") ? 0 : Convert.ToInt32(reader["AbsentDays"]),
+                            LateDays = reader.IsDBNull("LateDays") ? 0 : Convert.ToInt32(reader["LateDays"]),
                             AttendanceRate = totalDays > 0 ? (double)presentDays / totalDays * 100 : 0,
                             GuidanceStatus = reader.GetString("GuidanceStatus"),
                             SubjectName = "Overall",
+                            FirstAbsentDate = reader.IsDBNull("FirstAbsentDate") ? null : reader.GetDateTime("FirstAbsentDate"),
                             LastAbsentDate = reader.IsDBNull("LastAbsentDate") ? null : reader.GetDateTime("LastAbsentDate"),
                             AbsentDates = reader.IsDBNull("AbsentDates") ? "" : reader.GetString("AbsentDates")
                         });
