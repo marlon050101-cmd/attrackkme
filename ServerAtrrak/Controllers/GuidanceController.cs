@@ -156,6 +156,9 @@ namespace ServerAtrrak.Controllers
             {
                 _logger.LogInformation("Testing guidance counselor {UserId}", userId);
                 
+                using var connection = new MySqlConnection(_dbConnection.GetConnection());
+                await connection.OpenAsync();
+
                 // Test 1: Check if user exists
                 var userExists = await CheckUserExistsAsync(userId);
                 if (!userExists)
@@ -168,24 +171,40 @@ namespace ServerAtrrak.Controllers
                 }
 
                 // Test 2: Check if user has teacher record
-                var teacherExists = await CheckTeacherExistsAsync(userId);
-                if (!teacherExists)
+                var queryTeacher = "SELECT TeacherId FROM user WHERE UserId = @UserId";
+                string? teacherId = null;
+                using (var cmd = new MySqlCommand(queryTeacher, connection))
+                {
+                    cmd.Parameters.AddWithValue("@UserId", userId);
+                    teacherId = (await cmd.ExecuteScalarAsync())?.ToString();
+                }
+
+                if (string.IsNullOrEmpty(teacherId))
                 {
                     return Ok(new { 
-                        status = "Teacher record not found",
+                        status = "TeacherId missing",
                         userId = userId,
-                        message = "The user exists but has no teacher record"
+                        message = "The user exists but their TeacherId is null. They must be linked to a record in the 'teacher' table."
                     });
                 }
 
                 // Test 3: Get school ID
                 var schoolId = await GetGuidanceCounselorSchoolIdAsync(userId);
+                
+                // Extra info for diagnostics: are there ANY schools?
+                var schoolCount = 0;
+                using (var cmd = new MySqlCommand("SELECT COUNT(*) FROM school", connection))
+                {
+                    schoolCount = Convert.ToInt32(await cmd.ExecuteScalarAsync());
+                }
+
                 if (string.IsNullOrEmpty(schoolId))
                 {
                     return Ok(new { 
                         status = "School not found",
                         userId = userId,
-                        message = "The guidance counselor has no school assigned"
+                        schoolCount = schoolCount,
+                        message = schoolCount == 0 ? "Zero schools exist in the 'school' table. Setup your school first." : "The guidance counselor has no school assigned. Tap 'Repair' to link your account."
                     });
                 }
 
@@ -197,6 +216,7 @@ namespace ServerAtrrak.Controllers
                     userId = userId,
                     schoolId = schoolId,
                     studentCount = studentCount,
+                    schoolCount = schoolCount,
                     message = "Guidance counselor setup is correct"
                 });
             }
@@ -204,6 +224,81 @@ namespace ServerAtrrak.Controllers
             {
                 _logger.LogError(ex, "Error testing guidance counselor {UserId}: {Message}", userId, ex.Message);
                 return StatusCode(500, new { message = $"Test failed: {ex.Message}" });
+            }
+        }
+
+        [HttpPost("repair-setup/{userId}")]
+        public async Task<ActionResult> FixGuidanceSetup(string userId)
+        {
+            try
+            {
+                _logger.LogInformation("Attempting to auto-repair guidance setup for {UserId}", userId);
+                using var connection = new MySqlConnection(_dbConnection.GetConnection());
+                await connection.OpenAsync();
+
+                // 1. Get the first school ID from the DB
+                string? schoolId = null;
+                using (var cmd = new MySqlCommand("SELECT SchoolId FROM school LIMIT 1", connection))
+                {
+                    schoolId = (await cmd.ExecuteScalarAsync())?.ToString();
+                }
+
+                if (string.IsNullOrEmpty(schoolId))
+                {
+                    return BadRequest(new { message = "No schools found in database to link to." });
+                }
+
+                // 2. Get the TeacherId tied to this user
+                string? teacherId = null;
+                using (var cmd = new MySqlCommand("SELECT TeacherId FROM user WHERE UserId = @UserId", connection))
+                {
+                    cmd.Parameters.AddWithValue("@UserId", userId);
+                    teacherId = (await cmd.ExecuteScalarAsync())?.ToString();
+                }
+
+                if (string.IsNullOrEmpty(teacherId))
+                {
+                    // Create a dummy teacher record if missing? 
+                    // No, let's just fail and tell them to register properly or manually link.
+                    // But for "Auto-Fix", let's try to be helpful.
+                    return BadRequest(new { message = "User has no TeacherId. Account might be corrupt or incomplete." });
+                }
+
+                // 3. Update both tables
+                using var transaction = await connection.BeginTransactionAsync();
+                try
+                {
+                    // Update user table
+                    var updateU = "UPDATE user SET SchoolId = @Sid WHERE UserId = @Uid";
+                    using (var cmd = new MySqlCommand(updateU, connection, transaction))
+                    {
+                        cmd.Parameters.AddWithValue("@Sid", schoolId);
+                        cmd.Parameters.AddWithValue("@Uid", userId);
+                        await cmd.ExecuteNonQueryAsync();
+                    }
+
+                    // Update teacher table
+                    var updateT = "UPDATE teacher SET SchoolId = @Sid WHERE TeacherId = @Tid";
+                    using (var cmd = new MySqlCommand(updateT, connection, transaction))
+                    {
+                        cmd.Parameters.AddWithValue("@Sid", schoolId);
+                        cmd.Parameters.AddWithValue("@Tid", teacherId);
+                        await cmd.ExecuteNonQueryAsync();
+                    }
+
+                    await transaction.CommitAsync();
+                    return Ok(new { success = true, schoolId = schoolId, message = "Successfully linked to first available school." });
+                }
+                catch (Exception ex)
+                {
+                    await transaction.RollbackAsync();
+                    throw ex;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error repairing guidance setup for {UserId}", userId);
+                return StatusCode(500, new { message = ex.Message });
             }
         }
 
