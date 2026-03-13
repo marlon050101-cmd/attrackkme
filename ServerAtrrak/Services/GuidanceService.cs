@@ -433,10 +433,10 @@ namespace ServerAtrrak.Services
                 // Get count of unique dates in the last 7 days for this school
                 var dateCountQuery = "SELECT COUNT(DISTINCT Date) FROM student_daily_summary ds INNER JOIN student s ON ds.StudentId = s.StudentId WHERE s.SchoolId = @SchoolId AND ds.Date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)";
                 int schoolDays = 0;
-                using (var cmd = new MySqlCommand(dateCountQuery, connection))
+                using (var countCmd = new MySqlCommand(dateCountQuery, connection))
                 {
-                    cmd.Parameters.AddWithValue("@SchoolId", schoolId);
-                    schoolDays = Convert.ToInt32(await cmd.ExecuteScalarAsync());
+                    countCmd.Parameters.AddWithValue("@SchoolId", schoolId);
+                    schoolDays = Convert.ToInt32(await countCmd.ExecuteScalarAsync());
                 }
                 
                 if (schoolDays <= 0) return 0;
@@ -449,10 +449,10 @@ namespace ServerAtrrak.Services
                     WHERE s.SchoolId = @SchoolId 
                       AND ds.Date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)";
 
-                using var cmd = new MySqlCommand(query, connection);
-                cmd.Parameters.AddWithValue("@SchoolId", schoolId);
+                using var attendanceCmd = new MySqlCommand(query, connection);
+                attendanceCmd.Parameters.AddWithValue("@SchoolId", schoolId);
 
-                using var reader = await cmd.ExecuteReaderAsync();
+                using var reader = await attendanceCmd.ExecuteReaderAsync();
                 if (await reader.ReadAsync())
                 {
                     long present = reader.IsDBNull(0) ? 0 : Convert.ToInt64(reader[0]);
@@ -566,10 +566,10 @@ namespace ServerAtrrak.Services
                 // Get count of unique dates in the last 7 days for this school
                 var dateCountQuery = "SELECT COUNT(DISTINCT Date) FROM student_daily_summary ds INNER JOIN student s ON ds.StudentId = s.StudentId WHERE s.SchoolId = @SchoolId AND ds.Date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)";
                 int schoolDays = 0;
-                using (var cmd = new MySqlCommand(dateCountQuery, connection))
+                using (var countCmd = new MySqlCommand(dateCountQuery, connection))
                 {
-                    cmd.Parameters.AddWithValue("@SchoolId", schoolId);
-                    schoolDays = Convert.ToInt32(await cmd.ExecuteScalarAsync());
+                    countCmd.Parameters.AddWithValue("@SchoolId", schoolId);
+                    schoolDays = Convert.ToInt32(await countCmd.ExecuteScalarAsync());
                 }
 
                 if (schoolDays <= 0) return 0;
@@ -583,9 +583,9 @@ namespace ServerAtrrak.Services
                       AND ds.Date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
                       AND ds.Status IN ('Whole Day', 'Half Day')";
 
-                using var cmd = new MySqlCommand(query, connection);
-                cmd.Parameters.AddWithValue("@SchoolId", schoolId);
-                using var reader = await cmd.ExecuteReaderAsync();
+                using var onTimeCmd = new MySqlCommand(query, connection);
+                onTimeCmd.Parameters.AddWithValue("@SchoolId", schoolId);
+                using var reader = await onTimeCmd.ExecuteReaderAsync();
                 if (await reader.ReadAsync())
                 {
                     long onTime = reader.IsDBNull(0) ? 0 : Convert.ToInt64(reader[0]);
