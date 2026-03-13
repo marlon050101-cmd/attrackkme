@@ -35,7 +35,9 @@ namespace ServerAtrrak.Services
                     schoolId = (await cmd.ExecuteScalarAsync())?.ToString();
                 }
 
-                var activePeriodId = !string.IsNullOrEmpty(schoolId) ? (await _periodService.GetActivePeriodAsync(schoolId))?.PeriodId : null;
+                var activePeriods = !string.IsNullOrEmpty(schoolId) ? await _periodService.GetAllPeriodsAsync(schoolId) : new List<AcademicPeriod>();
+                var activeJhsId = activePeriods.FirstOrDefault(p => p.IsActive && (p.AcademicLevel == "Junior High" || p.AcademicLevel == "General"))?.PeriodId;
+                var activeShsId = activePeriods.FirstOrDefault(p => p.IsActive && (p.AcademicLevel == "Senior High" || p.AcademicLevel == "General"))?.PeriodId;
 
                 var query = @"
                     SELECT 
@@ -55,12 +57,17 @@ namespace ServerAtrrak.Services
                     INNER JOIN subject s ON ts.SubjectId = s.SubjectId
                     LEFT JOIN teacher adv ON ts.AdviserId = adv.TeacherId
                     WHERE ts.TeacherId = @TeacherId
-                      AND (@PeriodId IS NULL OR ts.PeriodId = @PeriodId)
+                      AND (
+                        (@JhsId IS NULL AND @ShsId IS NULL) OR
+                        (s.GradeLevel <= 10 AND ts.PeriodId = @JhsId) OR
+                        (s.GradeLevel >= 11 AND ts.PeriodId = @ShsId)
+                      )
                     ORDER BY s.GradeLevel, s.Strand, COALESCE(ts.ScheduleStart, '00:00:00')";
 
                 using var command = new MySqlCommand(query, connection);
                 command.Parameters.AddWithValue("@TeacherId", teacherId);
-                command.Parameters.AddWithValue("@PeriodId", (object)activePeriodId ?? DBNull.Value);
+                command.Parameters.AddWithValue("@JhsId", (object)activeJhsId ?? DBNull.Value);
+                command.Parameters.AddWithValue("@ShsId", (object)activeShsId ?? DBNull.Value);
 
                 using var reader = await command.ExecuteReaderAsync();
                 while (await reader.ReadAsync())
@@ -107,11 +114,13 @@ namespace ServerAtrrak.Services
                 // Check if Subject table is empty and initialize with sample data
                 await InitializeSampleSubjectsIfEmpty(connection);
 
-                string? activePeriodId = null;
+                string? activeJhsId = null;
+                string? activeShsId = null;
                 if (!string.IsNullOrEmpty(filter.SchoolId))
                 {
-                    var period = await _periodService.GetActivePeriodAsync(filter.SchoolId);
-                    activePeriodId = period?.PeriodId;
+                    var periods = await _periodService.GetAllPeriodsAsync(filter.SchoolId);
+                    activeJhsId = periods.FirstOrDefault(p => p.IsActive && (p.AcademicLevel == "Junior High" || p.AcademicLevel == "General"))?.PeriodId;
+                    activeShsId = periods.FirstOrDefault(p => p.IsActive && (p.AcademicLevel == "Senior High" || p.AcademicLevel == "General"))?.PeriodId;
                 }
 
                 var query = @"
@@ -124,12 +133,13 @@ namespace ServerAtrrak.Services
                     FROM subject s
                     WHERE 1=1";
 
-                if (!string.IsNullOrEmpty(activePeriodId))
+                if (!string.IsNullOrEmpty(activeJhsId) || !string.IsNullOrEmpty(activeShsId))
                 {
                     query += @" AND s.SubjectId NOT IN (
                         SELECT DISTINCT ts.SubjectId 
                         FROM teachersubject ts
-                        WHERE ts.PeriodId = @PeriodId
+                        WHERE (s.GradeLevel <= 10 AND ts.PeriodId = @JhsId) 
+                           OR (s.GradeLevel >= 11 AND ts.PeriodId = @ShsId)
                     )";
                 }
                 else
@@ -141,10 +151,8 @@ namespace ServerAtrrak.Services
                 }
 
                 var parameters = new List<MySqlParameter>();
-                if (!string.IsNullOrEmpty(activePeriodId))
-                {
-                    parameters.Add(new MySqlParameter("@PeriodId", activePeriodId));
-                }
+                parameters.Add(new MySqlParameter("@JhsId", (object)activeJhsId ?? DBNull.Value));
+                parameters.Add(new MySqlParameter("@ShsId", (object)activeShsId ?? DBNull.Value));
 
                 if (filter.GradeLevel.HasValue)
                 {
@@ -215,16 +223,16 @@ namespace ServerAtrrak.Services
                 using var connection = new MySqlConnection(_dbConnection.GetConnection());
                 await connection.OpenAsync();
 
-                // Get active period for the teacher's school
-                var getSchoolQuery = "SELECT SchoolId FROM teacher WHERE TeacherId = @TeacherId";
-                string? schoolId = null;
-                using (var cmd = new MySqlCommand(getSchoolQuery, connection))
+                // Get subject grade level to find correct active period
+                var getGradeQuery = "SELECT GradeLevel FROM subject WHERE SubjectId = @SubjectId";
+                int gradeLevel = 0;
+                using (var cmd = new MySqlCommand(getGradeQuery, connection))
                 {
-                    cmd.Parameters.AddWithValue("@TeacherId", request.TeacherId);
-                    schoolId = (await cmd.ExecuteScalarAsync())?.ToString();
+                    cmd.Parameters.AddWithValue("@SubjectId", request.SubjectId);
+                    gradeLevel = Convert.ToInt32(await cmd.ExecuteScalarAsync());
                 }
 
-                var activePeriodId = !string.IsNullOrEmpty(schoolId) ? (await _periodService.GetActivePeriodAsync(schoolId))?.PeriodId : null;
+                var activePeriodId = !string.IsNullOrEmpty(schoolId) ? (await _periodService.GetActivePeriodAsync(schoolId, gradeLevel))?.PeriodId : null;
 
                 // Check if teacher already has this subject in the CURRENT period
                 var checkQuery = "SELECT COUNT(*) FROM teachersubject WHERE TeacherId = @TeacherId AND SubjectId = @SubjectId AND (@PeriodId IS NULL OR PeriodId = @PeriodId)";

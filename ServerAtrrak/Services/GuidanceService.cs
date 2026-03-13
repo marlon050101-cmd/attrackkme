@@ -83,8 +83,9 @@ namespace ServerAtrrak.Services
                 await connection.OpenAsync();
                 var summaryMap = new Dictionary<string, AttendanceSummary>();
 
-                var activePeriod = await _periodService.GetActivePeriodAsync(schoolId);
-                var activePeriodId = activePeriod?.PeriodId;
+                var activePeriods = await _periodService.GetAllPeriodsAsync(schoolId);
+                var activeJhsId = activePeriods.FirstOrDefault(p => p.IsActive && (p.AcademicLevel == "Junior High" || p.AcademicLevel == "General"))?.PeriodId;
+                var activeShsId = activePeriods.FirstOrDefault(p => p.IsActive && (p.AcademicLevel == "Senior High" || p.AcademicLevel == "General"))?.PeriodId;
 
                 // Query 1: Overall stats from student_daily_summary (Source of truth for Absences)
                 var dailyQuery = @"
@@ -99,14 +100,19 @@ namespace ServerAtrrak.Services
                     WHERE s.SchoolId = @SchoolId
                       AND s.IsActive = true
                       AND ds.Date >= DATE_SUB(CURDATE(), INTERVAL @Days DAY)
-                      AND (@PeriodId IS NULL OR ds.PeriodId = @PeriodId)
+                      AND (
+                        (@JhsId IS NULL AND @ShsId IS NULL) OR
+                        (s.GradeLevel <= 10 AND ds.PeriodId = @JhsId) OR
+                        (s.GradeLevel >= 11 AND ds.PeriodId = @ShsId)
+                      )
                     GROUP BY s.StudentId, s.FullName, s.GradeLevel, s.Section, s.Strand, s.Gender";
 
                 using (var command = new MySqlCommand(dailyQuery, connection))
                 {
                     command.Parameters.AddWithValue("@SchoolId", schoolId);
                     command.Parameters.AddWithValue("@Days", days);
-                    command.Parameters.AddWithValue("@PeriodId", (object)activePeriodId ?? DBNull.Value);
+                    command.Parameters.AddWithValue("@JhsId", (object)activeJhsId ?? DBNull.Value);
+                    command.Parameters.AddWithValue("@ShsId", (object)activeShsId ?? DBNull.Value);
                     using var reader = await command.ExecuteReaderAsync();
                     while (await reader.ReadAsync())
                     {
@@ -148,14 +154,19 @@ namespace ServerAtrrak.Services
                     WHERE s.SchoolId = @SchoolId 
                       AND sa.Date >= DATE_SUB(CURDATE(), INTERVAL @Days DAY)
                       AND sa.TimeIn IS NOT NULL AND sa.TimeOut IS NULL
-                      AND (@PeriodId IS NULL OR sa.PeriodId = @PeriodId)
+                      AND (
+                        (@JhsId IS NULL AND @ShsId IS NULL) OR
+                        (s.GradeLevel <= 10 AND sa.PeriodId = @JhsId) OR
+                        (s.GradeLevel >= 11 AND sa.PeriodId = @ShsId)
+                      )
                     GROUP BY s.StudentId, SubjectName";
 
                 using (var command = new MySqlCommand(subjectQuery, connection))
                 {
                     command.Parameters.AddWithValue("@SchoolId", schoolId);
                     command.Parameters.AddWithValue("@Days", days);
-                    command.Parameters.AddWithValue("@PeriodId", (object)activePeriodId ?? DBNull.Value);
+                    command.Parameters.AddWithValue("@JhsId", (object)activeJhsId ?? DBNull.Value);
+                    command.Parameters.AddWithValue("@ShsId", (object)activeShsId ?? DBNull.Value);
                     using var reader = await command.ExecuteReaderAsync();
                     while (await reader.ReadAsync())
                     {
@@ -174,7 +185,8 @@ namespace ServerAtrrak.Services
                 // Final Pass: Guidance Status and Consecutive Absences
                 foreach (var s in summaryMap.Values)
                 {
-                    s.ConsecutiveAbsences = await GetConsecutiveAbsencesAsync(s.StudentId, null, connection, activePeriodId);
+                    var studentPeriodId = s.GradeLevel <= 10 ? activeJhsId : activeShsId;
+                    s.ConsecutiveAbsences = await GetConsecutiveAbsencesAsync(s.StudentId, null, connection, studentPeriodId);
                 }
 
                 // Threshold filtering
@@ -270,8 +282,14 @@ namespace ServerAtrrak.Services
                 var gradeLevels = flaggedStudents.Select(s => s.GradeLevel).Distinct().Count();
                 var sections = flaggedStudents.Select(s => s.Section).Distinct().Count();
 
-                var activePeriod = await _periodService.GetActivePeriodAsync(schoolId);
-                var activePeriodId = activePeriod?.PeriodId;
+                var activePeriods = await _periodService.GetAllPeriodsAsync(schoolId);
+                var activeJhsId = activePeriods.FirstOrDefault(p => p.IsActive && (p.AcademicLevel == "Junior High" || p.AcademicLevel == "General"))?.PeriodId;
+                var activeShsId = activePeriods.FirstOrDefault(p => p.IsActive && (p.AcademicLevel == "Senior High" || p.AcademicLevel == "General"))?.PeriodId;
+
+                // For the dashboard display, use the SHS period if available, otherwise JHS, otherwise General
+                var displayPeriod = activePeriods.FirstOrDefault(p => p.IsActive && p.AcademicLevel == "Senior High") 
+                                 ?? activePeriods.FirstOrDefault(p => p.IsActive && p.AcademicLevel == "Junior High")
+                                 ?? activePeriods.FirstOrDefault(p => p.IsActive && p.AcademicLevel == "General");
 
                 return new GuidanceDashboardData
                 {
@@ -282,12 +300,12 @@ namespace ServerAtrrak.Services
                     SectionsMonitored = sections,
                     StudentsAtRisk = flaggedStudents,
                     AllStudents = students,
-                    WeeklyAttendanceRate = await GetSchoolWeeklyAttendanceRateAsync(schoolId, students.Count, activePeriodId),
-                    DailyPresenceRate = await GetDailyPresenceRateAsync(schoolId, students.Count, activePeriodId),
-                    CaseResolutionRate = await GetCaseResolutionRateAsync(schoolId, activePeriodId),
-                    OnTimeArrivalRate = await GetOnTimeArrivalRateAsync(schoolId, students.Count, activePeriodId),
-                    DailyTrends = await GetDailyAttendanceTrendsAsync(schoolId, days, students.Count, activePeriodId),
-                    ActivePeriod = activePeriod
+                    WeeklyAttendanceRate = await GetMultiLevelAttendanceRateAsync(schoolId, students, activeJhsId, activeShsId),
+                    DailyPresenceRate = await GetMultiLevelDailyPresenceRateAsync(schoolId, students, activeJhsId, activeShsId),
+                    CaseResolutionRate = await GetMultiLevelCaseResolutionRateAsync(schoolId, activeJhsId, activeShsId),
+                    OnTimeArrivalRate = await GetMultiLevelOnTimeArrivalRateAsync(schoolId, students, activeJhsId, activeShsId),
+                    DailyTrends = await GetDailyAttendanceTrendsAsync(schoolId, days, students.Count, activeJhsId), // Trends use JHS as default or similar
+                    ActivePeriod = displayPeriod
                 };
             }
             catch (Exception ex)
@@ -642,6 +660,76 @@ namespace ServerAtrrak.Services
                 return 0;
             }
             catch { return 0; }
+        }
+
+        private async Task<double> GetMultiLevelAttendanceRateAsync(string schoolId, List<StudentInfo> students, string? jhsId, string? shsId)
+        {
+            var jhsCount = students.Count(s => s.GradeLevel <= 10);
+            var shsCount = students.Count(s => s.GradeLevel >= 11);
+            if (jhsCount + shsCount == 0) return 0;
+
+            double jhsRate = jhsCount > 0 ? await GetSchoolWeeklyAttendanceRateAsync(schoolId, jhsCount, jhsId) : 0;
+            double shsRate = shsCount > 0 ? await GetSchoolWeeklyAttendanceRateAsync(schoolId, shsCount, shsId) : 0;
+
+            return (jhsRate * jhsCount + shsRate * shsCount) / (jhsCount + shsCount);
+        }
+
+        private async Task<double> GetMultiLevelDailyPresenceRateAsync(string schoolId, List<StudentInfo> students, string? jhsId, string? shsId)
+        {
+            var jhsCount = students.Count(s => s.GradeLevel <= 10);
+            var shsCount = students.Count(s => s.GradeLevel >= 11);
+            if (jhsCount + shsCount == 0) return 0;
+
+            double jhsRate = jhsCount > 0 ? await GetDailyPresenceRateAsync(schoolId, jhsCount, jhsId) : 0;
+            double shsRate = shsCount > 0 ? await GetDailyPresenceRateAsync(schoolId, shsCount, shsId) : 0;
+
+            return (jhsRate * jhsCount + shsRate * shsCount) / (jhsCount + shsCount);
+        }
+
+        private async Task<double> GetMultiLevelCaseResolutionRateAsync(string schoolId, string? jhsId, string? shsId)
+        {
+            try
+            {
+                using var connection = new MySqlConnection(_dbConnection.GetConnection());
+                await connection.OpenAsync();
+                var query = @"
+                    SELECT 
+                        COUNT(*) as Total,
+                        SUM(CASE WHEN Status = 'Resolved' THEN 1 ELSE 0 END) as Resolved
+                    FROM guidance_cases gc
+                    INNER JOIN student s ON gc.StudentId = s.StudentId
+                    WHERE s.SchoolId = @SchoolId
+                      AND (
+                        (@JhsId IS NULL AND @ShsId IS NULL) OR
+                        (s.GradeLevel <= 10 AND gc.PeriodId = @JhsId) OR
+                        (s.GradeLevel >= 11 AND gc.PeriodId = @ShsId)
+                      )";
+                using var cmd = new MySqlCommand(query, connection);
+                cmd.Parameters.AddWithValue("@SchoolId", schoolId);
+                cmd.Parameters.AddWithValue("@JhsId", (object)jhsId ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@ShsId", (object)shsId ?? DBNull.Value);
+                using var reader = await cmd.ExecuteReaderAsync();
+                if (await reader.ReadAsync())
+                {
+                    long total = reader.IsDBNull(0) ? 0 : Convert.ToInt64(reader[0]);
+                    long resolved = reader.IsDBNull(1) ? 0 : Convert.ToInt64(reader[1]);
+                    return total > 0 ? (double)resolved / total * 100 : 0;
+                }
+                return 0;
+            }
+            catch { return 0; }
+        }
+
+        private async Task<double> GetMultiLevelOnTimeArrivalRateAsync(string schoolId, List<StudentInfo> students, string? jhsId, string? shsId)
+        {
+            var jhsCount = students.Count(s => s.GradeLevel <= 10);
+            var shsCount = students.Count(s => s.GradeLevel >= 11);
+            if (jhsCount + shsCount == 0) return 0;
+
+            double jhsRate = jhsCount > 0 ? await GetOnTimeArrivalRateAsync(schoolId, jhsCount, jhsId) : 0;
+            double shsRate = shsCount > 0 ? await GetOnTimeArrivalRateAsync(schoolId, shsCount, shsId) : 0;
+
+            return (jhsRate * jhsCount + shsRate * shsCount) / (jhsCount + shsCount);
         }
     }
 

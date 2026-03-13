@@ -9,9 +9,12 @@ namespace ServerAtrrak.Services
     {
         private readonly Dbconnection _dbConnection;
 
-        public TeacherService(Dbconnection dbConnection)
+        private readonly IAcademicPeriodService _periodService;
+
+        public TeacherService(Dbconnection dbConnection, IAcademicPeriodService periodService)
         {
             _dbConnection = dbConnection;
+            _periodService = periodService;
         }
 
         public async Task<TeacherDashboardData?> GetTeacherDashboardDataAsync(string teacherId)
@@ -555,15 +558,32 @@ namespace ServerAtrrak.Services
         {
             try
             {
-                using var connection = await _dbConnection.GetConnectionAsync();
+                // Get student info for period filtering
+                var studentInfoQuery = "SELECT SchoolId, GradeLevel FROM student WHERE StudentId = @Sid";
+                string? schoolId = null;
+                int gradeLevel = 0;
+                using (var scmd = new MySqlCommand(studentInfoQuery, connection))
+                {
+                    scmd.Parameters.AddWithValue("@Sid", studentId);
+                    using var sreader = await scmd.ExecuteReaderAsync();
+                    if (await sreader.ReadAsync())
+                    {
+                        schoolId = sreader.GetString(0);
+                        gradeLevel = sreader.GetInt32(1);
+                    }
+                }
                 
+                var periodId = schoolId != null ? (await _periodService.GetActivePeriodAsync(schoolId, gradeLevel))?.PeriodId : null;
+
                 var query = @"
                     SELECT COUNT(*) as AbsenceCount
                     FROM daily_attendance 
-                    WHERE StudentId = @studentId AND Status = 'Absent'";
+                    WHERE StudentId = @studentId AND Status = 'Absent'
+                    AND (@PeriodId IS NULL OR PeriodId = @PeriodId)";
                 
                 using var command = new MySqlCommand(query, connection);
                 command.Parameters.AddWithValue("@studentId", studentId);
+                command.Parameters.AddWithValue("@PeriodId", (object?)periodId ?? DBNull.Value);
                 
                 var result = await command.ExecuteScalarAsync();
                 return result != null ? Convert.ToInt32(result) : 0;
@@ -697,6 +717,10 @@ namespace ServerAtrrak.Services
                     totalStudents = result != null ? Convert.ToInt32(result) : 0;
                 }
 
+                // Get active period for the teacher's grade level
+                var period = await _periodService.GetActivePeriodAsync(schoolId, gradeLevel);
+                var periodId = period?.PeriodId;
+
                 // Get today's attendance
                 var today = DateTime.Today;
                 var attendanceQuery = @"
@@ -704,7 +728,7 @@ namespace ServerAtrrak.Services
                         COUNT(CASE WHEN da.Status = 'Present' THEN 1 END) as PresentToday,
                         COUNT(CASE WHEN da.Status = 'Absent' THEN 1 END) as AbsentToday
                     FROM student s
-                    LEFT JOIN DailyAttendances da ON s.StudentId = da.StudentId AND da.Date = @today
+                    LEFT JOIN daily_attendance da ON s.StudentId = da.StudentId AND da.Date = @today AND da.PeriodId = @PeriodId
                     WHERE s.SchoolId = @schoolId AND s.GradeLevel = @gradeLevel AND s.IsActive = 1";
                 
                 int presentToday = 0;
@@ -715,6 +739,7 @@ namespace ServerAtrrak.Services
                     command.Parameters.AddWithValue("@schoolId", schoolId);
                     command.Parameters.AddWithValue("@gradeLevel", gradeLevel);
                     command.Parameters.AddWithValue("@today", today);
+                    command.Parameters.AddWithValue("@PeriodId", (object?)periodId ?? DBNull.Value);
                     
                     using var reader = await command.ExecuteReaderAsync();
                     if (await reader.ReadAsync())
@@ -733,6 +758,7 @@ namespace ServerAtrrak.Services
                         SELECT COUNT(*) 
                         FROM daily_attendance da 
                         WHERE da.StudentId = s.StudentId AND da.Status = 'Absent'
+                        AND (@PeriodId IS NULL OR da.PeriodId = @PeriodId)
                     ) >= 3";
                 
                 int studentsAtRisk = 0;
@@ -740,6 +766,7 @@ namespace ServerAtrrak.Services
                 {
                     command.Parameters.AddWithValue("@schoolId", schoolId);
                     command.Parameters.AddWithValue("@gradeLevel", gradeLevel);
+                    command.Parameters.AddWithValue("@PeriodId", (object?)periodId ?? DBNull.Value);
                     
                     var result = await command.ExecuteScalarAsync();
                     studentsAtRisk = result != null ? Convert.ToInt32(result) : 0;

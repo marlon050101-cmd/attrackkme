@@ -8,15 +8,17 @@ namespace ServerAtrrak.Services
 {
     public class AttendanceService
     {
+        private readonly IAcademicPeriodService _periodService;
         private readonly Dbconnection _dbConnection;
         private readonly ILogger<AttendanceService> _logger;
         private readonly IHubContext<AttendanceHub> _hubContext;
 
-        public AttendanceService(Dbconnection dbConnection, ILogger<AttendanceService> logger, IHubContext<AttendanceHub> hubContext)
+        public AttendanceService(Dbconnection dbConnection, ILogger<AttendanceService> logger, IHubContext<AttendanceHub> hubContext, IAcademicPeriodService periodService)
         {
             _dbConnection = dbConnection;
             _logger = logger;
             _hubContext = hubContext;
+            _periodService = periodService;
         }
 
         public async Task<AttendanceResponse> MarkAttendanceAsync(AttendanceRequest request)
@@ -61,8 +63,13 @@ namespace ServerAtrrak.Services
                 // Determine status and remarks
                 var (status, remarks) = await DetermineAttendanceStatusAndRemarksAsync(request);
 
+                // Get student's school and grade level to find correct active period
+                var (schoolId, gradeLevel) = await GetStudentInfoAsync(request.StudentId);
+                var period = !string.IsNullOrEmpty(schoolId) ? await _periodService.GetActivePeriodAsync(schoolId, gradeLevel) : null;
+                var periodId = period?.PeriodId;
+
                 // Mark attendance
-                await InsertAttendanceRecordAsync(request, status, remarks);
+                await InsertAttendanceRecordAsync(request, status, remarks, periodId);
 
                 _logger.LogInformation("Successfully marked attendance for student {StudentId} with status {Status} and remarks {Remarks}", 
                     request.StudentId, status, remarks);
@@ -142,22 +149,31 @@ namespace ServerAtrrak.Services
         {
             var attendance = new List<AttendanceRecord>();
 
-            try
-            {
-                using var connection = new MySqlConnection(_dbConnection.GetConnection());
-                await connection.OpenAsync();
+                // Get student's grade level and find correct active periods
+                var activePeriods = !string.IsNullOrEmpty(schoolId) ? await _periodService.GetAllPeriodsAsync(schoolId) : new List<AcademicPeriod>();
+                var activeJhsId = activePeriods.FirstOrDefault(p => p.IsActive && (p.AcademicLevel == "Junior High" || p.AcademicLevel == "General"))?.PeriodId;
+                var activeShsId = activePeriods.FirstOrDefault(p => p.IsActive && (p.AcademicLevel == "Senior High" || p.AcademicLevel == "General"))?.PeriodId;
 
                 var query = @"
                     SELECT da.StudentId, s.FullName, da.Date, da.TimeIn, da.TimeOut, da.Status, da.Remarks
                     FROM daily_attendance da
                     INNER JOIN student s ON da.StudentId = s.StudentId
                     WHERE da.Date = @Date
+                      AND (
+                        (@JhsId IS NULL AND @ShsId IS NULL) OR
+                        (s.GradeLevel <= 10 AND da.PeriodId = @JhsId) OR
+                        (s.GradeLevel >= 11 AND da.PeriodId = @ShsId)
+                      )
                     ORDER BY da.Date DESC, da.TimeIn DESC";
 
                 using var command = new MySqlCommand(query, connection);
                 command.Parameters.AddWithValue("@Date", date.Date);
+                command.Parameters.AddWithValue("@JhsId", (object?)activeJhsId ?? DBNull.Value);
+                command.Parameters.AddWithValue("@ShsId", (object?)activeShsId ?? DBNull.Value);
 
                 using var reader = await command.ExecuteReaderAsync();
+                
+                // ... rest of the while loop remains same ...
 
                 while (await reader.ReadAsync())
                 {
@@ -340,7 +356,7 @@ namespace ServerAtrrak.Services
             }
         }
 
-        private async Task InsertAttendanceRecordAsync(AttendanceRequest request, string status, string remarks)
+        private async Task InsertAttendanceRecordAsync(AttendanceRequest request, string status, string remarks, string? periodId)
         {
             try
             {
@@ -397,8 +413,8 @@ namespace ServerAtrrak.Services
                 {
                     // Insert new record
                     var insertQuery = @"
-                        INSERT INTO daily_attendance (AttendanceId, StudentId, Date, TimeIn, TimeOut, Status, Remarks, CreatedAt, UpdatedAt)
-                        VALUES (@AttendanceId, @StudentId, @Date, @TimeIn, @TimeOut, @Status, @Remarks, @CreatedAt, @UpdatedAt)";
+                        INSERT INTO daily_attendance (AttendanceId, StudentId, Date, TimeIn, TimeOut, Status, Remarks, CreatedAt, UpdatedAt, PeriodId)
+                        VALUES (@AttendanceId, @StudentId, @Date, @TimeIn, @TimeOut, @Status, @Remarks, @CreatedAt, @UpdatedAt, @PeriodId)";
 
                     using var insertCommand = new MySqlCommand(insertQuery, connection);
                     insertCommand.Parameters.AddWithValue("@AttendanceId", Guid.NewGuid().ToString());
@@ -410,6 +426,7 @@ namespace ServerAtrrak.Services
                     insertCommand.Parameters.AddWithValue("@Remarks", string.IsNullOrEmpty(remarks) ? (object)DBNull.Value : remarks);
                     insertCommand.Parameters.AddWithValue("@CreatedAt", DateTime.Now);
                     insertCommand.Parameters.AddWithValue("@UpdatedAt", DateTime.Now);
+                    insertCommand.Parameters.AddWithValue("@PeriodId", (object?)periodId ?? DBNull.Value);
 
                     await insertCommand.ExecuteNonQueryAsync();
                 }
@@ -420,6 +437,29 @@ namespace ServerAtrrak.Services
                     request.StudentId, ex.Message);
                 throw; // Re-throw to be handled by the calling method
             }
+        }
+
+        private async Task<(string? schoolId, int gradeLevel)> GetStudentInfoAsync(string studentId)
+        {
+            try
+            {
+                using var connection = new MySqlConnection(_dbConnection.GetConnection());
+                await connection.OpenAsync();
+
+                var query = "SELECT SchoolId, GradeLevel FROM student WHERE StudentId = @Sid";
+                using var cmd = new MySqlCommand(query, connection);
+                cmd.Parameters.AddWithValue("@Sid", studentId);
+                using var reader = await cmd.ExecuteReaderAsync();
+                if (await reader.ReadAsync())
+                {
+                    return (reader.IsDBNull(0) ? null : reader.GetString(0), reader.GetInt32(1));
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting student info: {Msg}", ex.Message);
+            }
+            return (null, 0);
         }
 
         private async Task<string?> GetUserIdFromTeacherIdAsync(string teacherId)

@@ -63,7 +63,10 @@
                         </div>
                         <div class="period-info">
                             <h3 class="sy-text">@p.SchoolYear</h3>
-                            <p class="sem-text">@p.Semester</p>
+                            <div class="level-badge-container">
+                                <span class="badge level-badge @p.AcademicLevel.Replace(" ", "-").ToLower()">@p.AcademicLevel.ToUpper()</span>
+                                <span class="sem-text">@p.Semester</span>
+                            </div>
                             <div class="dates-info">
                                 <span><i class="fas fa-calendar-alt"></i> @(p.StartDate?.ToString("MMM dd, yyyy") ?? "—")</span>
                                 <span class="divider">to</span>
@@ -73,7 +76,7 @@
                         <div class="period-actions">
                             @if (!p.IsActive)
                             {
-                                <button class="btn-activate" @onclick="() => SetActive(p.PeriodId)">
+                                <button class="btn-activate" @onclick="() => SetActive(p.PeriodId, p.AcademicLevel)">
                                     <i class="fas fa-check-circle"></i> Set as Active
                                 </button>
                             }
@@ -107,7 +110,16 @@
                     <select class="form-control" @bind="newPeriod.Semester">
                         <option value="1st Semester">1st Semester</option>
                         <option value="2nd Semester">2nd Semester</option>
+                        <option value="Regular">Regular (Full Year)</option>
                         <option value="Summer">Summer</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Academic Level</label>
+                    <select class="form-control" @bind="newPeriod.AcademicLevel">
+                        <option value="General">General (Whole School)</option>
+                        <option value="Junior High">Junior High School</option>
+                        <option value="Senior High">Senior High School</option>
                     </select>
                 </div>
                 <div class="form-row">
@@ -210,6 +222,12 @@
     .badge { padding: 4px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: 800; }
     .badge-success { background: #dcfce7; color: #16a34a; }
     .badge-secondary { background: #f1f5f9; color: #64748b; }
+    
+    .level-badge-container { display: flex; align-items: center; gap: 8px; margin-bottom: 1rem; }
+    .level-badge { font-size: 0.65rem; padding: 2px 8px; border-radius: 6px; }
+    .level-badge.general { background: #e0f2fe; color: #0369a1; }
+    .level-badge.junior-high { background: #fdf2f8; color: #be185d; }
+    .level-badge.senior-high { background: #f0fdf4; color: #15803d; }
 
     .sy-text { margin: 0; color: #1e293b; font-size: 1.5rem; font-weight: 800; }
     .sem-text { color: #64748b; font-weight: 600; margin-bottom: 1rem; }
@@ -294,9 +312,10 @@
     private UserInfo? currentUser;
     private CreatePeriodRequest newPeriod = new() 
     { 
-        Semester = "1st Semester",
+        Semester = "Regular (Full Year)",
+        AcademicLevel = "General",
         StartDate = DateTime.Today,
-        EndDate = DateTime.Today.AddMonths(5)
+        EndDate = DateTime.Today.AddMonths(10)
     };
 
     protected override async Task OnInitializedAsync()
@@ -329,12 +348,12 @@
         }
     }
 
-    private async Task SetActive(string periodId)
+    private async Task SetActive(string periodId, string academicLevel)
     {
         if (currentUser == null) return;
         try
         {
-            var response = await Http.PostAsync($"{ApiConfig.BaseUrl}api/academicperiod/activate/{currentUser.SchoolId}/{periodId}", null);
+            var response = await Http.PostAsync($"{ApiConfig.BaseUrl}api/academicperiod/activate/{currentUser.SchoolId}/{periodId}/{academicLevel}", null);
             if (response.IsSuccessStatusCode)
             {
                 await RefreshData();
@@ -367,7 +386,12 @@
             if (response.IsSuccessStatusCode)
             {
                 showCreateModal = false;
-                newPeriod = new CreatePeriodRequest { Semester = "1st Semester", StartDate = DateTime.Today, EndDate = DateTime.Today.AddMonths(5) };
+                newPeriod = new CreatePeriodRequest { 
+                    Semester = "Regular (Full Year)", 
+                    AcademicLevel = "General", 
+                    StartDate = DateTime.Today, 
+                    EndDate = DateTime.Today.AddMonths(10) 
+                };
                 await RefreshData();
             }
             else

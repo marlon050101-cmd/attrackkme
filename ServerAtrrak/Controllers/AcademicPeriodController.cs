@@ -32,10 +32,10 @@ namespace ServerAtrrak.Controllers
             return Ok(periods);
         }
 
-        [HttpPost("activate/{schoolId}/{periodId}")]
-        public async Task<ActionResult> SetActivePeriod(string schoolId, string periodId)
+        [HttpPost("activate/{schoolId}/{periodId}/{academicLevel}")]
+        public async Task<ActionResult> SetActivePeriod(string schoolId, string periodId, string academicLevel)
         {
-            var success = await _periodService.SetActivePeriodAsync(schoolId, periodId);
+            var success = await _periodService.SetActivePeriodAsync(schoolId, periodId, academicLevel);
             if (success) return Ok();
             return BadRequest("Failed to set active period");
         }

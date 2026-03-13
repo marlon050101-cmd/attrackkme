@@ -8,6 +8,7 @@ namespace AttrackSharedClass.Models
         public string SchoolId { get; set; } = string.Empty;
         public string SchoolYear { get; set; } = string.Empty; // e.g., "2023-2024"
         public string Semester { get; set; } = string.Empty;   // e.g., "1st Semester", "Regular"
+        public string AcademicLevel { get; set; } = "General"; // General, Junior High, Senior High
         public bool IsActive { get; set; }
         public DateTime? StartDate { get; set; }
         public DateTime? EndDate { get; set; }
@@ -19,6 +20,7 @@ namespace AttrackSharedClass.Models
         public string SchoolId { get; set; } = string.Empty;
         public string SchoolYear { get; set; } = string.Empty;
         public string Semester { get; set; } = string.Empty;
+        public string AcademicLevel { get; set; } = "General";
         public DateTime? StartDate { get; set; }
         public DateTime? EndDate { get; set; }
     }
