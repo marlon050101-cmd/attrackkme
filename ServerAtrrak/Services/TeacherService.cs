@@ -558,6 +558,8 @@ namespace ServerAtrrak.Services
         {
             try
             {
+                using var connection = await _dbConnection.GetConnectionAsync();
+
                 // Get student info for period filtering
                 var studentInfoQuery = "SELECT SchoolId, GradeLevel FROM student WHERE StudentId = @Sid";
                 string? schoolId = null;

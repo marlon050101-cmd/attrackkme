@@ -149,6 +149,20 @@ namespace ServerAtrrak.Services
         {
             var attendance = new List<AttendanceRecord>();
 
+            try
+            {
+                using var connection = new MySqlConnection(_dbConnection.GetConnection());
+                await connection.OpenAsync();
+
+                // Get teacher's school first
+                var getSchoolQuery = "SELECT SchoolId FROM teacher WHERE TeacherId = @TeacherId";
+                string? schoolId = null;
+                using (var cmd = new MySqlCommand(getSchoolQuery, connection))
+                {
+                    cmd.Parameters.AddWithValue("@TeacherId", teacherId);
+                    schoolId = (await cmd.ExecuteScalarAsync())?.ToString();
+                }
+
                 // Get student's grade level and find correct active periods
                 var activePeriods = !string.IsNullOrEmpty(schoolId) ? await _periodService.GetAllPeriodsAsync(schoolId) : new List<AcademicPeriod>();
                 var activeJhsId = activePeriods.FirstOrDefault(p => p.IsActive && (p.AcademicLevel == "Junior High" || p.AcademicLevel == "General"))?.PeriodId;
@@ -172,8 +186,6 @@ namespace ServerAtrrak.Services
                 command.Parameters.AddWithValue("@ShsId", (object?)activeShsId ?? DBNull.Value);
 
                 using var reader = await command.ExecuteReaderAsync();
-                
-                // ... rest of the while loop remains same ...
 
                 while (await reader.ReadAsync())
                 {

@@ -377,17 +377,24 @@ namespace ServerAtrrak.Services
             try
             {
                 using var connection = new MySqlConnection(_dbConnection.GetConnection());
-                // Get student's school and active period
-                // Get student's grade level
-                var gradeQuery = "SELECT GradeLevel FROM student WHERE StudentId = @Sid";
+                await connection.OpenAsync();
+
+                // Get student's school and grade level
+                var schoolQuery = "SELECT SchoolId, GradeLevel FROM student WHERE StudentId = @Sid";
+                string? schoolId = null;
                 int gradeLevel = 0;
-                using (var gcmd = new MySqlCommand(gradeQuery, connection))
+                using (var scmd = new MySqlCommand(schoolQuery, connection))
                 {
-                    gcmd.Parameters.AddWithValue("@Sid", studentId);
-                    gradeLevel = Convert.ToInt32(await gcmd.ExecuteScalarAsync());
+                    scmd.Parameters.AddWithValue("@Sid", studentId);
+                    using var sreader = await scmd.ExecuteReaderAsync();
+                    if (await sreader.ReadAsync())
+                    {
+                        schoolId = sreader.IsDBNull(0) ? null : sreader.GetString(0);
+                        gradeLevel = sreader.GetInt32(1);
+                    }
                 }
                 
-                var periodId = schoolId != null ? (await _periodService.GetActivePeriodAsync(schoolId, gradeLevel))?.PeriodId : null;
+                var periodId = !string.IsNullOrEmpty(schoolId) ? (await _periodService.GetActivePeriodAsync(schoolId, gradeLevel))?.PeriodId : null;
 
                 var fromDate = DateTime.Today.AddDays(-days);
                 var query = @"
@@ -435,6 +442,16 @@ namespace ServerAtrrak.Services
             {
                 using var connection = new MySqlConnection(_dbConnection.GetConnection());
                 await connection.OpenAsync();
+
+                // Get teacher's school 
+                var schoolQuery = "SELECT SchoolId FROM teacher WHERE TeacherId = @TeacherId";
+                string? schoolId = null;
+                using (var scmd = new MySqlCommand(schoolQuery, connection))
+                {
+                    scmd.Parameters.AddWithValue("@TeacherId", teacherId);
+                    schoolId = (await scmd.ExecuteScalarAsync())?.ToString();
+                }
+
                 // Get teacher's school and active period
                 var activePeriods = !string.IsNullOrEmpty(schoolId) ? await _periodService.GetAllPeriodsAsync(schoolId) : new List<AcademicPeriod>();
                 var activeJhsId = activePeriods.FirstOrDefault(p => p.IsActive && (p.AcademicLevel == "Junior High" || p.AcademicLevel == "General"))?.PeriodId;
@@ -498,8 +515,15 @@ namespace ServerAtrrak.Services
                 using var connection = new MySqlConnection(_dbConnection.GetConnection());
                 await connection.OpenAsync();
                 
-                // Using LEFT JOIN for subject to ensure we still see the offering even if subject link is missing (though SubjectName will be "Unknown")
-                // Added TRIM() to ID comparisons just in case there are leading/trailing spaces in the DB
+                // Get adviser's school
+                var schoolQuery = "SELECT SchoolId FROM teacher WHERE TeacherId = @TeacherId";
+                string? schoolId = null;
+                using (var scmd = new MySqlCommand(schoolQuery, connection))
+                {
+                    scmd.Parameters.AddWithValue("@TeacherId", adviserId);
+                    schoolId = (await scmd.ExecuteScalarAsync())?.ToString();
+                }
+
                 // Get adviser's school and active period
                 var activePeriods = !string.IsNullOrEmpty(schoolId) ? await _periodService.GetAllPeriodsAsync(schoolId) : new List<AcademicPeriod>();
                 var activeJhsId = activePeriods.FirstOrDefault(p => p.IsActive && (p.AcademicLevel == "Junior High" || p.AcademicLevel == "General"))?.PeriodId;
@@ -714,6 +738,15 @@ namespace ServerAtrrak.Services
             {
                 using var connection = new MySqlConnection(_dbConnection.GetConnection());
                 await connection.OpenAsync();
+
+                // Get adviser's school
+                var schoolQuery = "SELECT SchoolId FROM teacher WHERE TeacherId = @TeacherId";
+                string? schoolId = null;
+                using (var scmd = new MySqlCommand(schoolQuery, connection))
+                {
+                    scmd.Parameters.AddWithValue("@TeacherId", adviserId);
+                    schoolId = (await scmd.ExecuteScalarAsync())?.ToString();
+                }
 
                 // Get adviser's school and active period
                 var activePeriods = !string.IsNullOrEmpty(schoolId) ? await _periodService.GetAllPeriodsAsync(schoolId) : new List<AcademicPeriod>();

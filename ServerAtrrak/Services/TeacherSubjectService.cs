@@ -232,6 +232,15 @@ namespace ServerAtrrak.Services
                     gradeLevel = Convert.ToInt32(await cmd.ExecuteScalarAsync());
                 }
 
+                // Get teacher's school first to find active period
+                var getSchoolQuery = "SELECT SchoolId FROM teacher WHERE TeacherId = @TeacherId";
+                string? schoolId = null;
+                using (var cmd = new MySqlCommand(getSchoolQuery, connection))
+                {
+                    cmd.Parameters.AddWithValue("@TeacherId", request.TeacherId);
+                    schoolId = (await cmd.ExecuteScalarAsync())?.ToString();
+                }
+
                 var activePeriodId = !string.IsNullOrEmpty(schoolId) ? (await _periodService.GetActivePeriodAsync(schoolId, gradeLevel))?.PeriodId : null;
 
                 // Check if teacher already has this subject in the CURRENT period
