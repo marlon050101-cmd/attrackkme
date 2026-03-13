@@ -81,22 +81,19 @@ namespace ServerAtrrak.Services
                 await connection.OpenAsync();
                 var summaryMap = new Dictionary<string, AttendanceSummary>();
 
-                // Query 1: Absences from subject_attendance (Overall stats)
+                // Query 1: Overall stats from student_daily_summary (Source of truth for Absences)
                 var dailyQuery = @"
                     SELECT s.StudentId, s.FullName, s.GradeLevel, s.Section, s.Strand, s.Gender,
-                           COUNT(DISTINCT sa.Date) as TotalDays,
-                           COUNT(DISTINCT CASE WHEN sa.Status IN ('Present','Late') THEN sa.Date END) as PresentDays,
-                           COUNT(DISTINCT CASE WHEN sa.Status = 'Absent' THEN sa.Date END) as AbsentDays,
-                           COUNT(DISTINCT CASE WHEN sa.Status = 'Late' THEN sa.Date END) as LateDays,
-                           MIN(CASE WHEN sa.Status = 'Absent' THEN sa.Date END) as FirstAbsentDate,
-                           MAX(CASE WHEN sa.Status = 'Absent' THEN sa.Date END) as LastAbsentDate,
-                           GROUP_CONCAT(DISTINCT CASE WHEN sa.Status = 'Absent' THEN DATE_FORMAT(sa.Date, '%Y-%m-%d') END ORDER BY sa.Date DESC SEPARATOR ',') as AbsentDates,
+                           COUNT(ds.Date) as TotalDays,
+                           SUM(CASE WHEN ds.Status IN ('Whole Day', 'Half Day') THEN 1 ELSE 0 END) as PresentDays,
+                           SUM(CASE WHEN ds.Status = 'Absent' THEN 1 ELSE 0 END) as AbsentDays,
+                           MAX(CASE WHEN ds.Status = 'Absent' THEN ds.Date END) as LastAbsentDate,
                            COALESCE((SELECT Status FROM guidance_cases WHERE StudentId = s.StudentId ORDER BY UpdatedAt DESC LIMIT 1), 'Normal') as GuidanceStatus
                     FROM student s
-                    INNER JOIN subject_attendance sa ON sa.StudentId = s.StudentId
+                    INNER JOIN student_daily_summary ds ON s.StudentId = ds.StudentId
                     WHERE s.SchoolId = @SchoolId
                       AND s.IsActive = true
-                      AND sa.Date >= DATE_SUB(CURDATE(), INTERVAL @Days DAY)
+                      AND ds.Date >= DATE_SUB(CURDATE(), INTERVAL @Days DAY)
                     GROUP BY s.StudentId, s.FullName, s.GradeLevel, s.Section, s.Strand, s.Gender";
 
                 using (var command = new MySqlCommand(dailyQuery, connection))
@@ -107,8 +104,8 @@ namespace ServerAtrrak.Services
                     while (await reader.ReadAsync())
                     {
                         var studentId = reader.GetString("StudentId");
-                        var totalDays = reader.IsDBNull("TotalDays") ? 0 : Convert.ToInt32(reader["TotalDays"]);
-                        var presentDays = reader.IsDBNull("PresentDays") ? 0 : Convert.ToInt32(reader["PresentDays"]);
+                        var totalDays = Convert.ToInt32(reader["TotalDays"]);
+                        var presentDays = Convert.ToInt32(reader["PresentDays"]);
                         
                         summaryMap[studentId] = new AttendanceSummary
                         {
@@ -120,21 +117,18 @@ namespace ServerAtrrak.Services
                             Gender = reader.IsDBNull("Gender") ? "" : reader.GetString("Gender"),
                             TotalDays = totalDays,
                             PresentDays = presentDays,
-                            AbsentDays = reader.IsDBNull("AbsentDays") ? 0 : Convert.ToInt32(reader["AbsentDays"]),
-                            LateDays = reader.IsDBNull("LateDays") ? 0 : Convert.ToInt32(reader["LateDays"]),
+                            AbsentDays = Convert.ToInt32(reader["AbsentDays"]),
                             AttendanceRate = totalDays > 0 ? (double)presentDays / totalDays * 100 : 0,
                             GuidanceStatus = reader.GetString("GuidanceStatus"),
                             SubjectName = "Overall",
-                            FirstAbsentDate = reader.IsDBNull("FirstAbsentDate") ? null : reader.GetDateTime("FirstAbsentDate"),
-                            LastAbsentDate = reader.IsDBNull("LastAbsentDate") ? null : reader.GetDateTime("LastAbsentDate"),
-                            AbsentDates = reader.IsDBNull("AbsentDates") ? "" : reader.GetString("AbsentDates")
+                            LastAbsentDate = reader.IsDBNull("LastAbsentDate") ? null : reader.GetDateTime("LastAbsentDate")
                         };
                     }
                 }
 
-                // Query 2: Subject Summaries for Cutting Class Risk (NoTimeOut)
+                // Query 2: Cutting Class Risk (NoTimeOut) from subject_attendance
                 var subjectQuery = @"
-                    SELECT s.StudentId, s.FullName, s.GradeLevel, s.Section, s.Strand, s.Gender,
+                    SELECT s.StudentId,
                            COUNT(sa.SubjectAttendanceId) as IncompleteSessions,
                            MAX(sa.Date) as LastIncidentDate,
                            COALESCE(sub_co.SubjectName, sub_ts.SubjectName, 'Unknown Subject') as SubjectName
@@ -147,7 +141,7 @@ namespace ServerAtrrak.Services
                     WHERE s.SchoolId = @SchoolId 
                       AND sa.Date >= DATE_SUB(CURDATE(), INTERVAL @Days DAY)
                       AND sa.TimeIn IS NOT NULL AND sa.TimeOut IS NULL
-                    GROUP BY s.StudentId, s.FullName, s.GradeLevel, s.Section, s.Strand, s.Gender, SubjectName";
+                    GROUP BY s.StudentId, SubjectName";
 
                 using (var command = new MySqlCommand(subjectQuery, connection))
                 {
@@ -157,31 +151,13 @@ namespace ServerAtrrak.Services
                     while (await reader.ReadAsync())
                     {
                         var studentId = reader.GetString("StudentId");
-                        var incompleteCount = reader.IsDBNull("IncompleteSessions") ? 0 : Convert.ToInt32(reader["IncompleteSessions"]);
+                        var incompleteCount = Convert.ToInt32(reader["IncompleteSessions"]);
                         var subName = reader.GetString("SubjectName");
 
                         if (summaryMap.TryGetValue(studentId, out var existing))
                         {
-                            // Update existing record with cutting class info
                             existing.IncompleteSessions += incompleteCount;
-                            // If it was "Overall", we might want to note the specific subject if it's the first cutting incident
                             if (existing.SubjectName == "Overall") existing.SubjectName = subName;
-                        }
-                        else
-                        {
-                            // Add new record for student who ONLY has cutting class incidents but no full absences
-                            summaryMap[studentId] = new AttendanceSummary
-                            {
-                                StudentId = studentId,
-                                FullName = reader.GetString("FullName"),
-                                GradeLevel = reader.GetInt32("GradeLevel"),
-                                Section = reader.GetString("Section"),
-                                Strand = reader.IsDBNull("Strand") ? null : reader.GetString("Strand"),
-                                Gender = reader.IsDBNull("Gender") ? "" : reader.GetString("Gender"),
-                                IncompleteSessions = incompleteCount,
-                                SubjectName = subName,
-                                GuidanceStatus = "Normal" // Will be checked below
-                            };
                         }
                     }
                 }
@@ -190,22 +166,12 @@ namespace ServerAtrrak.Services
                 foreach (var s in summaryMap.Values)
                 {
                     s.ConsecutiveAbsences = await GetConsecutiveAbsencesAsync(s.StudentId, null, connection);
-                    
-                    // Double check guidance status if it wasn't set (e.g., from Query 2 only)
-                    if (string.IsNullOrEmpty(s.GuidanceStatus))
-                    {
-                        var statusQuery = "SELECT Status FROM guidance_cases WHERE StudentId = @Sid ORDER BY UpdatedAt DESC LIMIT 1";
-                        using var statusCmd = new MySqlCommand(statusQuery, connection);
-                        statusCmd.Parameters.AddWithValue("@Sid", s.StudentId);
-                        var statusResult = await statusCmd.ExecuteScalarAsync();
-                        s.GuidanceStatus = statusResult?.ToString() ?? "Normal";
-                    }
                 }
 
-                // Return only flagged students
-                int threshold = days <= 3 ? 1 : 3;
+                // Threshold filtering
+                int riskThreshold = days <= 3 ? 1 : 3;
                 return summaryMap.Values
-                    .Where(s => s.AbsentDays >= threshold || s.ConsecutiveAbsences >= 3 || s.IncompleteSessions > 0)
+                    .Where(s => s.AbsentDays >= riskThreshold || s.ConsecutiveAbsences >= 3 || s.IncompleteSessions > 0)
                     .OrderByDescending(s => s.ConsecutiveAbsences)
                     .ThenByDescending(s => s.AbsentDays)
                     .ToList();
