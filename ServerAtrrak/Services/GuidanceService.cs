@@ -288,19 +288,18 @@ namespace ServerAtrrak.Services
                 using var connection = new MySqlConnection(_dbConnection.GetConnection());
                 await connection.OpenAsync();
 
-                // Get aggregate stats per day for the last N days
                 var query = @"
                     SELECT 
-                        sa.Date,
+                        ds.Date,
                         COUNT(*) as Total,
-                        SUM(CASE WHEN sa.Status IN ('Present', 'Late') THEN 1 ELSE 0 END) as Present,
-                        SUM(CASE WHEN sa.Status = 'Absent' THEN 1 ELSE 0 END) as Absent
-                    FROM subject_attendance sa
-                    INNER JOIN student s ON sa.StudentId = s.StudentId
+                        SUM(CASE WHEN ds.Status IN ('Whole Day', 'Half Day') THEN 1 ELSE 0 END) as Present,
+                        SUM(CASE WHEN ds.Status = 'Absent' THEN 1 ELSE 0 END) as Absent
+                    FROM student_daily_summary ds
+                    INNER JOIN student s ON ds.StudentId = s.StudentId
                     WHERE s.SchoolId = @SchoolId 
-                      AND sa.Date >= DATE_SUB(CURDATE(), INTERVAL @Days DAY)
-                    GROUP BY sa.Date
-                    ORDER BY sa.Date ASC";
+                      AND ds.Date >= DATE_SUB(CURDATE(), INTERVAL @Days DAY)
+                    GROUP BY ds.Date
+                    ORDER BY ds.Date ASC";
 
                 using var cmd = new MySqlCommand(query, connection);
                 cmd.Parameters.AddWithValue("@SchoolId", schoolId);
@@ -433,12 +432,12 @@ namespace ServerAtrrak.Services
 
                 var query = @"
                     SELECT 
-                        COUNT(sa.SubjectAttendanceId) as Total,
-                        SUM(CASE WHEN sa.Status IN ('Present', 'Late') THEN 1 ELSE 0 END) as Present
-                    FROM subject_attendance sa
-                    INNER JOIN student s ON sa.StudentId = s.StudentId
+                        COUNT(ds.Date) as Total,
+                        SUM(CASE WHEN ds.Status IN ('Whole Day', 'Half Day') THEN 1 ELSE 0 END) as Present
+                    FROM student_daily_summary ds
+                    INNER JOIN student s ON ds.StudentId = s.StudentId
                     WHERE s.SchoolId = @SchoolId 
-                      AND sa.Date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)";
+                      AND ds.Date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)";
 
                 using var cmd = new MySqlCommand(query, connection);
                 cmd.Parameters.AddWithValue("@SchoolId", schoolId);
@@ -465,21 +464,53 @@ namespace ServerAtrrak.Services
             {
                 using var connection = new MySqlConnection(_dbConnection.GetConnection());
                 await connection.OpenAsync();
+                
+                // Try today first
                 var query = @"
                     SELECT 
-                        COUNT(sa.SubjectAttendanceId) as Total,
-                        SUM(CASE WHEN sa.Status IN ('Present', 'Late') THEN 1 ELSE 0 END) as Present
-                    FROM subject_attendance sa
-                    INNER JOIN student s ON sa.StudentId = s.StudentId
-                    WHERE s.SchoolId = @SchoolId AND sa.Date = CURDATE()";
-                using var cmd = new MySqlCommand(query, connection);
-                cmd.Parameters.AddWithValue("@SchoolId", schoolId);
-                using var reader = await cmd.ExecuteReaderAsync();
-                if (await reader.ReadAsync())
+                        COUNT(ds.Date) as Total,
+                        SUM(CASE WHEN ds.Status IN ('Whole Day', 'Half Day') THEN 1 ELSE 0 END) as Present
+                    FROM student_daily_summary ds
+                    INNER JOIN student s ON ds.StudentId = s.StudentId
+                    WHERE s.SchoolId = @SchoolId AND ds.Date = CURDATE()";
+                
+                using (var cmd = new MySqlCommand(query, connection))
                 {
-                    long total = reader.IsDBNull(0) ? 0 : Convert.ToInt64(reader[0]);
-                    long present = reader.IsDBNull(1) ? 0 : Convert.ToInt64(reader[1]);
-                    return total > 0 ? (double)present / total * 100 : 0;
+                    cmd.Parameters.AddWithValue("@SchoolId", schoolId);
+                    using var reader = await cmd.ExecuteReaderAsync();
+                    if (await reader.ReadAsync())
+                    {
+                        long total = reader.IsDBNull(0) ? 0 : Convert.ToInt64(reader[0]);
+                        if (total > 0)
+                        {
+                            long present = reader.IsDBNull(1) ? 0 : Convert.ToInt64(reader[1]);
+                            return (double)present / total * 100;
+                        }
+                    }
+                }
+
+                // Fallback to the most recent day if today is empty (e.g., early morning)
+                var fallbackQuery = @"
+                    SELECT 
+                        COUNT(ds.Date) as Total,
+                        SUM(CASE WHEN ds.Status IN ('Whole Day', 'Half Day') THEN 1 ELSE 0 END) as Present
+                    FROM student_daily_summary ds
+                    INNER JOIN student s ON ds.StudentId = s.StudentId
+                    WHERE s.SchoolId = @SchoolId 
+                      AND ds.Date = (SELECT MAX(Date) FROM student_daily_summary ds2 
+                                    INNER JOIN student s2 ON ds2.StudentId = s2.StudentId 
+                                    WHERE s2.SchoolId = @SchoolId)";
+                
+                using (var cmd = new MySqlCommand(fallbackQuery, connection))
+                {
+                    cmd.Parameters.AddWithValue("@SchoolId", schoolId);
+                    using var reader = await cmd.ExecuteReaderAsync();
+                    if (await reader.ReadAsync())
+                    {
+                        long total = reader.IsDBNull(0) ? 0 : Convert.ToInt64(reader[0]);
+                        long present = reader.IsDBNull(1) ? 0 : Convert.ToInt64(reader[1]);
+                        return total > 0 ? (double)present / total * 100 : 0;
+                    }
                 }
                 return 0;
             }
@@ -521,12 +552,13 @@ namespace ServerAtrrak.Services
                 await connection.OpenAsync();
                 var query = @"
                     SELECT 
-                        SUM(CASE WHEN sa.Status IN ('Present', 'Late') THEN 1 ELSE 0 END) as Attended,
-                        SUM(CASE WHEN sa.Status = 'Present' THEN 1 ELSE 0 END) as OnTime
-                    FROM subject_attendance sa
-                    INNER JOIN student s ON sa.StudentId = s.StudentId
+                        COUNT(ds.Date) as Attended,
+                        SUM(CASE WHEN ds.Status = 'Whole Day' AND ds.TimeIn IS NOT NULL THEN 1 ELSE 0 END) as OnTime
+                    FROM student_daily_summary ds
+                    INNER JOIN student s ON ds.StudentId = s.StudentId
                     WHERE s.SchoolId = @SchoolId 
-                      AND sa.Date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)";
+                      AND ds.Date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+                      AND ds.Status IN ('Whole Day', 'Half Day')";
                 using var cmd = new MySqlCommand(query, connection);
                 cmd.Parameters.AddWithValue("@SchoolId", schoolId);
                 using var reader = await cmd.ExecuteReaderAsync();

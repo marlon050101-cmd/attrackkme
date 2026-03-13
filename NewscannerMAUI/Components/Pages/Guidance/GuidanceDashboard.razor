@@ -61,7 +61,8 @@
             <div class="analytics-content flex-row">
                 <div class="chart-container">
                     @{
-                        var attendance = dashboardData.WeeklyAttendanceRate;
+                        // Show Daily Presence in the ring chart by default to match the text list
+                        var attendance = dashboardData.DailyPresenceRate;
                         var absence = 100 - attendance;
                         // Simple SVG Pie Chart math: circumference = 2 * PI * R (R=35 => ~220)
                         var strokeDashOffset = 220 - (220 * attendance / 100);
@@ -689,7 +690,11 @@
         {
             var now = DateTime.Now;
             var html = BuildGuidanceReportHtml(now, filteredRisks, dashboardData);
-            var filename = "Guidance_Risk_Report_" + now.ToString("yyyyMMdd") + ".html";
+            var filename = "Guidance_Risk_Report_" + now.ToString("yyyyMMdd_HHmm") + ".pdf";
+
+            // 1. Call JS to convert HTML to PDF (Returns Base64)
+            var pdfBase64 = await JSRuntime.InvokeAsync<string>("convertHtmlToPdf", html);
+            var pdfBytes = Convert.FromBase64String(pdfBase64);
 
 #if ANDROID
             var downloadPath = Android.OS.Environment.GetExternalStoragePublicDirectory(Android.OS.Environment.DirectoryDownloads).AbsolutePath;
@@ -699,26 +704,26 @@
             while (System.IO.File.Exists(filePath))
             {
                 var nameOnly = System.IO.Path.GetFileNameWithoutExtension(filename);
-                filePath = System.IO.Path.Combine(downloadPath, $"{nameOnly}_{count}.html");
+                filePath = System.IO.Path.Combine(downloadPath, $"{nameOnly}_{count}.pdf");
                 count++;
             }
 
-            await System.IO.File.WriteAllTextAsync(filePath, html);
-            await JSRuntime.InvokeVoidAsync("alert", "Guidance Report Downloaded!\n\nSaved to: Phone/Download/" + System.IO.Path.GetFileName(filePath));
+            await System.IO.File.WriteAllBytesAsync(filePath, pdfBytes);
+            await JSRuntime.InvokeVoidAsync("alert", "PDF Report Downloaded!\n\nSaved to: Phone/Download/" + System.IO.Path.GetFileName(filePath));
 #else
             var cachePath = System.IO.Path.Combine(FileSystem.CacheDirectory, filename);
-            await System.IO.File.WriteAllTextAsync(cachePath, html);
+            await System.IO.File.WriteAllBytesAsync(cachePath, pdfBytes);
             await Launcher.Default.OpenAsync(new OpenFileRequest
             {
                 Title = "Guidance Risk Report",
-                File = new ReadOnlyFile(cachePath, "text/html")
+                File = new ReadOnlyFile(cachePath, "application/pdf")
             });
 #endif
         }
         catch (Exception ex)
         {
             Console.WriteLine("Guidance Report Error: " + ex.Message);
-            await JSRuntime.InvokeVoidAsync("alert", "Download Error: " + ex.Message);
+            await JSRuntime.InvokeVoidAsync("alert", "PDF Generation Error: " + ex.Message);
         }
     }
 
@@ -740,39 +745,74 @@
             rows.Append("</tr>");
         }
 
+        // Trends Table Data
+        var trendRows = new System.Text.StringBuilder();
+        if (data.DailyTrends != null && data.DailyTrends.Any())
+        {
+            foreach (var t in data.DailyTrends.OrderByDescending(x => x.Date).Take(10))
+            {
+                trendRows.Append("<tr>");
+                trendRows.Append("<td>" + t.Date.ToString("MMM dd (ddd)") + "</td>");
+                trendRows.Append("<td style='text-align:center'>" + t.PresenceRate.ToString("F1") + "%</td>");
+                trendRows.Append("<td style='text-align:center'>" + t.PresentCount + "</td>");
+                trendRows.Append("<td style='text-align:center'>" + t.AbsentCount + "</td>");
+                trendRows.Append("</tr>");
+            }
+        }
+
         sb.Append("<!DOCTYPE html><html><head><meta charset='UTF-8'>");
-        sb.Append("<style>body{font-family:Arial,sans-serif;padding:30px;color:#334155;background:#f8fafc}");
-        sb.Append(".report-container{background:white;padding:40px;border-radius:15px;box-shadow:0 4px 6px -1px rgba(0,0,0,0.1)}");
-        sb.Append(".header{text-align:center;border-bottom:2px solid #6366f1;padding-bottom:20px;margin-bottom:30px}");
-        sb.Append(".header h1{margin:0;color:#1e293b;font-size:24px}.header p{margin:5px 0;color:#64748b;font-size:14px}");
-        sb.Append(".metrics-summary{display:grid;grid-template-columns:repeat(4, 1fr);gap:15px;margin-bottom:30px}");
-        sb.Append(".summary-item{background:#f1f5f9;padding:15px;border-radius:12px;text-align:center}");
-        sb.Append(".summary-value{display:block;font-size:18px;font-weight:bold;color:#1e293b}");
-        sb.Append(".summary-label{font-size:11px;color:#64748b;text-transform:uppercase}");
-        sb.Append("table{width:100%;border-collapse:collapse;margin-top:20px;table-layout:fixed}");
-        sb.Append("th,td{padding:12px;border-bottom:1px solid #e2e8f0;font-size:13px;word-wrap:break-word}");
-        sb.Append("th{background:#f8fafc;text-align:left;border-bottom:2px solid #cbd5e1;color:#475569;font-size:12px;font-weight:bold}");
-        sb.Append(".col-name{width:30%}.col-status{width:15%}.col-time{width:12%}.col-remarks{width:auto}");
-        sb.Append(".footer{font-size:11px;color:#94a3b8;text-align:right;margin-top:40px;border-top:1px solid #e2e8f0;padding-top:15px}</style></head><body>");
+        sb.Append("<style>body{font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;padding:20px;color:#334155;background:#ffffff}");
+        sb.Append(".report-container{max-width:900px;margin:auto;padding:30px;border:1px solid #e2e8f0;border-radius:8px}");
+        sb.Append(".header{text-align:center;margin-bottom:30px;padding-bottom:20px;border-bottom:3px solid #6366f1}");
+        sb.Append(".header h1{margin:0;color:#1e293b;font-size:26px;text-transform:uppercase;letter-spacing:1px}");
+        sb.Append(".header p{margin:8px 0;color:#64748b;font-size:14px;font-weight:500}");
+        sb.Append(".section-title{font-size:16px;font-weight:bold;color:#1e293b;margin:30px 0 15px;border-left:4px solid #6366f1;padding-left:10px;text-transform:uppercase}");
+        sb.Append(".metrics-summary{display:flex;justify-content:space-between;gap:10px;margin-bottom:25px}");
+        sb.Append(".summary-item{flex:1;background:#f8fafc;padding:15px;border-radius:12px;text-align:center;border:1px solid #e2e8f0}");
+        sb.Append(".summary-value{display:block;font-size:22px;font-weight:800;color:#6366f1}");
+        sb.Append(".summary-label{font-size:10px;color:#64748b;text-transform:uppercase;font-weight:bold;letter-spacing:0.5px}");
+        sb.Append("table{width:100%;border-collapse:collapse;margin-top:10px;table-layout:fixed;border:1px solid #e2e8f0}");
+        sb.Append("th,td{padding:10px;border-bottom:1px solid #e2e8f0;font-size:12px;word-wrap:break-word}");
+        sb.Append("th{background:#f1f5f9;text-align:left;color:#475569;font-size:11px;font-weight:bold;text-transform:uppercase}");
+        sb.Append(".col-name{width:35%}.col-status{width:15%}.col-time{width:10%}.col-remarks{width:auto}");
+        sb.Append(".footer{font-size:10px;color:#94a3b8;text-align:center;margin-top:40px;padding-top:15px;border-top:1px solid #e2e8f0;font-style:italic}</style></head><body>");
         
         sb.Append("<div class='report-container'>");
-        sb.Append("<div class='header'><h1>Guidance Counselor Risk Report</h1>");
-        sb.Append("<p>Date: " + now.ToString("MMMM dd, yyyy") + " | Generated: " + now.ToString("hh:mm tt") + "</p></div>");
+        sb.Append("<div class='header'><h1>Guidance Performance & Risk Analysis</h1>");
+        sb.Append("<p>Report Generated: " + now.ToString("MMMM dd, yyyy - hh:mm tt") + "</p></div>");
         
-        // Add Summary Metrics Section
+        // Overview Summary
+        sb.Append("<div class='section-title'>Executive Summary</div>");
         sb.Append("<div class='metrics-summary'>");
-        sb.Append("<div class='summary-item'><span class='summary-value'>" + data.TotalStudents + "</span><span class='summary-label'>Total Students</span></div>");
-        sb.Append("<div class='summary-item'><span class='summary-value'>" + data.FlaggedStudents + "</span><span class='summary-label'>At Risk</span></div>");
-        sb.Append("<div class='summary-item'><span class='summary-value'>" + data.WeeklyAttendanceRate.ToString("F1") + "%</span><span class='summary-label'>Attendance</span></div>");
-        sb.Append("<div class='summary-item'><span class='summary-value'>" + data.DailyPresenceRate.ToString("F1") + "%</span><span class='summary-label'>Presence</span></div>");
+        sb.Append("<div class='summary-item'><span class='summary-value'>" + data.TotalStudents + "</span><span class='summary-label'>Enrolled</span></div>");
+        sb.Append("<div class='summary-item'><span class='summary-value'>" + data.FlaggedStudents + "</span><span class='summary-label'>Flagged Cases</span></div>");
+        sb.Append("<div class='summary-item'><span class='summary-value'>" + data.DailyPresenceRate.ToString("F1") + "%</span><span class='summary-label'>Daily Presence</span></div>");
+        sb.Append("<div class='summary-item'><span class='summary-value'>" + data.OnTimeArrivalRate.ToString("F1") + "%</span><span class='summary-label'>On-Time Rate</span></div>");
+        sb.Append("<div class='summary-item'><span class='summary-value'>" + data.CaseResolutionRate.ToString("F1") + "%</span><span class='summary-label'>Resolved</span></div>");
         sb.Append("</div>");
         
-        sb.Append("<table><thead><tr><th class='col-name'>Student Name</th><th class='col-status' style='text-align:center'>Status</th>");
-        sb.Append("<th class='col-time' style='text-align:center'>Absences</th><th class='col-time' style='text-align:center'>Straight</th>");
-        sb.Append("<th class='col-time' style='text-align:center'>Cutting</th><th class='col-remarks'>Last Active</th></tr></thead><tbody>");
-        sb.Append(rows);
+        // Attendance Trends
+        sb.Append("<div class='section-title'>Recent Attendance Trends (Last 10 Days)</div>");
+        sb.Append("<table><thead><tr><th>Date</th><th style='text-align:center'>Rate</th><th style='text-align:center'>Present</th><th style='text-align:center'>Absent</th></tr></thead><tbody>");
+        sb.Append(trendRows);
         sb.Append("</tbody></table>");
-        sb.Append("<div class='footer'>Generated by SARDO-TRAKCARE Guidance Portal | System-Generated Report</div>");
+
+        // Risk List
+        sb.Append("<div class='section-title'>Students Requiring Intervention (Filtered)</div>");
+        if (!risks.Any())
+        {
+            sb.Append("<p style='text-align:center;padding:20px;color:#64748b;'>No flagged students found for the current filters.</p>");
+        }
+        else
+        {
+            sb.Append("<table><thead><tr><th class='col-name'>Student Details</th><th class='col-status' style='text-align:center'>Status</th>");
+            sb.Append("<th class='col-time' style='text-align:center'>Abs</th><th class='col-time' style='text-align:center'>Seq</th>");
+            sb.Append("<th class='col-time' style='text-align:center'>Cut</th><th class='col-remarks'>Last Absent</th></tr></thead><tbody>");
+            sb.Append(rows);
+            sb.Append("</tbody></table>");
+        }
+
+        sb.Append("<div class='footer'>Confidential Guidance Report | Generated by SARDO-TRAKCARE System | " + now.ToString("yyyy") + "</div>");
         sb.Append("</div></body></html>");
         
         return sb.ToString();

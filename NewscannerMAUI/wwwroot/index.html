@@ -118,7 +118,36 @@
                 if (win) { win.document.write(htmlContent); win.document.close(); }
             }
         }
+
+        // --- NEW: Direct PDF conversion using html2pdf.js ---
+        window.convertHtmlToPdf = async function (htmlContent) {
+            try {
+                const element = document.createElement('div');
+                element.innerHTML = htmlContent;
+                document.body.appendChild(element);
+
+                const options = {
+                    margin: 10,
+                    filename: 'report.pdf',
+                    image: { type: 'jpeg', quality: 0.98 },
+                    html2canvas: { scale: 2, useCORS: true },
+                    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+                };
+
+                // Convert to PDF and get it as a base64 string
+                const pdfBase64 = await html2pdf().from(element).set(options).output('datauristring');
+                
+                document.body.removeChild(element);
+                
+                // Return only the base64 data part
+                return pdfBase64.split(',')[1];
+            } catch (e) {
+                console.error('PDF Conversion error:', e);
+                throw e;
+            }
+        }
     </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 </body>
 
 </html>
