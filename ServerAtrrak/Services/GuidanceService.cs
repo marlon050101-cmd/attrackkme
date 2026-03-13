@@ -79,9 +79,9 @@ namespace ServerAtrrak.Services
             {
                 using var connection = new MySqlConnection(_dbConnection.GetConnection());
                 await connection.OpenAsync();
-                var summaries = new List<AttendanceSummary>();
+                var summaryMap = new Dictionary<string, AttendanceSummary>();
 
-                // Query 1: Absences from subject_attendance (primary QR scan table - most reliable)
+                // Query 1: Absences from subject_attendance (Overall stats)
                 var dailyQuery = @"
                     SELECT s.StudentId, s.FullName, s.GradeLevel, s.Section, s.Strand, s.Gender,
                            COUNT(DISTINCT sa.Date) as TotalDays,
@@ -97,8 +97,7 @@ namespace ServerAtrrak.Services
                     WHERE s.SchoolId = @SchoolId
                       AND s.IsActive = true
                       AND sa.Date >= DATE_SUB(CURDATE(), INTERVAL @Days DAY)
-                    GROUP BY s.StudentId, s.FullName, s.GradeLevel, s.Section, s.Strand, s.Gender
-                    HAVING AbsentDays > 0";
+                    GROUP BY s.StudentId, s.FullName, s.GradeLevel, s.Section, s.Strand, s.Gender";
 
                 using (var command = new MySqlCommand(dailyQuery, connection))
                 {
@@ -107,11 +106,13 @@ namespace ServerAtrrak.Services
                     using var reader = await command.ExecuteReaderAsync();
                     while (await reader.ReadAsync())
                     {
+                        var studentId = reader.GetString("StudentId");
                         var totalDays = reader.IsDBNull("TotalDays") ? 0 : Convert.ToInt32(reader["TotalDays"]);
                         var presentDays = reader.IsDBNull("PresentDays") ? 0 : Convert.ToInt32(reader["PresentDays"]);
-                        summaries.Add(new AttendanceSummary
+                        
+                        summaryMap[studentId] = new AttendanceSummary
                         {
-                            StudentId = reader.GetString("StudentId"),
+                            StudentId = studentId,
                             FullName = reader.GetString("FullName"),
                             GradeLevel = reader.GetInt32("GradeLevel"),
                             Section = reader.GetString("Section"),
@@ -127,7 +128,7 @@ namespace ServerAtrrak.Services
                             FirstAbsentDate = reader.IsDBNull("FirstAbsentDate") ? null : reader.GetDateTime("FirstAbsentDate"),
                             LastAbsentDate = reader.IsDBNull("LastAbsentDate") ? null : reader.GetDateTime("LastAbsentDate"),
                             AbsentDates = reader.IsDBNull("AbsentDates") ? "" : reader.GetString("AbsentDates")
-                        });
+                        };
                     }
                 }
 
@@ -135,9 +136,8 @@ namespace ServerAtrrak.Services
                 var subjectQuery = @"
                     SELECT s.StudentId, s.FullName, s.GradeLevel, s.Section, s.Strand, s.Gender,
                            COUNT(sa.SubjectAttendanceId) as IncompleteSessions,
-                           MAX(sa.Date) as LastAbsentDate,
-                           COALESCE(sub_co.SubjectName, sub_ts.SubjectName, 'Unknown Subject') as SubjectName,
-                           COALESCE((SELECT Status FROM guidance_cases WHERE StudentId = s.StudentId ORDER BY UpdatedAt DESC LIMIT 1), 'Normal') as GuidanceStatus
+                           MAX(sa.Date) as LastIncidentDate,
+                           COALESCE(sub_co.SubjectName, sub_ts.SubjectName, 'Unknown Subject') as SubjectName
                     FROM student s
                     INNER JOIN subject_attendance sa ON sa.StudentId = s.StudentId 
                     LEFT JOIN class_offering co ON sa.ClassOfferingId = co.ClassOfferingId
@@ -156,27 +156,59 @@ namespace ServerAtrrak.Services
                     using var reader = await command.ExecuteReaderAsync();
                     while (await reader.ReadAsync())
                     {
-                        summaries.Add(new AttendanceSummary
+                        var studentId = reader.GetString("StudentId");
+                        var incompleteCount = reader.IsDBNull("IncompleteSessions") ? 0 : Convert.ToInt32(reader["IncompleteSessions"]);
+                        var subName = reader.GetString("SubjectName");
+
+                        if (summaryMap.TryGetValue(studentId, out var existing))
                         {
-                            StudentId = reader.GetString("StudentId"),
-                            FullName = reader.GetString("FullName"),
-                            GradeLevel = reader.GetInt32("GradeLevel"),
-                            Section = reader.GetString("Section"),
-                            IncompleteSessions = reader.IsDBNull("IncompleteSessions") ? 0 : Convert.ToInt32(reader["IncompleteSessions"]),
-                            SubjectName = reader.GetString("SubjectName"),
-                            GuidanceStatus = reader.GetString("GuidanceStatus"),
-                            LastAbsentDate = reader.IsDBNull("LastAbsentDate") ? null : reader.GetDateTime("LastAbsentDate")
-                        });
+                            // Update existing record with cutting class info
+                            existing.IncompleteSessions += incompleteCount;
+                            // If it was "Overall", we might want to note the specific subject if it's the first cutting incident
+                            if (existing.SubjectName == "Overall") existing.SubjectName = subName;
+                        }
+                        else
+                        {
+                            // Add new record for student who ONLY has cutting class incidents but no full absences
+                            summaryMap[studentId] = new AttendanceSummary
+                            {
+                                StudentId = studentId,
+                                FullName = reader.GetString("FullName"),
+                                GradeLevel = reader.GetInt32("GradeLevel"),
+                                Section = reader.GetString("Section"),
+                                Strand = reader.IsDBNull("Strand") ? null : reader.GetString("Strand"),
+                                Gender = reader.IsDBNull("Gender") ? "" : reader.GetString("Gender"),
+                                IncompleteSessions = incompleteCount,
+                                SubjectName = subName,
+                                GuidanceStatus = "Normal" // Will be checked below
+                            };
+                        }
                     }
                 }
 
-                // Calculate consecutive absences
-                foreach (var s in summaries.Where(x => x.SubjectName == "Overall"))
+                // Final Pass: Guidance Status and Consecutive Absences
+                foreach (var s in summaryMap.Values)
                 {
                     s.ConsecutiveAbsences = await GetConsecutiveAbsencesAsync(s.StudentId, null, connection);
+                    
+                    // Double check guidance status if it wasn't set (e.g., from Query 2 only)
+                    if (string.IsNullOrEmpty(s.GuidanceStatus))
+                    {
+                        var statusQuery = "SELECT Status FROM guidance_cases WHERE StudentId = @Sid ORDER BY UpdatedAt DESC LIMIT 1";
+                        using var statusCmd = new MySqlCommand(statusQuery, connection);
+                        statusCmd.Parameters.AddWithValue("@Sid", s.StudentId);
+                        var statusResult = await statusCmd.ExecuteScalarAsync();
+                        s.GuidanceStatus = statusResult?.ToString() ?? "Normal";
+                    }
                 }
 
-                return summaries;
+                // Return only flagged students
+                int threshold = days <= 3 ? 1 : 3;
+                return summaryMap.Values
+                    .Where(s => s.AbsentDays >= threshold || s.ConsecutiveAbsences >= 3 || s.IncompleteSessions > 0)
+                    .OrderByDescending(s => s.ConsecutiveAbsences)
+                    .ThenByDescending(s => s.AbsentDays)
+                    .ToList();
             }
             catch (Exception ex)
             {
