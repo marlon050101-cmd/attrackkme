@@ -54,6 +54,16 @@ namespace AttrackSharedClass.Models
         public double OnTimeArrivalRate { get; set; }
         public List<AttendanceSummary> StudentsAtRisk { get; set; } = new();
         public List<StudentInfo> AllStudents { get; set; } = new();
+        public List<DailyTrendData> DailyTrends { get; set; } = new();
+    }
+
+    public class DailyTrendData
+    {
+        public DateTime Date { get; set; }
+        public string DayName { get; set; } = string.Empty;
+        public double PresenceRate { get; set; }
+        public int AbsentCount { get; set; }
+        public int PresentCount { get; set; }
     }
 
     public class UpdateCaseStatusRequest

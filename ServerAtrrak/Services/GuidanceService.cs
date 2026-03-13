@@ -271,7 +271,8 @@ namespace ServerAtrrak.Services
                     WeeklyAttendanceRate = await GetSchoolWeeklyAttendanceRateAsync(schoolId),
                     DailyPresenceRate = await GetDailyPresenceRateAsync(schoolId),
                     CaseResolutionRate = await GetCaseResolutionRateAsync(schoolId),
-                    OnTimeArrivalRate = await GetOnTimeArrivalRateAsync(schoolId)
+                    OnTimeArrivalRate = await GetOnTimeArrivalRateAsync(schoolId),
+                    DailyTrends = await GetDailyAttendanceTrendsAsync(schoolId, days)
                 };
             }
             catch (Exception ex)
@@ -279,6 +280,57 @@ namespace ServerAtrrak.Services
                 _logger.LogError(ex, "Error getting dashboard data for school {SchoolId}", schoolId);
                 throw;
             }
+        }
+
+        private async Task<List<DailyTrendData>> GetDailyAttendanceTrendsAsync(string schoolId, int days)
+        {
+            var trends = new List<DailyTrendData>();
+            try
+            {
+                using var connection = new MySqlConnection(_dbConnection.GetConnection());
+                await connection.OpenAsync();
+
+                // Get aggregate stats per day for the last N days
+                var query = @"
+                    SELECT 
+                        sa.Date,
+                        COUNT(*) as Total,
+                        SUM(CASE WHEN sa.Status IN ('Present', 'Late') THEN 1 ELSE 0 END) as Present,
+                        SUM(CASE WHEN sa.Status = 'Absent' THEN 1 ELSE 0 END) as Absent
+                    FROM subject_attendance sa
+                    INNER JOIN student s ON sa.StudentId = s.StudentId
+                    WHERE s.SchoolId = @SchoolId 
+                      AND sa.Date >= DATE_SUB(CURDATE(), INTERVAL @Days DAY)
+                    GROUP BY sa.Date
+                    ORDER BY sa.Date ASC";
+
+                using var cmd = new MySqlCommand(query, connection);
+                cmd.Parameters.AddWithValue("@SchoolId", schoolId);
+                cmd.Parameters.AddWithValue("@Days", days);
+
+                using var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    var date = reader.GetDateTime("Date");
+                    var total = Convert.ToInt32(reader["Total"]);
+                    var present = Convert.ToInt32(reader["Present"]);
+                    var absent = Convert.ToInt32(reader["Absent"]);
+
+                    trends.Add(new DailyTrendData
+                    {
+                        Date = date,
+                        DayName = date.ToString("ddd"),
+                        PresenceRate = total > 0 ? (double)present / total * 100 : 0,
+                        PresentCount = present,
+                        AbsentCount = absent
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting attendance trends for {SchoolId}", schoolId);
+            }
+            return trends;
         }
 
         public async Task<bool> UpdateCaseStatusAsync(string studentId, string status, string? notes = null)

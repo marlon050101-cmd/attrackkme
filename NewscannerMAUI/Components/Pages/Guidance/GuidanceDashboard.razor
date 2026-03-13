@@ -94,6 +94,67 @@
             </div>
         </div>
 
+        <!-- Center: Attendance Trends (New Graph) -->
+        <div class="analytics-card trend-chart-card">
+            <div class="card-header-formal">
+                <i class="fas fa-chart-line"></i>
+                <span>Attendance Trends</span>
+                <span class="trend-subtitle">@(timeRange)-Day Waveform</span>
+            </div>
+            <div class="analytics-content trend-wrapper">
+                @if (dashboardData.DailyTrends != null && dashboardData.DailyTrends.Any())
+                {
+                    <div class="waveform-container">
+                        <svg viewBox="0 0 1000 200" preserveAspectRatio="none" class="waveform-svg">
+                            <defs>
+                                <linearGradient id="barGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                                    <stop offset="0%" style="stop-color:#00f2fe;stop-opacity:1" />
+                                    <stop offset="100%" style="stop-color:#4facfe;stop-opacity:1" />
+                                </linearGradient>
+                                <linearGradient id="reflectGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                                    <stop offset="0%" style="stop-color:#4facfe;stop-opacity:0.3" />
+                                    <stop offset="100%" style="stop-color:#00f2fe;stop-opacity:0.01" />
+                                </linearGradient>
+                            </defs>
+                            
+                            @{
+                                var trendList = dashboardData.DailyTrends;
+                                int barCount = trendList.Count;
+                                double barWidth = 1000.0 / Math.Max(barCount, 30);
+                                double gap = barWidth * 0.2;
+                                double actualWidth = barWidth - gap;
+                            }
+
+                            @for (int i = 0; i < trendList.Count; i++)
+                            {
+                                var day = trendList[i];
+                                // Scale height (0-100% presence) to 120 units
+                                double height = (day.PresenceRate / 100.0) * 120;
+                                double x = i * barWidth;
+                                
+                                <!-- Main Bar -->
+                                <rect x="@x" y="@(130 - height)" width="@actualWidth" height="@height" 
+                                      rx="@(actualWidth/2)" ry="@(actualWidth/2)" fill="url(#barGradient)" class="trend-bar">
+                                    <title>@day.Date.ToString("MMM dd"): @day.PresenceRate.ToString("F1")%</title>
+                                </rect>
+
+                                <!-- Reflection -->
+                                <rect x="@x" y="135" width="@actualWidth" height="@(height * 0.4)" 
+                                      rx="@(actualWidth/2)" ry="@(actualWidth/2)" fill="url(#reflectGradient)" opacity="0.5" />
+                            }
+                        </svg>
+                    </div>
+                }
+                else
+                {
+                    <div class="empty-trend">
+                        <i class="fas fa-chart-bar"></i>
+                        <p>No trend data available for this timeframe</p>
+                    </div>
+                }
+            </div>
+        </div>
+
         <!-- Right: Actionable Alerts -->
         <div class="alerts-column">
             <div class="analytics-card alert-card critical">
@@ -747,14 +808,29 @@
         align-items: center;
         gap: 8px;
     }
-
+    /* Analytics Hub Grid */
     .analytics-hub {
         display: grid;
-        grid-template-columns: 1.2fr 1fr;
+        grid-template-columns: 1fr 1.5fr 1fr;
         gap: 1.5rem;
         padding: 1.5rem 2rem;
         margin-top: -40px;
     }
+
+    .trend-chart-card { min-height: 220px; }
+    .trend-subtitle { font-size: 0.65rem; background: #e0e7ff; color: #4338ca; padding: 2px 8px; border-radius: 6px; margin-left: auto; }
+    
+    .trend-wrapper { padding: 1.5rem 1rem 0.5rem; display: flex; align-items: flex-end; justify-content: center; }
+    
+    .waveform-container { width: 100%; height: 160px; overflow: hidden; display: flex; align-items: flex-end; }
+    .waveform-svg { width: 100%; height: 100%; }
+    
+    .trend-bar { transition: height 0.3s ease, y 0.3s ease; cursor: pointer; }
+    .trend-bar:hover { filter: brightness(1.2); }
+
+    .empty-trend { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; height: 100%; color: #cbd5e1; }
+    .empty-trend i { font-size: 2rem; margin-bottom: 0.5rem; }
+    .empty-trend p { font-size: 0.8rem; }
 
     .analytics-card {
         background: white;
@@ -779,7 +855,16 @@
         text-transform: uppercase;
     }
 
-    .analytics-content {
+    @@media (max-width: 1200px) {
+        .analytics-hub { grid-template-columns: 1.2fr 1fr; }
+        .trend-chart-card { grid-column: span 2; order: 3; }
+    }
+
+    @@media (max-width: 1024px) {
+        .analytics-hub { grid-template-columns: 1fr; padding: 1rem; }
+        .trend-chart-card { grid-column: span 1; order: initial; }
+    }
+  .analytics-content {
         padding: 1.5rem;
         flex: 1;
     }
