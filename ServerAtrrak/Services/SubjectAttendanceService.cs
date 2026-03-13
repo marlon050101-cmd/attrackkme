@@ -9,12 +9,14 @@ namespace ServerAtrrak.Services
         private readonly Dbconnection _dbConnection;
         private readonly ILogger<SubjectAttendanceService> _logger;
         private readonly SmsQueueService _smsQueueService;
+        private readonly IAcademicPeriodService _periodService;
 
-        public SubjectAttendanceService(Dbconnection dbConnection, ILogger<SubjectAttendanceService> logger, SmsQueueService smsQueueService)
+        public SubjectAttendanceService(Dbconnection dbConnection, ILogger<SubjectAttendanceService> logger, SmsQueueService smsQueueService, IAcademicPeriodService periodService)
         {
             _dbConnection = dbConnection;
             _logger = logger;
             _smsQueueService = smsQueueService;
+            _periodService = periodService;
         }
 
 
@@ -34,7 +36,39 @@ namespace ServerAtrrak.Services
                 // --- ROBUST SCHEMA MIGRATION: Ensure Granular Index ---
                 try
                 {
-                    // 1. Get all unique indexes for subject_attendance (except PRIMARY)
+                    // 1. Check for PeriodId in subject_attendance (already added in sql but for robustness)
+                    var checkPeriodSa = @"
+                        SELECT COUNT(*) FROM information_schema.columns 
+                        WHERE table_schema = DATABASE() AND table_name = 'subject_attendance' AND column_name = 'PeriodId'";
+                    using (var cmdP = new MySqlCommand(checkPeriodSa, connection))
+                    {
+                        if (Convert.ToInt32(await cmdP.ExecuteScalarAsync()) == 0)
+                        {
+                            using var addCmd = new MySqlCommand("ALTER TABLE subject_attendance ADD COLUMN PeriodId VARCHAR(100)", connection);
+                            await addCmd.ExecuteNonQueryAsync();
+                        }
+                    }
+
+                    // 2. Check for PeriodId in student_daily_summary and update PK
+                    var checkPeriodDs = @"
+                        SELECT COUNT(*) FROM information_schema.columns 
+                        WHERE table_schema = DATABASE() AND table_name = 'student_daily_summary' AND column_name = 'PeriodId'";
+                    using (var cmdP = new MySqlCommand(checkPeriodDs, connection))
+                    {
+                        if (Convert.ToInt32(await cmdP.ExecuteScalarAsync()) == 0)
+                        {
+                            try {
+                                using var addCmd = new MySqlCommand("ALTER TABLE student_daily_summary ADD COLUMN PeriodId VARCHAR(100)", connection);
+                                await addCmd.ExecuteNonQueryAsync();
+                                using var dropPk = new MySqlCommand("ALTER TABLE student_daily_summary DROP PRIMARY KEY", connection);
+                                await dropPk.ExecuteNonQueryAsync();
+                                using var addPk = new MySqlCommand("ALTER TABLE student_daily_summary ADD PRIMARY KEY (StudentId, Date, PeriodId)", connection);
+                                await addPk.ExecuteNonQueryAsync();
+                            } catch (Exception pkEx) { _logger.LogWarning("Daily Summary PK update: {Msg}", pkEx.Message); }
+                        }
+                    }
+
+                    // 3. Update Indexes (Old Logic)
                     var getIndexesSql = @"
                         SELECT DISTINCT index_name 
                         FROM information_schema.statistics 
@@ -53,8 +87,6 @@ namespace ServerAtrrak.Services
                     bool hasCorrectIndex = false;
                     foreach (var idxName in existingIndexes)
                     {
-                        // Check columns of this index
-                        var getColsSql = "SHOW COLUMNS FROM subject_attendance"; // We'll just check statistics for this index
                         var colsQuery = $@"
                             SELECT column_name 
                             FROM information_schema.statistics 
@@ -73,7 +105,6 @@ namespace ServerAtrrak.Services
                             }
                         }
 
-                        // If it's the old one (StudentId, Date) or missing ClassOfferingId, we drop it
                         if (!cols.Contains("classofferingid"))
                         {
                             _logger.LogInformation("Dropping broad unique index: {IdxName}", idxName);
@@ -96,7 +127,7 @@ namespace ServerAtrrak.Services
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning("Index migration info: {Msg}", ex.Message);
+                    _logger.LogWarning("Migration info: {Msg}", ex.Message);
                 }
 
 
@@ -111,7 +142,7 @@ namespace ServerAtrrak.Services
                     // We only verify: (1) the class offering exists, (2) the student is active.
                     // We skip strict GradeLevel/Section/Strand matching which caused false negatives.
                     var validateSql = @"
-                        SELECT co.TeacherId 
+                        SELECT co.TeacherId, co.PeriodId 
                         FROM class_offering co
                         WHERE co.ClassOfferingId = @COId
                         AND EXISTS (
@@ -124,13 +155,19 @@ namespace ServerAtrrak.Services
                     vcmd.Parameters.AddWithValue("@COId", request.ClassOfferingId);
                     vcmd.Parameters.AddWithValue("@StudentId", item.StudentId);
                     
-                    var teacherIdRaw = await vcmd.ExecuteScalarAsync();
-                    // Row found = class offering exists and student is active
-                    bool isEnrolled = teacherIdRaw != null;
-                    // Safely convert: DBNull.Value means TeacherId column is NULL (not yet assigned), not a string
-                    string? teacherSubjectId = (teacherIdRaw == null || teacherIdRaw == DBNull.Value) 
-                        ? null 
-                        : teacherIdRaw.ToString();
+                    string? teacherSubjectId = null;
+                    string? periodId = null;
+                    bool isEnrolled = false;
+
+                    using (var reader = await vcmd.ExecuteReaderAsync())
+                    {
+                        if (await reader.ReadAsync())
+                        {
+                            isEnrolled = true;
+                            teacherSubjectId = reader.IsDBNull(0) ? null : reader.GetString(0);
+                            periodId = reader.IsDBNull(1) ? null : reader.GetString(1);
+                        }
+                    }
 
                     _logger.LogInformation("Validation: Student={StudentId}, ClassOffering={COId}, Valid={Valid}, TeacherSubjectId={TID}",
                         item.StudentId, request.ClassOfferingId, isEnrolled, teacherSubjectId ?? "NULL");
@@ -152,9 +189,9 @@ namespace ServerAtrrak.Services
                     // This handles the 'Duplicate entry' error by updating the existing record instead of failing.
                     var upsertSql = @"
                         INSERT INTO subject_attendance (
-                            SubjectAttendanceId, ClassOfferingId, TeacherSubjectId, StudentId, Date, Status, Remarks, TimeIn, TimeOut
+                            SubjectAttendanceId, ClassOfferingId, TeacherSubjectId, StudentId, Date, Status, Remarks, TimeIn, TimeOut, PeriodId
                         )
-                        VALUES (@Id, @COId, @TeacherSubjectId, @StudentId, @Date, @Status, @Remarks, @TimeIn, @TimeOut)
+                        VALUES (@Id, @COId, @TeacherSubjectId, @StudentId, @Date, @Status, @Remarks, @TimeIn, @TimeOut, @PeriodId)
                         ON DUPLICATE KEY UPDATE 
                             Status = VALUES(Status),
                             Remarks = VALUES(Remarks),
@@ -162,6 +199,7 @@ namespace ServerAtrrak.Services
                             TimeOut = COALESCE(TimeOut, VALUES(TimeOut)),
                             ClassOfferingId = VALUES(ClassOfferingId),
                             TeacherSubjectId = VALUES(TeacherSubjectId),
+                            PeriodId = VALUES(PeriodId),
                             UpdatedAt = NOW()";
 
                     using var cmd = new MySqlCommand(upsertSql, connection);
@@ -172,6 +210,7 @@ namespace ServerAtrrak.Services
                     cmd.Parameters.AddWithValue("@Date", date);
                     cmd.Parameters.AddWithValue("@Status", status);
                     cmd.Parameters.AddWithValue("@Remarks", item.Remarks ?? (object)DBNull.Value);
+                    cmd.Parameters.AddWithValue("@PeriodId", (object?)periodId ?? DBNull.Value);
                     
                     var timestamp = item.ScanTimestamp;
                     cmd.Parameters.AddWithValue("@TimeIn", item.AttendanceType == "TimeIn" ? timestamp : (object)DBNull.Value);
@@ -338,7 +377,14 @@ namespace ServerAtrrak.Services
             try
             {
                 using var connection = new MySqlConnection(_dbConnection.GetConnection());
-                await connection.OpenAsync();
+                // Get student's school and active period
+                var schoolQuery = "SELECT SchoolId FROM student WHERE StudentId = @Sid";
+                using var scmd = new MySqlCommand(schoolQuery, connection);
+                scmd.Parameters.AddWithValue("@Sid", studentId);
+                var schoolId = (await scmd.ExecuteScalarAsync())?.ToString();
+                
+                var periodId = schoolId != null ? (await _periodService.GetActivePeriodAsync(schoolId))?.PeriodId : null;
+
                 var fromDate = DateTime.Today.AddDays(-days);
                 var query = @"
                     SELECT sa.SubjectAttendanceId, sa.StudentId, st.FullName,
@@ -346,10 +392,12 @@ namespace ServerAtrrak.Services
                     FROM subject_attendance sa
                     INNER JOIN student st ON sa.StudentId = st.StudentId
                     WHERE sa.StudentId = @StudentId AND sa.Date >= @FromDate
+                      AND (@PeriodId IS NULL OR sa.PeriodId = @PeriodId)
                     ORDER BY sa.Date DESC, sa.UpdatedAt DESC";
                 using var cmd = new MySqlCommand(query, connection);
                 cmd.Parameters.AddWithValue("@StudentId", studentId);
                 cmd.Parameters.AddWithValue("@FromDate", fromDate);
+                cmd.Parameters.AddWithValue("@PeriodId", (object?)periodId ?? DBNull.Value);
                 using var reader = await cmd.ExecuteReaderAsync();
                 while (await reader.ReadAsync())
                 {
@@ -383,10 +431,16 @@ namespace ServerAtrrak.Services
             {
                 using var connection = new MySqlConnection(_dbConnection.GetConnection());
                 await connection.OpenAsync();
+                // Get teacher's school and active period
+                var schoolQuery = "SELECT SchoolId FROM teacher WHERE TeacherId = @Tid";
+                using var tscmd = new MySqlCommand(schoolQuery, connection);
+                tscmd.Parameters.AddWithValue("@Tid", teacherId);
+                var schoolId = (await tscmd.ExecuteScalarAsync())?.ToString();
+
+                var periodId = schoolId != null ? (await _periodService.GetActivePeriodAsync(schoolId))?.PeriodId : null;
+
                 var fromDate = DateTime.Today.AddDays(-daysCount);
                 
-                // We join with student to get StudentName 
-                // and join with class_offering + subject to get SubjectName
                 var query = @"
                     SELECT sa.SubjectAttendanceId, sa.StudentId, st.FullName as StudentName,
                            sa.Date, sa.Status, sa.Remarks, sa.CreatedAt, sa.UpdatedAt, sa.TimeIn, sa.TimeOut, 
@@ -396,11 +450,13 @@ namespace ServerAtrrak.Services
                     INNER JOIN class_offering co ON sa.ClassOfferingId = co.ClassOfferingId
                     INNER JOIN subject sub ON co.SubjectId = sub.SubjectId
                     WHERE co.TeacherId = @TeacherId AND sa.Date >= @FromDate
+                      AND (@PeriodId IS NULL OR sa.PeriodId = @PeriodId)
                     ORDER BY sa.Date DESC, sa.UpdatedAt DESC";
 
                 using var cmd = new MySqlCommand(query, connection);
                 cmd.Parameters.AddWithValue("@TeacherId", teacherId);
                 cmd.Parameters.AddWithValue("@FromDate", fromDate);
+                cmd.Parameters.AddWithValue("@PeriodId", (object?)periodId ?? DBNull.Value);
                 
                 using var reader = await cmd.ExecuteReaderAsync();
                 while (await reader.ReadAsync())
@@ -438,6 +494,14 @@ namespace ServerAtrrak.Services
                 
                 // Using LEFT JOIN for subject to ensure we still see the offering even if subject link is missing (though SubjectName will be "Unknown")
                 // Added TRIM() to ID comparisons just in case there are leading/trailing spaces in the DB
+                // Get adviser's school and active period
+                var schoolQuery = "SELECT SchoolId FROM teacher WHERE TeacherId = @Aid";
+                using var ascmd = new MySqlCommand(schoolQuery, connection);
+                ascmd.Parameters.AddWithValue("@Aid", adviserId);
+                var schoolId = (await ascmd.ExecuteScalarAsync())?.ToString();
+
+                var periodId = schoolId != null ? (await _periodService.GetActivePeriodAsync(schoolId))?.PeriodId : null;
+
                 var query = @"
                     SELECT co.ClassOfferingId, co.SubjectId, COALESCE(s.SubjectName, 'Unknown Subject') as SubjectName, 
                            co.AdviserId, co.TeacherId, 
@@ -447,11 +511,13 @@ namespace ServerAtrrak.Services
                     LEFT JOIN subject s ON co.SubjectId = s.SubjectId
                     LEFT JOIN teacher t ON co.AdviserId = t.TeacherId
                     LEFT JOIN teacher t2 ON co.TeacherId = t2.TeacherId
-                    WHERE TRIM(co.AdviserId) = @AdviserId OR TRIM(co.TeacherId) = @AdviserId
+                    WHERE (TRIM(co.AdviserId) = @AdviserId OR TRIM(co.TeacherId) = @AdviserId)
+                      AND (@PeriodId IS NULL OR co.PeriodId = @PeriodId)
                     ORDER BY co.GradeLevel, co.Section, co.ScheduleStart";
 
                 using var cmd = new MySqlCommand(query, connection);
                 cmd.Parameters.AddWithValue("@AdviserId", adviserId.Trim());
+                cmd.Parameters.AddWithValue("@PeriodId", (object?)periodId ?? DBNull.Value);
                 
                 using var reader = await cmd.ExecuteReaderAsync();
                 while (await reader.ReadAsync())
@@ -509,26 +575,23 @@ namespace ServerAtrrak.Services
 
                 _logger.LogInformation("Updating Daily Summary for Student: {Id} on {Date}", studentId, date.ToString("yyyy-MM-dd"));
 
-                // 1. Ensure table exists
-                var createTableSql = @"
-                    CREATE TABLE IF NOT EXISTS student_daily_summary (
-                        StudentId VARCHAR(100),
-                        Date DATE,
-                        Status VARCHAR(50),
-                        TotalSubjects INT,
-                        AttendedSubjects INT,
-                        TimeIn DATETIME NULL,
-                        TimeOut DATETIME NULL,
-                        Remarks TEXT NULL,
-                        UpdatedAt DATETIME,
-                        PRIMARY KEY (StudentId, Date)
-                    )";
-                using (var ccmd = new MySqlCommand(createTableSql, connection)) await ccmd.ExecuteNonQueryAsync();
+                // 1. Get student's school and active period
+                var schoolQuery = "SELECT SchoolId FROM student WHERE StudentId = @Sid";
+                string? schoolId = null;
+                using (var scmd = new MySqlCommand(schoolQuery, connection))
+                {
+                    scmd.Parameters.AddWithValue("@Sid", studentId);
+                    schoolId = (await scmd.ExecuteScalarAsync())?.ToString();
+                }
+                if (string.IsNullOrEmpty(schoolId)) return;
 
-                // 2. Count Total Scheduled Subjects for this student TODAY
-                // We check for both full day name and 3-letter abbreviation (e.g. 'Monday' and 'Mon')
-                var dayFull = date.DayOfWeek.ToString(); // e.g. "Monday"
-                var dayShort = dayFull.Substring(0, 3);   // e.g. "Mon"
+                var period = await _periodService.GetActivePeriodAsync(schoolId);
+                var periodId = period?.PeriodId;
+                if (string.IsNullOrEmpty(periodId)) return;
+
+                // 2. Count Total Scheduled Subjects for this student TODAY (filtered by PeriodId)
+                var dayFull = date.DayOfWeek.ToString();
+                var dayShort = dayFull.Substring(0, 3);
 
                 var totalSql = @"
                     SELECT COUNT(*) 
@@ -536,6 +599,7 @@ namespace ServerAtrrak.Services
                     INNER JOIN student s ON s.StudentId = @StudentId
                     WHERE co.GradeLevel = s.GradeLevel 
                       AND co.Section = s.Section
+                      AND co.PeriodId = @PeriodId
                       AND (co.Strand IS NULL OR s.Strand IS NULL OR co.Strand = s.Strand)
                       AND (
                            co.DayOfWeek IS NULL 
@@ -550,12 +614,13 @@ namespace ServerAtrrak.Services
                 using (var tcmd = new MySqlCommand(totalSql, connection))
                 {
                     tcmd.Parameters.AddWithValue("@StudentId", studentId);
+                    tcmd.Parameters.AddWithValue("@PeriodId", periodId);
                     tcmd.Parameters.AddWithValue("@DayFull", dayFull);
                     tcmd.Parameters.AddWithValue("@DayShort", dayShort);
                     total = Convert.ToInt32(await tcmd.ExecuteScalarAsync());
                 }
 
-                // 3. Count Attended Subjects and get Time In/Out
+                // 3. Count Attended Subjects and get Time In/Out (filtered by PeriodId)
                 var attendanceSql = @"
                     SELECT 
                         COUNT(DISTINCT ClassOfferingId) as Attended,
@@ -563,17 +628,17 @@ namespace ServerAtrrak.Services
                         MAX(TimeOut) as TimeOut,
                         MAX(UpdatedAt) as LastSeen
                     FROM subject_attendance
-                    WHERE StudentId = @StudentId AND Date = @Date";
+                    WHERE StudentId = @StudentId AND Date = @Date AND PeriodId = @PeriodId";
                 
                 int attended = 0;
                 DateTime? timeIn = null;
                 DateTime? timeOut = null;
-                DateTime? lastUpdated = null;
 
                 using (var acmd = new MySqlCommand(attendanceSql, connection))
                 {
                     acmd.Parameters.AddWithValue("@StudentId", studentId);
                     acmd.Parameters.AddWithValue("@Date", date.Date);
+                    acmd.Parameters.AddWithValue("@PeriodId", periodId);
                     using (var reader = await acmd.ExecuteReaderAsync())
                     {
                         if (await reader.ReadAsync())
@@ -581,7 +646,6 @@ namespace ServerAtrrak.Services
                             attended = reader.IsDBNull(0) ? 0 : reader.GetInt32(0);
                             timeIn = reader.IsDBNull(1) ? (DateTime?)null : reader.GetDateTime(1);
                             timeOut = reader.IsDBNull(2) ? (DateTime?)null : reader.GetDateTime(2);
-                            lastUpdated = reader.IsDBNull(3) ? (DateTime?)null : reader.GetDateTime(3);
                         }
                     }
                 }
@@ -596,19 +660,17 @@ namespace ServerAtrrak.Services
                     else status = "Partially Present";
                 }
 
-                _logger.LogInformation("Student {Id}: Total={Total}, Attended={Attended}, Status={Status}", studentId, total, attended, status);
-
                 // 5. Upsert into student_daily_summary
                 var upsertSql = @"
-                    INSERT INTO student_daily_summary (StudentId, Date, Status, TotalSubjects, AttendedSubjects, TimeIn, TimeOut, Remarks, UpdatedAt)
-                    VALUES (@StudentId, @Date, @Status, @Total, @Attended, @In, @Out, @Remarks, NOW())
+                    INSERT INTO student_daily_summary (StudentId, Date, Status, TotalSubjects, AttendedSubjects, TimeIn, TimeOut, PeriodId, UpdatedAt)
+                    VALUES (@StudentId, @Date, @Status, @Total, @Attended, @In, @Out, @PeriodId, NOW())
                     ON DUPLICATE KEY UPDATE 
                         Status = VALUES(Status),
                         TotalSubjects = VALUES(TotalSubjects),
                         AttendedSubjects = VALUES(AttendedSubjects),
                         TimeIn = VALUES(TimeIn),
                         TimeOut = VALUES(TimeOut),
-                        Remarks = VALUES(Remarks),
+                        PeriodId = VALUES(PeriodId),
                         UpdatedAt = NOW()";
 
                 using (var ucmd = new MySqlCommand(upsertSql, connection))
@@ -620,7 +682,7 @@ namespace ServerAtrrak.Services
                     ucmd.Parameters.AddWithValue("@Attended", attended);
                     ucmd.Parameters.AddWithValue("@In", (object?)timeIn ?? DBNull.Value);
                     ucmd.Parameters.AddWithValue("@Out", (object?)timeOut ?? DBNull.Value);
-                    ucmd.Parameters.AddWithValue("@Remarks", DBNull.Value); // For now default to null, or aggregate if needed
+                    ucmd.Parameters.AddWithValue("@PeriodId", periodId);
                     await ucmd.ExecuteNonQueryAsync();
                 }
             }
@@ -638,6 +700,14 @@ namespace ServerAtrrak.Services
                 using var connection = new MySqlConnection(_dbConnection.GetConnection());
                 await connection.OpenAsync();
 
+                // Get adviser's school and active period
+                var schoolQuery = "SELECT SchoolId FROM teacher WHERE TeacherId = @Aid";
+                using var ascmd = new MySqlCommand(schoolQuery, connection);
+                ascmd.Parameters.AddWithValue("@Aid", adviserId);
+                var schoolId = (await ascmd.ExecuteScalarAsync())?.ToString();
+
+                var periodId = schoolId != null ? (await _periodService.GetActivePeriodAsync(schoolId))?.PeriodId : null;
+
                 var dayFull = date.DayOfWeek.ToString();
                 var dayShort = dayFull.Substring(0, 3);
 
@@ -650,6 +720,7 @@ namespace ServerAtrrak.Services
                             FROM class_offering co
                             WHERE co.GradeLevel = s.GradeLevel 
                               AND co.Section = s.Section
+                              AND (@PeriodId IS NULL OR co.PeriodId = @PeriodId)
                               AND (co.Strand IS NULL OR s.Strand IS NULL OR co.Strand = s.Strand)
                               AND (
                                    co.DayOfWeek IS NULL 
@@ -667,17 +738,18 @@ namespace ServerAtrrak.Services
                         ds.Remarks,
                         ds.UpdatedAt as LastSeen
                     FROM student s
-                    LEFT JOIN student_daily_summary ds ON s.StudentId = ds.StudentId AND ds.Date = @Date
+                    LEFT JOIN student_daily_summary ds ON s.StudentId = ds.StudentId AND ds.Date = @Date AND (@PeriodId IS NULL OR ds.PeriodId = @PeriodId)
                     WHERE s.IsActive = 1
                       AND (
                         TRIM(s.AdviserId) = @AdviserId
-                        OR s.Section IN (SELECT DISTINCT Section FROM class_offering WHERE TRIM(AdviserId) = @AdviserId)
+                        OR s.Section IN (SELECT DISTINCT Section FROM class_offering WHERE TRIM(AdviserId) = @AdviserId AND (@PeriodId IS NULL OR PeriodId = @PeriodId))
                       )
                     ORDER BY s.FullName";
 
                 using var cmd = new MySqlCommand(query, connection);
                 cmd.Parameters.AddWithValue("@AdviserId", adviserId.Trim());
                 cmd.Parameters.AddWithValue("@Date", date.Date);
+                cmd.Parameters.AddWithValue("@PeriodId", (object?)periodId ?? DBNull.Value);
                 cmd.Parameters.AddWithValue("@DayFull", dayFull);
                 cmd.Parameters.AddWithValue("@DayShort", dayShort);
 

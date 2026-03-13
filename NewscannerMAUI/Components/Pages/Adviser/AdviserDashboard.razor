@@ -11,8 +11,12 @@
 
 <div class="dashboard-container">
     <div class="welcome-banner d-flex justify-content-between align-items-center">
-        <div>
+        <div class="banner-info">
             <h2 class="mb-1">Hello, @adviserName!</h2>
+            <div class="period-status-chip">
+                <i class="fas fa-calendar-check"></i>
+                <span>@(activePeriodName ?? "Loading period...")</span>
+            </div>
             <p class="text-muted small">Welcome to Sardo-Trakcare Adviser Portal</p>
         </div>
         <div class="header-actions">
@@ -263,6 +267,7 @@
     private List<ClassOffering> _subjects = new();
     private List<DailySubjectSummary> _dailySummaries = new();
     private List<SubjectAttendanceRecord> _subjectAttendanceRecords = new();
+    private string? activePeriodName;
     
     private bool _isLoadingSubjects = true;
     private bool _isLoadingMonitoring = true;
@@ -286,8 +291,23 @@
             if (!string.IsNullOrEmpty(adviserId))
             {
                 await LoadDashboardData();
+                await LoadActivePeriod(user.SchoolId);
             }
         }
+    }
+
+    private async Task LoadActivePeriod(string? schoolId)
+    {
+        if (string.IsNullOrEmpty(schoolId)) return;
+        try
+        {
+            var period = await Http.GetFromJsonAsync<AcademicPeriod>($"{ApiConfig.BaseUrl}api/academicperiod/active/{schoolId}");
+            if (period != null)
+            {
+                activePeriodName = $"{period.SchoolYear} - {period.Semester}";
+            }
+        }
+        catch { activePeriodName = "No Active Period"; }
     }
 
     private async Task LoadDashboardData()
@@ -803,6 +823,20 @@
         margin-top: 0;
         letter-spacing: -0.025em;
     }
+
+    .period-status-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        background: rgba(28, 200, 138, 0.1);
+        color: #1cc88a;
+        padding: 4px 12px;
+        border-radius: 100px;
+        font-size: 0.75rem;
+        font-weight: 800;
+        margin-bottom: 0.5rem;
+    }
+    .period-status-chip i { font-size: 0.8rem; }
 
     .section-header-flex {
         display: flex;

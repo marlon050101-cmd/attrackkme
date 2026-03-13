@@ -11,7 +11,16 @@
     <div class="header-banner">
         <div class="header-content">
             <h1 class="welcome-text">Guidance Counselor Dashboard</h1>
-            <p class="subtitle">Monitoring student attendance risk & consecutive absences</p>
+            <div class="subtitle-group">
+                <p class="subtitle">Monitoring student attendance risk & consecutive absences</p>
+                @if (dashboardData.ActivePeriod != null)
+                {
+                    <span class="period-badge">
+                        <i class="fas fa-calendar-check"></i> 
+                        @dashboardData.ActivePeriod.SchoolYear | @dashboardData.ActivePeriod.Semester
+                    </span>
+                }
+            </div>
         </div>
         <div class="header-actions">
             <button class="btn-report" @onclick="GenerateReport" title="Generate PDF Report">
@@ -851,7 +860,32 @@
 
     .subtitle {
         opacity: 0.9;
-        margin: 5px 0 0;
+        margin: 0;
+    }
+
+    .subtitle-group {
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        flex-wrap: wrap;
+        margin-top: 5px;
+    }
+
+    .period-badge {
+        background: rgba(255, 255, 255, 0.25);
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 0.8rem;
+        font-weight: 700;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        backdrop-filter: blur(4px);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+    }
+
+    .period-badge i {
+        font-size: 0.85rem;
     }
 
     .btn-refresh, .btn-search-toggle, .btn-report, .btn-test {

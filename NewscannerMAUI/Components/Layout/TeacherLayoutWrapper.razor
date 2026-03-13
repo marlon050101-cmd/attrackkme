@@ -34,7 +34,7 @@
                 </div>
                 <div class="user-info">
                     <span class="user-name">@teacherName</span>
-                    <span class="user-role">Subject Teacher</span>
+                    <span class="user-role">@userRole</span>
                 </div>
             </div>
         </div>
@@ -51,6 +51,28 @@
                     <span>Scanner</span>
                 </NavLink>
             </div>
+
+            @if (userType == UserType.Head || userType == UserType.GuidanceCounselor)
+            {
+                <div class="nav-section mt-4">
+                    <div class="nav-section-title">Management</div>
+                    <NavLink class="nav-item" href="/head/academic-periods" @onclick="CloseSidebar">
+                        <i class="fas fa-calendar-alt"></i>
+                        <span>Academic Periods</span>
+                    </NavLink>
+                    @if (userType == UserType.Head)
+                    {
+                        <NavLink class="nav-item" href="/head/teacher-approvals" @onclick="CloseSidebar">
+                            <i class="fas fa-user-check"></i>
+                            <span>Teacher Approvals</span>
+                        </NavLink>
+                        <NavLink class="nav-item" href="/head/subject-planner" @onclick="CloseSidebar">
+                            <i class="fas fa-book"></i>
+                            <span>Subject Planner</span>
+                        </NavLink>
+                    }
+                </div>
+            }
 
             <div class="nav-section mt-4">
                 <div class="nav-section-title">Account</div>
@@ -71,7 +93,9 @@
 @code {
     [Parameter] public RenderFragment? Content { get; set; }
     private bool isSidebarOpen = false;
-    private string teacherName = "Subject Teacher";
+    private string teacherName = "User";
+    private string userRole = "Subject Teacher";
+    private UserType userType = UserType.SubjectTeacher;
 
     protected override async Task OnInitializedAsync()
     {
@@ -79,6 +103,14 @@
         if (user != null)
         {
             teacherName = user.Username;
+            userType = user.UserType;
+            userRole = userType switch
+            {
+                UserType.Head => "School Head",
+                UserType.GuidanceCounselor => "Guidance Counselor",
+                UserType.Admin => "Administrator",
+                _ => "Subject Teacher"
+            };
         }
     }
 

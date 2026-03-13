@@ -9,11 +9,13 @@ namespace ServerAtrrak.Services
     {
         private readonly Dbconnection _dbConnection;
         private readonly ILogger<ClassOfferingService> _logger;
+        private readonly IAcademicPeriodService _periodService;
 
-        public ClassOfferingService(Dbconnection dbConnection, ILogger<ClassOfferingService> logger)
+        public ClassOfferingService(Dbconnection dbConnection, ILogger<ClassOfferingService> logger, IAcademicPeriodService periodService)
         {
             _dbConnection = dbConnection;
             _logger = logger;
+            _periodService = periodService;
         }
 
         private const string SelectColumns = @"
@@ -21,7 +23,7 @@ namespace ServerAtrrak.Services
             co.GradeLevel, co.Section, co.Strand,
             TIME_FORMAT(co.ScheduleStart,'%H:%i:%s'), TIME_FORMAT(co.ScheduleEnd,'%H:%i:%s'),
             COALESCE(co.DayOfWeek,'Monday,Tuesday,Wednesday,Thursday,Friday') as DayOfWeek,
-            co.TeacherId, t2.FullName as TeacherName, co.CreatedAt";
+            co.TeacherId, t2.FullName as TeacherName, co.PeriodId, co.CreatedAt";
 
         private const string FromJoins = @"
             FROM class_offering co
@@ -35,12 +37,16 @@ namespace ServerAtrrak.Services
             try
             {
                 using var connection = new MySqlConnection(_dbConnection.GetConnection());
-                await connection.OpenAsync();
+                var period = await _periodService.GetActivePeriodAsync(schoolId);
+                var periodId = period?.PeriodId;
+
                 var query = $@"SELECT {SelectColumns} {FromJoins}
                     WHERE (@SchoolId IS NULL OR t.SchoolId = @SchoolId)
+                    AND (@PeriodId IS NULL OR co.PeriodId = @PeriodId)
                     ORDER BY co.GradeLevel, co.Section, co.ScheduleStart";
                 using var cmd = new MySqlCommand(query, connection);
                 cmd.Parameters.AddWithValue("@SchoolId", string.IsNullOrEmpty(schoolId) ? (object)DBNull.Value : schoolId);
+                cmd.Parameters.AddWithValue("@PeriodId", string.IsNullOrEmpty(periodId) ? (object)DBNull.Value : periodId);
                 using var reader = await cmd.ExecuteReaderAsync();
                 while (await reader.ReadAsync()) list.Add(ReadClassOffering(reader));
             }
@@ -59,7 +65,9 @@ namespace ServerAtrrak.Services
                 using var connection = new MySqlConnection(_dbConnection.GetConnection());
                 await connection.OpenAsync();
                 var query = $@"SELECT {SelectColumns} {FromJoins}
+                    INNER JOIN user u ON u.TeacherId = @AdviserId
                     WHERE co.AdviserId = @AdviserId
+                    AND co.PeriodId = (SELECT PeriodId FROM academic_period WHERE SchoolId = (SELECT SchoolId FROM teacher WHERE TeacherId = @AdviserId) AND IsActive = 1)
                     ORDER BY co.GradeLevel, co.Section, co.ScheduleStart";
                 using var cmd = new MySqlCommand(query, connection);
                 cmd.Parameters.AddWithValue("@AdviserId", adviserId);
@@ -124,8 +132,13 @@ namespace ServerAtrrak.Services
 
                 if (!string.IsNullOrEmpty(schoolId))
                 {
-                    // Filter by school, but also allow records where schoolId might be missing/null if that's the only way to see them
-                    // Or keep it strict if required, but here we prioritize finding the data.
+                    var period = await _periodService.GetActivePeriodAsync(schoolId);
+                    if (period != null)
+                    {
+                        query += " AND co.PeriodId = @PeriodId";
+                        cmd.Parameters.AddWithValue("@PeriodId", period.PeriodId);
+                    }
+                    
                     query += " AND (t.SchoolId = @SchoolId OR t.SchoolId IS NULL OR t.SchoolId = '')";
                     cmd.Parameters.AddWithValue("@SchoolId", schoolId.Trim());
                 }
@@ -163,7 +176,9 @@ namespace ServerAtrrak.Services
                 using var connection = new MySqlConnection(_dbConnection.GetConnection());
                 await connection.OpenAsync();
                 var query = $@"SELECT {SelectColumns} {FromJoins}
-                    WHERE co.TeacherId = @TeacherId ORDER BY co.ScheduleStart";
+                    WHERE co.TeacherId = @TeacherId 
+                    AND co.PeriodId = (SELECT PeriodId FROM academic_period WHERE SchoolId = (SELECT SchoolId FROM teacher WHERE TeacherId = @TeacherId) AND IsActive = 1)
+                    ORDER BY co.ScheduleStart";
                 using var cmd = new MySqlCommand(query, connection);
                 cmd.Parameters.AddWithValue("@TeacherId", teacherId);
                 using var reader = await cmd.ExecuteReaderAsync();
@@ -216,10 +231,28 @@ namespace ServerAtrrak.Services
                     ? "Monday,Tuesday,Wednesday,Thursday,Friday"
                     : request.DayOfWeek;
 
+                var periodId = request.PeriodId;
+                if (string.IsNullOrEmpty(periodId))
+                {
+                    // Fallback to currently active period for the teacher's school
+                    var teacherSql = "SELECT SchoolId FROM teacher WHERE TeacherId = @Tid";
+                    using var tCmd = new MySqlCommand(teacherSql, connection);
+                    tCmd.Parameters.AddWithValue("@Tid", request.AdviserId);
+                    var schoolId = (await tCmd.ExecuteScalarAsync())?.ToString();
+                    if (schoolId != null)
+                    {
+                        var period = await _periodService.GetActivePeriodAsync(schoolId);
+                        periodId = period?.PeriodId;
+                    }
+                }
+
+                if (string.IsNullOrEmpty(periodId))
+                    return new ClassOfferingResponse { Success = false, Message = "No active academic period found. Please setup one first." };
+
                 var id = Guid.NewGuid().ToString();
                 var sql = @"
-                    INSERT INTO class_offering (ClassOfferingId, AdviserId, SubjectId, GradeLevel, Section, Strand, ScheduleStart, ScheduleEnd, DayOfWeek)
-                    VALUES (@Id, @AdviserId, @SubjectId, @GradeLevel, @Section, @Strand, @Start, @End, @DayOfWeek)";
+                    INSERT INTO class_offering (ClassOfferingId, AdviserId, SubjectId, GradeLevel, Section, Strand, ScheduleStart, ScheduleEnd, DayOfWeek, PeriodId)
+                    VALUES (@Id, @AdviserId, @SubjectId, @GradeLevel, @Section, @Strand, @Start, @End, @DayOfWeek, @PeriodId)";
                 using var cmd = new MySqlCommand(sql, connection);
                 cmd.Parameters.AddWithValue("@Id", id);
                 cmd.Parameters.AddWithValue("@AdviserId", request.AdviserId);
@@ -230,6 +263,7 @@ namespace ServerAtrrak.Services
                 cmd.Parameters.AddWithValue("@Start", request.ScheduleStart);
                 cmd.Parameters.AddWithValue("@End", request.ScheduleEnd);
                 cmd.Parameters.AddWithValue("@DayOfWeek", dayOfWeek);
+                cmd.Parameters.AddWithValue("@PeriodId", periodId);
                 await cmd.ExecuteNonQueryAsync();
 
                 _logger.LogInformation("Created class offering {Id} (Subject: {SubId}) by adviser {AdviserId}", id, finalSubjectId, request.AdviserId);
@@ -527,7 +561,8 @@ namespace ServerAtrrak.Services
                 DayOfWeek = reader.IsDBNull(11) ? "Monday,Tuesday,Wednesday,Thursday,Friday" : reader.GetString(11),
                 TeacherId = reader.IsDBNull(12) ? null : reader.GetString(12),
                 TeacherName = reader.IsDBNull(13) ? null : reader.GetString(13),
-                CreatedAt = reader.GetDateTime(14)
+                PeriodId = reader.GetString(14),
+                CreatedAt = reader.GetDateTime(15)
             };
         }
     }

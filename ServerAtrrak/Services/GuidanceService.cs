@@ -10,12 +10,14 @@ namespace ServerAtrrak.Services
         private readonly Dbconnection _dbConnection;
         private readonly ILogger<GuidanceService> _logger;
         private readonly SmsQueueService _smsQueueService;
+        private readonly IAcademicPeriodService _periodService;
 
-        public GuidanceService(Dbconnection dbConnection, ILogger<GuidanceService> logger, SmsQueueService smsQueueService)
+        public GuidanceService(Dbconnection dbConnection, ILogger<GuidanceService> logger, SmsQueueService smsQueueService, IAcademicPeriodService periodService)
         {
             _dbConnection = dbConnection;
             _logger = logger;
             _smsQueueService = smsQueueService;
+            _periodService = periodService;
         }
 
         public async Task<List<StudentInfo>> GetStudentsBySchoolAsync(string schoolId)
@@ -81,6 +83,9 @@ namespace ServerAtrrak.Services
                 await connection.OpenAsync();
                 var summaryMap = new Dictionary<string, AttendanceSummary>();
 
+                var activePeriod = await _periodService.GetActivePeriodAsync(schoolId);
+                var activePeriodId = activePeriod?.PeriodId;
+
                 // Query 1: Overall stats from student_daily_summary (Source of truth for Absences)
                 var dailyQuery = @"
                     SELECT s.StudentId, s.FullName, s.GradeLevel, s.Section, s.Strand, s.Gender,
@@ -94,12 +99,14 @@ namespace ServerAtrrak.Services
                     WHERE s.SchoolId = @SchoolId
                       AND s.IsActive = true
                       AND ds.Date >= DATE_SUB(CURDATE(), INTERVAL @Days DAY)
+                      AND (@PeriodId IS NULL OR ds.PeriodId = @PeriodId)
                     GROUP BY s.StudentId, s.FullName, s.GradeLevel, s.Section, s.Strand, s.Gender";
 
                 using (var command = new MySqlCommand(dailyQuery, connection))
                 {
                     command.Parameters.AddWithValue("@SchoolId", schoolId);
                     command.Parameters.AddWithValue("@Days", days);
+                    command.Parameters.AddWithValue("@PeriodId", (object)activePeriodId ?? DBNull.Value);
                     using var reader = await command.ExecuteReaderAsync();
                     while (await reader.ReadAsync())
                     {
@@ -141,12 +148,14 @@ namespace ServerAtrrak.Services
                     WHERE s.SchoolId = @SchoolId 
                       AND sa.Date >= DATE_SUB(CURDATE(), INTERVAL @Days DAY)
                       AND sa.TimeIn IS NOT NULL AND sa.TimeOut IS NULL
+                      AND (@PeriodId IS NULL OR sa.PeriodId = @PeriodId)
                     GROUP BY s.StudentId, SubjectName";
 
                 using (var command = new MySqlCommand(subjectQuery, connection))
                 {
                     command.Parameters.AddWithValue("@SchoolId", schoolId);
                     command.Parameters.AddWithValue("@Days", days);
+                    command.Parameters.AddWithValue("@PeriodId", (object)activePeriodId ?? DBNull.Value);
                     using var reader = await command.ExecuteReaderAsync();
                     while (await reader.ReadAsync())
                     {
@@ -165,7 +174,7 @@ namespace ServerAtrrak.Services
                 // Final Pass: Guidance Status and Consecutive Absences
                 foreach (var s in summaryMap.Values)
                 {
-                    s.ConsecutiveAbsences = await GetConsecutiveAbsencesAsync(s.StudentId, null, connection);
+                    s.ConsecutiveAbsences = await GetConsecutiveAbsencesAsync(s.StudentId, null, connection, activePeriodId);
                 }
 
                 // Threshold filtering
@@ -183,7 +192,7 @@ namespace ServerAtrrak.Services
             }
         }
 
-        private async Task<int> GetConsecutiveAbsencesAsync(string studentId, string? subjectName, MySqlConnection connection)
+        private async Task<int> GetConsecutiveAbsencesAsync(string studentId, string? subjectName, MySqlConnection connection, string? periodId)
         {
             try
             {
@@ -193,11 +202,13 @@ namespace ServerAtrrak.Services
                     var query = @"
                         SELECT Status FROM student_daily_summary
                         WHERE StudentId = @StudentId AND Status != 'Not yet timed in'
+                        AND (@PeriodId IS NULL OR PeriodId = @PeriodId)
                         ORDER BY Date DESC
                         LIMIT 10";
 
                     using var cmd = new MySqlCommand(query, connection);
                     cmd.Parameters.AddWithValue("@StudentId", studentId);
+                    cmd.Parameters.AddWithValue("@PeriodId", (object)periodId ?? DBNull.Value);
 
                     int consecutive = 0;
                     using var reader = await cmd.ExecuteReaderAsync();
@@ -217,11 +228,13 @@ namespace ServerAtrrak.Services
                     var query = @"
                         SELECT Status FROM subject_attendance sa
                         WHERE sa.StudentId = @StudentId AND sa.Status != 'Not yet timed in'
+                        AND (@PeriodId IS NULL OR sa.PeriodId = @PeriodId)
                         ORDER BY sa.Date DESC
                         LIMIT 10";
 
                     using var cmd = new MySqlCommand(query, connection);
                     cmd.Parameters.AddWithValue("@StudentId", studentId);
+                    cmd.Parameters.AddWithValue("@PeriodId", (object)periodId ?? DBNull.Value);
 
                     int consecutive = 0;
                     using var reader = await cmd.ExecuteReaderAsync();
@@ -257,6 +270,9 @@ namespace ServerAtrrak.Services
                 var gradeLevels = flaggedStudents.Select(s => s.GradeLevel).Distinct().Count();
                 var sections = flaggedStudents.Select(s => s.Section).Distinct().Count();
 
+                var activePeriod = await _periodService.GetActivePeriodAsync(schoolId);
+                var activePeriodId = activePeriod?.PeriodId;
+
                 return new GuidanceDashboardData
                 {
                     TotalStudents = students.Count,
@@ -266,11 +282,12 @@ namespace ServerAtrrak.Services
                     SectionsMonitored = sections,
                     StudentsAtRisk = flaggedStudents,
                     AllStudents = students,
-                    WeeklyAttendanceRate = await GetSchoolWeeklyAttendanceRateAsync(schoolId, students.Count),
-                    DailyPresenceRate = await GetDailyPresenceRateAsync(schoolId, students.Count),
-                    CaseResolutionRate = await GetCaseResolutionRateAsync(schoolId),
-                    OnTimeArrivalRate = await GetOnTimeArrivalRateAsync(schoolId, students.Count),
-                    DailyTrends = await GetDailyAttendanceTrendsAsync(schoolId, days, students.Count)
+                    WeeklyAttendanceRate = await GetSchoolWeeklyAttendanceRateAsync(schoolId, students.Count, activePeriodId),
+                    DailyPresenceRate = await GetDailyPresenceRateAsync(schoolId, students.Count, activePeriodId),
+                    CaseResolutionRate = await GetCaseResolutionRateAsync(schoolId, activePeriodId),
+                    OnTimeArrivalRate = await GetOnTimeArrivalRateAsync(schoolId, students.Count, activePeriodId),
+                    DailyTrends = await GetDailyAttendanceTrendsAsync(schoolId, days, students.Count, activePeriodId),
+                    ActivePeriod = activePeriod
                 };
             }
             catch (Exception ex)
@@ -280,7 +297,7 @@ namespace ServerAtrrak.Services
             }
         }
 
-        private async Task<List<DailyTrendData>> GetDailyAttendanceTrendsAsync(string schoolId, int days, int totalStudents)
+        private async Task<List<DailyTrendData>> GetDailyAttendanceTrendsAsync(string schoolId, int days, int totalStudents, string? periodId)
         {
             var trends = new List<DailyTrendData>();
             try
@@ -297,12 +314,14 @@ namespace ServerAtrrak.Services
                     INNER JOIN student s ON ds.StudentId = s.StudentId
                     WHERE s.SchoolId = @SchoolId 
                       AND ds.Date >= DATE_SUB(CURDATE(), INTERVAL @Days DAY)
+                      AND (@PeriodId IS NULL OR ds.PeriodId = @PeriodId)
                     GROUP BY ds.Date
                     ORDER BY ds.Date ASC";
 
                 using var cmd = new MySqlCommand(query, connection);
                 cmd.Parameters.AddWithValue("@SchoolId", schoolId);
                 cmd.Parameters.AddWithValue("@Days", days);
+                cmd.Parameters.AddWithValue("@PeriodId", (object)periodId ?? DBNull.Value);
 
                 using var reader = await cmd.ExecuteReaderAsync();
                 while (await reader.ReadAsync())
@@ -336,12 +355,25 @@ namespace ServerAtrrak.Services
                 using var connection = new MySqlConnection(_dbConnection.GetConnection());
                 await connection.OpenAsync();
 
-                // 1. Check if there's an existing non-resolved case for this student
-                var checkSql = "SELECT CaseId FROM guidance_cases WHERE StudentId = @Sid AND Status != 'Resolved' LIMIT 1";
+                // 1. Check if there's an existing non-resolved case for this student in the current period
+                var activePeriod = await _periodService.GetActivePeriodAsync(studentId); // This might be wrong, need to get schoolId from student
+                // Let's get schoolId first
+                var getSchoolQuery = "SELECT SchoolId FROM student WHERE StudentId = @Sid";
+                string? schoolId = null;
+                using (var cmd = new MySqlCommand(getSchoolQuery, connection))
+                {
+                    cmd.Parameters.AddWithValue("@Sid", studentId);
+                    schoolId = (await cmd.ExecuteScalarAsync())?.ToString();
+                }
+                
+                var activePeriodId = !string.IsNullOrEmpty(schoolId) ? (await _periodService.GetActivePeriodAsync(schoolId))?.PeriodId : null;
+
+                var checkSql = "SELECT CaseId FROM guidance_cases WHERE StudentId = @Sid AND Status != 'Resolved' AND (@PeriodId IS NULL OR PeriodId = @PeriodId) LIMIT 1";
                 string? existingCaseId = null;
                 using (var checkCmd = new MySqlCommand(checkSql, connection))
                 {
                     checkCmd.Parameters.AddWithValue("@Sid", studentId);
+                    checkCmd.Parameters.AddWithValue("@PeriodId", (object)activePeriodId ?? DBNull.Value);
                     existingCaseId = (await checkCmd.ExecuteScalarAsync())?.ToString();
                 }
 
@@ -366,14 +398,15 @@ namespace ServerAtrrak.Services
                 {
                     // Create new case
                     sql = @"
-                        INSERT INTO guidance_cases (CaseId, StudentId, Status, LastFlaggedDate, Notes)
-                        VALUES (@CaseId, @StudentId, @Status, NOW(), @Notes)";
+                        INSERT INTO guidance_cases (CaseId, StudentId, Status, LastFlaggedDate, Notes, PeriodId)
+                        VALUES (@CaseId, @StudentId, @Status, NOW(), @Notes, @PeriodId)";
                     
                     using var cmd = new MySqlCommand(sql, connection);
                     cmd.Parameters.AddWithValue("@CaseId", Guid.NewGuid().ToString());
                     cmd.Parameters.AddWithValue("@StudentId", studentId);
                     cmd.Parameters.AddWithValue("@Status", status);
                     cmd.Parameters.AddWithValue("@Notes", notes ?? (object)DBNull.Value);
+                    cmd.Parameters.AddWithValue("@PeriodId", (object)activePeriodId ?? DBNull.Value);
                     return await cmd.ExecuteNonQueryAsync() > 0;
                 }
             }
@@ -422,7 +455,7 @@ namespace ServerAtrrak.Services
             }
         }
 
-        private async Task<double> GetSchoolWeeklyAttendanceRateAsync(string schoolId, int totalStudents)
+        private async Task<double> GetSchoolWeeklyAttendanceRateAsync(string schoolId, int totalStudents, string? periodId)
         {
             if (totalStudents <= 0) return 0;
             try
@@ -430,12 +463,13 @@ namespace ServerAtrrak.Services
                 using var connection = new MySqlConnection(_dbConnection.GetConnection());
                 await connection.OpenAsync();
 
-                // Get count of unique dates in the last 7 days for this school
-                var dateCountQuery = "SELECT COUNT(DISTINCT Date) FROM student_daily_summary ds INNER JOIN student s ON ds.StudentId = s.StudentId WHERE s.SchoolId = @SchoolId AND ds.Date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)";
+                // Get count of unique dates in the last 7 days for this school for this period
+                var dateCountQuery = "SELECT COUNT(DISTINCT Date) FROM student_daily_summary ds INNER JOIN student s ON ds.StudentId = s.StudentId WHERE s.SchoolId = @SchoolId AND ds.Date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) AND (@PeriodId IS NULL OR ds.PeriodId = @PeriodId)";
                 int schoolDays = 0;
                 using (var countCmd = new MySqlCommand(dateCountQuery, connection))
                 {
                     countCmd.Parameters.AddWithValue("@SchoolId", schoolId);
+                    countCmd.Parameters.AddWithValue("@PeriodId", (object)periodId ?? DBNull.Value);
                     schoolDays = Convert.ToInt32(await countCmd.ExecuteScalarAsync());
                 }
                 
@@ -447,10 +481,12 @@ namespace ServerAtrrak.Services
                     FROM student_daily_summary ds
                     INNER JOIN student s ON ds.StudentId = s.StudentId
                     WHERE s.SchoolId = @SchoolId 
-                      AND ds.Date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)";
+                      AND ds.Date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+                      AND (@PeriodId IS NULL OR ds.PeriodId = @PeriodId)";
 
                 using var attendanceCmd = new MySqlCommand(query, connection);
                 attendanceCmd.Parameters.AddWithValue("@SchoolId", schoolId);
+                attendanceCmd.Parameters.AddWithValue("@PeriodId", (object)periodId ?? DBNull.Value);
 
                 using var reader = await attendanceCmd.ExecuteReaderAsync();
                 if (await reader.ReadAsync())
@@ -468,7 +504,7 @@ namespace ServerAtrrak.Services
             }
         }
 
-        private async Task<double> GetDailyPresenceRateAsync(string schoolId, int totalStudents)
+        private async Task<double> GetDailyPresenceRateAsync(string schoolId, int totalStudents, string? periodId)
         {
             if (totalStudents <= 0) return 0;
             try
@@ -482,11 +518,13 @@ namespace ServerAtrrak.Services
                         SUM(CASE WHEN ds.Status IN ('Whole Day', 'Half Day') THEN 1 ELSE 0 END) as Present
                     FROM student_daily_summary ds
                     INNER JOIN student s ON ds.StudentId = s.StudentId
-                    WHERE s.SchoolId = @SchoolId AND ds.Date = CURDATE()";
+                    WHERE s.SchoolId = @SchoolId AND ds.Date = CURDATE()
+                      AND (@PeriodId IS NULL OR ds.PeriodId = @PeriodId)";
                 
                 using (var cmd = new MySqlCommand(query, connection))
                 {
                     cmd.Parameters.AddWithValue("@SchoolId", schoolId);
+                    cmd.Parameters.AddWithValue("@PeriodId", (object)periodId ?? DBNull.Value);
                     using var reader = await cmd.ExecuteReaderAsync();
                     if (await reader.ReadAsync())
                     {
@@ -513,6 +551,10 @@ namespace ServerAtrrak.Services
                 using (var cmd = new MySqlCommand(fallbackQuery, connection))
                 {
                     cmd.Parameters.AddWithValue("@SchoolId", schoolId);
+                    // Update fallback query to use period
+                    var modifiedFallbackSql = fallbackQuery.Replace("WHERE s2.SchoolId = @SchoolId", "WHERE s2.SchoolId = @SchoolId AND (@PeriodId IS NULL OR ds2.PeriodId = @PeriodId)");
+                    cmd.CommandText = modifiedFallbackSql;
+                    cmd.Parameters.AddWithValue("@PeriodId", (object)periodId ?? DBNull.Value);
                     using var reader = await cmd.ExecuteReaderAsync();
                     if (await reader.ReadAsync())
                     {
@@ -528,7 +570,7 @@ namespace ServerAtrrak.Services
             catch { return 0; }
         }
 
-        private async Task<double> GetCaseResolutionRateAsync(string schoolId)
+        private async Task<double> GetCaseResolutionRateAsync(string schoolId, string? periodId)
         {
             try
             {
@@ -540,9 +582,11 @@ namespace ServerAtrrak.Services
                         SUM(CASE WHEN Status = 'Resolved' THEN 1 ELSE 0 END) as Resolved
                     FROM guidance_cases gc
                     INNER JOIN student s ON gc.StudentId = s.StudentId
-                    WHERE s.SchoolId = @SchoolId";
+                    WHERE s.SchoolId = @SchoolId
+                      AND (@PeriodId IS NULL OR gc.PeriodId = @PeriodId)";
                 using var cmd = new MySqlCommand(query, connection);
                 cmd.Parameters.AddWithValue("@SchoolId", schoolId);
+                cmd.Parameters.AddWithValue("@PeriodId", (object)periodId ?? DBNull.Value);
                 using var reader = await cmd.ExecuteReaderAsync();
                 if (await reader.ReadAsync())
                 {
@@ -555,7 +599,7 @@ namespace ServerAtrrak.Services
             catch { return 0; }
         }
 
-        private async Task<double> GetOnTimeArrivalRateAsync(string schoolId, int totalStudents)
+        private async Task<double> GetOnTimeArrivalRateAsync(string schoolId, int totalStudents, string? periodId)
         {
             if (totalStudents <= 0) return 0;
             try
@@ -563,12 +607,13 @@ namespace ServerAtrrak.Services
                 using var connection = new MySqlConnection(_dbConnection.GetConnection());
                 await connection.OpenAsync();
 
-                // Get count of unique dates in the last 7 days for this school
-                var dateCountQuery = "SELECT COUNT(DISTINCT Date) FROM student_daily_summary ds INNER JOIN student s ON ds.StudentId = s.StudentId WHERE s.SchoolId = @SchoolId AND ds.Date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)";
+                // Get count of unique dates in the last 7 days for this school for this period
+                var dateCountQuery = "SELECT COUNT(DISTINCT Date) FROM student_daily_summary ds INNER JOIN student s ON ds.StudentId = s.StudentId WHERE s.SchoolId = @SchoolId AND ds.Date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) AND (@PeriodId IS NULL OR ds.PeriodId = @PeriodId)";
                 int schoolDays = 0;
                 using (var countCmd = new MySqlCommand(dateCountQuery, connection))
                 {
                     countCmd.Parameters.AddWithValue("@SchoolId", schoolId);
+                    countCmd.Parameters.AddWithValue("@PeriodId", (object)periodId ?? DBNull.Value);
                     schoolDays = Convert.ToInt32(await countCmd.ExecuteScalarAsync());
                 }
 
@@ -581,10 +626,12 @@ namespace ServerAtrrak.Services
                     INNER JOIN student s ON ds.StudentId = s.StudentId
                     WHERE s.SchoolId = @SchoolId 
                       AND ds.Date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
-                      AND ds.Status IN ('Whole Day', 'Half Day')";
+                      AND ds.Status IN ('Whole Day', 'Half Day')
+                      AND (@PeriodId IS NULL OR ds.PeriodId = @PeriodId)";
 
                 using var onTimeCmd = new MySqlCommand(query, connection);
                 onTimeCmd.Parameters.AddWithValue("@SchoolId", schoolId);
+                onTimeCmd.Parameters.AddWithValue("@PeriodId", (object)periodId ?? DBNull.Value);
                 using var reader = await onTimeCmd.ExecuteReaderAsync();
                 if (await reader.ReadAsync())
                 {

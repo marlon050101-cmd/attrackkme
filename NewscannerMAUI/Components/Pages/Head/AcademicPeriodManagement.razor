@@ -1,0 +1,387 @@
+@page "/head/academic-periods"
+@using AttrackSharedClass.Models
+@using NewscannerMAUI.Services
+@inject HttpClient Http
+@inject AuthService AuthService
+@inject NavigationManager Navigation
+
+<div class="management-container">
+    <div class="header-banner">
+        <div class="header-content">
+            <h1 class="welcome-text">Academic Period Management</h1>
+            <p class="subtitle">Manage school years and semesters for data isolation</p>
+        </div>
+        <div class="header-actions">
+            <button class="btn-create" @onclick="() => showCreateModal = true">
+                <i class="fas fa-plus"></i> New Period
+            </button>
+            <button class="btn-refresh" @onclick="RefreshData">
+                <i class="fas fa-sync-alt @(isLoading ? "fa-spin" : "")"></i>
+            </button>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(error))
+    {
+        <div class="error-banner">
+            <i class="fas fa-exclamation-circle"></i> @error
+        </div>
+    }
+
+    <div class="content-section">
+        @if (isLoading)
+        {
+            <div class="loading-state">
+                <div class="shimmer-row"></div>
+                <div class="shimmer-row"></div>
+                <div class="shimmer-row"></div>
+            </div>
+        }
+        else if (!periods.Any())
+        {
+            <div class="empty-state">
+                <i class="fas fa-calendar-times"></i>
+                <h3>No periods found</h3>
+                <p>Start by creating the current academic period.</p>
+            </div>
+        }
+        else
+        {
+            <div class="periods-grid">
+                @foreach (var p in periods)
+                {
+                    <div class="period-card @(p.IsActive ? "active" : "")">
+                        <div class="period-status">
+                            @if (p.IsActive)
+                            {
+                                <span class="badge badge-success">ACTIVE</span>
+                            }
+                            else
+                            {
+                                <span class="badge badge-secondary">INACTIVE</span>
+                            }
+                        </div>
+                        <div class="period-info">
+                            <h3 class="sy-text">@p.SchoolYear</h3>
+                            <p class="sem-text">@p.Semester</p>
+                            <div class="dates-info">
+                                <span><i class="fas fa-calendar-alt"></i> @(p.StartDate?.ToString("MMM dd, yyyy") ?? "—")</span>
+                                <span class="divider">to</span>
+                                <span><i class="fas fa-calendar-alt"></i> @(p.EndDate?.ToString("MMM dd, yyyy") ?? "—")</span>
+                            </div>
+                        </div>
+                        <div class="period-actions">
+                            @if (!p.IsActive)
+                            {
+                                <button class="btn-activate" @onclick="() => SetActive(p.PeriodId)">
+                                    <i class="fas fa-check-circle"></i> Set as Active
+                                </button>
+                            }
+                            else
+                            {
+                                <span class="current-label"><i class="fas fa-star"></i> Current Active Period</span>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@if (showCreateModal)
+{
+    <div class="modal-backdrop" @onclick="() => showCreateModal = false">
+        <div class="modal-content" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <h3>New Academic Period</h3>
+                <button class="btn-close" @onclick="() => showCreateModal = false">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>School Year (e.g., 2023-2024)</label>
+                    <input type="text" class="form-control" @bind="newPeriod.SchoolYear" placeholder="20XX-20XX" />
+                </div>
+                <div class="form-group">
+                    <label>Semester</label>
+                    <select class="form-control" @bind="newPeriod.Semester">
+                        <option value="1st Semester">1st Semester</option>
+                        <option value="2nd Semester">2nd Semester</option>
+                        <option value="Summer">Summer</option>
+                    </select>
+                </div>
+                <div class="form-row">
+                    <div class="form-group col">
+                        <label>Start Date</label>
+                        <input type="date" class="form-control" @bind="newPeriod.StartDate" />
+                    </div>
+                    <div class="form-group col">
+                        <label>End Date</label>
+                        <input type="date" class="form-control" @bind="newPeriod.EndDate" />
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" @onclick="() => showCreateModal = false">Cancel</button>
+                <button class="btn-primary" @onclick="CreatePeriod" disabled="@isSaving">
+                    @(isSaving ? "Saving..." : "Create Period")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .management-container { min-height: 100vh; background: #f8fafc; padding-bottom: 2rem; }
+    
+    .header-banner {
+        background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+        padding: 2.5rem 2rem;
+        color: white;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-radius: 0 0 30px 30px;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+    }
+
+    .welcome-text { font-size: 1.8rem; font-weight: 800; margin: 0; }
+    .subtitle { opacity: 0.8; margin-top: 5px; }
+
+    .header-actions { display: flex; gap: 10px; }
+    .btn-create {
+        background: #3b82f6;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 12px;
+        font-weight: 700;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        transition: all 0.2s;
+    }
+    .btn-create:hover { background: #2563eb; transform: translateY(-2px); }
+
+    .btn-refresh {
+        background: rgba(255,255,255,0.1);
+        color: white;
+        border: none;
+        width: 45px;
+        border-radius: 12px;
+        transition: all 0.2s;
+    }
+    .btn-refresh:hover { background: rgba(255,255,255,0.2); }
+
+    .error-banner {
+        margin: 1rem 2rem;
+        background: #fee2e2;
+        color: #dc2626;
+        padding: 12px 20px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-weight: 600;
+    }
+
+    .content-section { padding: 2rem; }
+
+    .periods-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+        gap: 1.5rem;
+    }
+
+    .period-card {
+        background: white;
+        border-radius: 20px;
+        padding: 1.5rem;
+        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+        border: 1px solid #e2e8f0;
+        display: flex;
+        flex-direction: column;
+        transition: all 0.3s;
+    }
+    .period-card.active { border-color: #3b82f6; box-shadow: 0 10px 25px rgba(59, 130, 246, 0.1); }
+    .period-card:hover { transform: translateY(-5px); }
+
+    .period-status { margin-bottom: 1rem; }
+    .badge { padding: 4px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: 800; }
+    .badge-success { background: #dcfce7; color: #16a34a; }
+    .badge-secondary { background: #f1f5f9; color: #64748b; }
+
+    .sy-text { margin: 0; color: #1e293b; font-size: 1.5rem; font-weight: 800; }
+    .sem-text { color: #64748b; font-weight: 600; margin-bottom: 1rem; }
+
+    .dates-info {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 0.85rem;
+        color: #94a3b8;
+        padding: 10px 0;
+        border-top: 1px solid #f8fafc;
+    }
+    .dates-info i { opacity: 0.7; }
+    .divider { color: #cbd5e1; }
+
+    .period-actions { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid #f1f5f9; }
+    .btn-activate {
+        width: 100%;
+        background: #f8fafc;
+        color: #3b82f6;
+        border: 1px solid #e2e8f0;
+        padding: 10px;
+        border-radius: 12px;
+        font-weight: 700;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        transition: all 0.2s;
+    }
+    .btn-activate:hover { background: #eff6ff; border-color: #3b82f6; }
+
+    .current-label { color: #16a34a; font-weight: 700; font-size: 0.85rem; display: flex; align-items: center; gap: 6px; }
+
+    /* Modal Styles */
+    .modal-backdrop {
+        position: fixed;
+        top: 0; left: 0; width: 100%; height: 100%;
+        background: rgba(0,0,0,0.5);
+        backdrop-filter: blur(4px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+    }
+    .modal-content {
+        background: white;
+        width: 90%;
+        max-width: 500px;
+        border-radius: 24px;
+        overflow: hidden;
+        animation: slideIn 0.3s ease-out;
+    }
+    @@keyframes slideIn { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+    .modal-header { padding: 1.5rem 2rem; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center; }
+    .modal-header h3 { margin: 0; font-size: 1.25rem; }
+    .btn-close { background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #94a3b8; }
+
+    .modal-body { padding: 2rem; }
+    .form-group { margin-bottom: 1.5rem; }
+    .form-group label { display: block; margin-bottom: 8px; font-weight: 600; color: #475569; font-size: 0.9rem; }
+    .form-control { width: 100%; padding: 12px; border: 1px solid #e2e8f0; border-radius: 12px; outline: none; transition: border-color 0.2s; }
+    .form-control:focus { border-color: #3b82f6; }
+    .form-row { display: flex; gap: 15px; }
+
+    .modal-footer { padding: 1.5rem 2rem; background: #f8fafc; display: flex; justify-content: flex-end; gap: 10px; }
+    .btn-secondary { background: white; border: 1px solid #e2e8f0; padding: 10px 20px; border-radius: 12px; font-weight: 600; }
+    .btn-primary { background: #1e293b; color: white; border: none; padding: 10px 20px; border-radius: 12px; font-weight: 600; }
+
+    .empty-state { text-align: center; padding: 4rem 2rem; color: #94a3b8; }
+    .empty-state i { font-size: 3rem; margin-bottom: 1.5rem; opacity: 0.2; }
+</style>
+
+@code {
+    private List<AcademicPeriod> periods = new();
+    private bool isLoading = true;
+    private bool showCreateModal = false;
+    private bool isSaving = false;
+    private string? error;
+    private UserInfo? currentUser;
+    private CreatePeriodRequest newPeriod = new() 
+    { 
+        Semester = "1st Semester",
+        StartDate = DateTime.Today,
+        EndDate = DateTime.Today.AddMonths(5)
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        currentUser = await AuthService.GetCurrentUserAsync();
+        if (currentUser == null || (currentUser.UserType != UserType.Head && currentUser.UserType != UserType.GuidanceCounselor))
+        {
+            Navigation.NavigateTo("/");
+            return;
+        }
+        await RefreshData();
+    }
+
+    private async Task RefreshData()
+    {
+        if (currentUser == null) return;
+        isLoading = true;
+        error = null;
+        try
+        {
+            periods = await Http.GetFromJsonAsync<List<AcademicPeriod>>($"{ApiConfig.BaseUrl}api/academicperiod/all/{currentUser.SchoolId}") ?? new();
+        }
+        catch (Exception ex)
+        {
+            error = "Failed to load academic periods: " + ex.Message;
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task SetActive(string periodId)
+    {
+        if (currentUser == null) return;
+        try
+        {
+            var response = await Http.PostAsync($"{ApiConfig.BaseUrl}api/academicperiod/activate/{currentUser.SchoolId}/{periodId}", null);
+            if (response.IsSuccessStatusCode)
+            {
+                await RefreshData();
+            }
+            else
+            {
+                error = "Failed to activate period.";
+            }
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+    }
+
+    private async Task CreatePeriod()
+    {
+        if (currentUser == null) return;
+        if (string.IsNullOrWhiteSpace(newPeriod.SchoolYear))
+        {
+            error = "School Year is required.";
+            return;
+        }
+
+        isSaving = true;
+        try
+        {
+            newPeriod.SchoolId = currentUser.SchoolId;
+            var response = await Http.PostAsJsonAsync($"{ApiConfig.BaseUrl}api/academicperiod/create", newPeriod);
+            if (response.IsSuccessStatusCode)
+            {
+                showCreateModal = false;
+                newPeriod = new CreatePeriodRequest { Semester = "1st Semester", StartDate = DateTime.Today, EndDate = DateTime.Today.AddMonths(5) };
+                await RefreshData();
+            }
+            else
+            {
+                error = "Failed to create period.";
+            }
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+}

@@ -8,11 +8,13 @@ namespace ServerAtrrak.Services
     {
         private readonly Dbconnection _dbConnection;
         private readonly ILogger<TeacherSubjectService> _logger;
+        private readonly IAcademicPeriodService _periodService;
 
-        public TeacherSubjectService(Dbconnection dbConnection, ILogger<TeacherSubjectService> logger)
+        public TeacherSubjectService(Dbconnection dbConnection, ILogger<TeacherSubjectService> logger, IAcademicPeriodService periodService)
         {
             _dbConnection = dbConnection;
             _logger = logger;
+            _periodService = periodService;
         }
 
         public async Task<List<TeacherSubjectAssignment>> GetTeacherSubjectsAsync(string teacherId)
@@ -23,6 +25,17 @@ namespace ServerAtrrak.Services
             {
                 using var connection = new MySqlConnection(_dbConnection.GetConnection());
                 await connection.OpenAsync();
+
+                // Get teacher's school first to find active period
+                var getSchoolQuery = "SELECT SchoolId FROM teacher WHERE TeacherId = @TeacherId";
+                string? schoolId = null;
+                using (var cmd = new MySqlCommand(getSchoolQuery, connection))
+                {
+                    cmd.Parameters.AddWithValue("@TeacherId", teacherId);
+                    schoolId = (await cmd.ExecuteScalarAsync())?.ToString();
+                }
+
+                var activePeriodId = !string.IsNullOrEmpty(schoolId) ? (await _periodService.GetActivePeriodAsync(schoolId))?.PeriodId : null;
 
                 var query = @"
                     SELECT 
@@ -42,10 +55,12 @@ namespace ServerAtrrak.Services
                     INNER JOIN subject s ON ts.SubjectId = s.SubjectId
                     LEFT JOIN teacher adv ON ts.AdviserId = adv.TeacherId
                     WHERE ts.TeacherId = @TeacherId
+                      AND (@PeriodId IS NULL OR ts.PeriodId = @PeriodId)
                     ORDER BY s.GradeLevel, s.Strand, COALESCE(ts.ScheduleStart, '00:00:00')";
 
                 using var command = new MySqlCommand(query, connection);
                 command.Parameters.AddWithValue("@TeacherId", teacherId);
+                command.Parameters.AddWithValue("@PeriodId", (object)activePeriodId ?? DBNull.Value);
 
                 using var reader = await command.ExecuteReaderAsync();
                 while (await reader.ReadAsync())
@@ -92,6 +107,13 @@ namespace ServerAtrrak.Services
                 // Check if Subject table is empty and initialize with sample data
                 await InitializeSampleSubjectsIfEmpty(connection);
 
+                string? activePeriodId = null;
+                if (!string.IsNullOrEmpty(filter.SchoolId))
+                {
+                    var period = await _periodService.GetActivePeriodAsync(filter.SchoolId);
+                    activePeriodId = period?.PeriodId;
+                }
+
                 var query = @"
                     SELECT 
                         s.SubjectId,
@@ -100,12 +122,29 @@ namespace ServerAtrrak.Services
                         s.Strand,
                         s.SubjectCode
                     FROM subject s
-                    WHERE s.SubjectId NOT IN (
+                    WHERE 1=1";
+
+                if (!string.IsNullOrEmpty(activePeriodId))
+                {
+                    query += @" AND s.SubjectId NOT IN (
+                        SELECT DISTINCT ts.SubjectId 
+                        FROM teachersubject ts
+                        WHERE ts.PeriodId = @PeriodId
+                    )";
+                }
+                else
+                {
+                    query += @" AND s.SubjectId NOT IN (
                         SELECT DISTINCT ts.SubjectId 
                         FROM teachersubject ts
                     )";
+                }
 
                 var parameters = new List<MySqlParameter>();
+                if (!string.IsNullOrEmpty(activePeriodId))
+                {
+                    parameters.Add(new MySqlParameter("@PeriodId", activePeriodId));
+                }
 
                 if (filter.GradeLevel.HasValue)
                 {
@@ -176,11 +215,23 @@ namespace ServerAtrrak.Services
                 using var connection = new MySqlConnection(_dbConnection.GetConnection());
                 await connection.OpenAsync();
 
-                // Check if teacher already has this subject
-                var checkQuery = "SELECT COUNT(*) FROM teachersubject WHERE TeacherId = @TeacherId AND SubjectId = @SubjectId";
+                // Get active period for the teacher's school
+                var getSchoolQuery = "SELECT SchoolId FROM teacher WHERE TeacherId = @TeacherId";
+                string? schoolId = null;
+                using (var cmd = new MySqlCommand(getSchoolQuery, connection))
+                {
+                    cmd.Parameters.AddWithValue("@TeacherId", request.TeacherId);
+                    schoolId = (await cmd.ExecuteScalarAsync())?.ToString();
+                }
+
+                var activePeriodId = !string.IsNullOrEmpty(schoolId) ? (await _periodService.GetActivePeriodAsync(schoolId))?.PeriodId : null;
+
+                // Check if teacher already has this subject in the CURRENT period
+                var checkQuery = "SELECT COUNT(*) FROM teachersubject WHERE TeacherId = @TeacherId AND SubjectId = @SubjectId AND (@PeriodId IS NULL OR PeriodId = @PeriodId)";
                 using var checkCommand = new MySqlCommand(checkQuery, connection);
                 checkCommand.Parameters.AddWithValue("@TeacherId", request.TeacherId);
                 checkCommand.Parameters.AddWithValue("@SubjectId", request.SubjectId);
+                checkCommand.Parameters.AddWithValue("@PeriodId", (object)activePeriodId ?? DBNull.Value);
 
                 var existingCount = Convert.ToInt32(await checkCommand.ExecuteScalarAsync());
                 if (existingCount > 0)
@@ -197,8 +248,8 @@ namespace ServerAtrrak.Services
                 try
                 {
                     var insertQuery = @"
-                        INSERT INTO teachersubject (TeacherSubjectId, TeacherId, SubjectId, Section, AdviserId, ScheduleStart, ScheduleEnd)
-                        VALUES (@TeacherSubjectId, @TeacherId, @SubjectId, @Section, @AdviserId, @ScheduleStart, @ScheduleEnd)";
+                        INSERT INTO teachersubject (TeacherSubjectId, TeacherId, SubjectId, Section, AdviserId, ScheduleStart, ScheduleEnd, PeriodId)
+                        VALUES (@TeacherSubjectId, @TeacherId, @SubjectId, @Section, @AdviserId, @ScheduleStart, @ScheduleEnd, @PeriodId)";
 
                     using var insertCommand = new MySqlCommand(insertQuery, connection);
                     insertCommand.Parameters.AddWithValue("@TeacherSubjectId", teacherSubjectId);
@@ -208,6 +259,7 @@ namespace ServerAtrrak.Services
                     insertCommand.Parameters.AddWithValue("@AdviserId", string.IsNullOrEmpty(request.AdviserId) ? (object)DBNull.Value : request.AdviserId);
                     insertCommand.Parameters.AddWithValue("@ScheduleStart", request.ScheduleStart != TimeSpan.Zero && request.ScheduleEnd != TimeSpan.Zero ? request.ScheduleStart : (object)DBNull.Value);
                     insertCommand.Parameters.AddWithValue("@ScheduleEnd", request.ScheduleStart != TimeSpan.Zero && request.ScheduleEnd != TimeSpan.Zero ? request.ScheduleEnd : (object)DBNull.Value);
+                    insertCommand.Parameters.AddWithValue("@PeriodId", (object)activePeriodId ?? DBNull.Value);
 
                     await insertCommand.ExecuteNonQueryAsync();
                     _logger.LogInformation("Successfully assigned subject with section: {Section}, adviser: {AdviserId}", request.Section, request.AdviserId);

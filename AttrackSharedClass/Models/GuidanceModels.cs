@@ -55,6 +55,7 @@ namespace AttrackSharedClass.Models
         public List<AttendanceSummary> StudentsAtRisk { get; set; } = new();
         public List<StudentInfo> AllStudents { get; set; } = new();
         public List<DailyTrendData> DailyTrends { get; set; } = new();
+        public AcademicPeriod? ActivePeriod { get; set; }
     }
 
     public class DailyTrendData

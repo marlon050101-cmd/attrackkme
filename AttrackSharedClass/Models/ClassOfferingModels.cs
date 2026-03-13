@@ -21,6 +21,7 @@ namespace AttrackSharedClass.Models
         /// <summary>Set when a subject teacher assigns themselves to teach this class.</summary>
         public string? TeacherId { get; set; }
         public string? TeacherName { get; set; }
+        public string PeriodId { get; set; } = "";
         public DateTime CreatedAt { get; set; }
     }
 
@@ -43,6 +44,7 @@ namespace AttrackSharedClass.Models
         public TimeSpan ScheduleEnd { get; set; }
         /// <summary>Comma-separated days e.g. "Monday,Wednesday,Friday"</summary>
         public string DayOfWeek { get; set; } = "Monday,Tuesday,Wednesday,Thursday,Friday";
+        public string? PeriodId { get; set; }
     }
 
     public class UpdateClassOfferingRequest

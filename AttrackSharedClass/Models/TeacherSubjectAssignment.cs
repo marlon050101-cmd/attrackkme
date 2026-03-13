@@ -59,6 +59,7 @@ namespace AttrackSharedClass.Models
         public int? GradeLevel { get; set; }
         public string? Strand { get; set; }
         public string? SearchTerm { get; set; }
+        public string? SchoolId { get; set; }
     }
 
     public class TeacherInfo
