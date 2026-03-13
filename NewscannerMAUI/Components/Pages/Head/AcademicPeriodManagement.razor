@@ -102,25 +102,34 @@
             </div>
             <div class="modal-body">
                 <div class="form-group">
+                    <label>Academic Level</label>
+                    <select class="form-control" value="@newPeriod.AcademicLevel" @onchange="OnLevelChanged">
+                        <option value="General">General (Whole School)</option>
+                        <option value="Junior High">Junior High School</option>
+                        <option value="Senior High">Senior High School</option>
+                    </select>
+                </div>
+                <div class="form-group">
                     <label>School Year (e.g., 2023-2024)</label>
                     <input type="text" class="form-control" @bind="newPeriod.SchoolYear" placeholder="20XX-20XX" />
                 </div>
                 <div class="form-group">
                     <label>Semester</label>
-                    <select class="form-control" @bind="newPeriod.Semester">
-                        <option value="1st Semester">1st Semester</option>
-                        <option value="2nd Semester">2nd Semester</option>
-                        <option value="Regular">Regular (Full Year)</option>
-                        <option value="Summer">Summer</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>Academic Level</label>
-                    <select class="form-control" @bind="newPeriod.AcademicLevel">
-                        <option value="General">General (Whole School)</option>
-                        <option value="Junior High">Junior High School</option>
-                        <option value="Senior High">Senior High School</option>
-                    </select>
+                    @if (newPeriod.AcademicLevel == "Senior High")
+                    {
+                        <select class="form-control" @bind="newPeriod.Semester">
+                            <option value="1st Semester">1st Semester</option>
+                            <option value="2nd Semester">2nd Semester</option>
+                            <option value="Summer">Summer</option>
+                        </select>
+                    }
+                    else
+                    {
+                        <select class="form-control" @bind="newPeriod.Semester">
+                            <option value="Regular (Full Year)">Regular (Full Year)</option>
+                            <option value="Summer">Summer</option>
+                        </select>
+                    }
                 </div>
                 <div class="form-row">
                     <div class="form-group col">
@@ -366,6 +375,20 @@
         catch (Exception ex)
         {
             error = ex.Message;
+        }
+    }
+    
+    private void OnLevelChanged(ChangeEventArgs e)
+    {
+        var level = e.Value?.ToString() ?? "General";
+        newPeriod.AcademicLevel = level;
+        if (level == "Junior High" || level == "General")
+        {
+            newPeriod.Semester = "Regular (Full Year)";
+        }
+        else if (level == "Senior High")
+        {
+             newPeriod.Semester = "1st Semester";
         }
     }
 

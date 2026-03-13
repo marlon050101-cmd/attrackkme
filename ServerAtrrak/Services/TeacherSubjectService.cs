@@ -657,6 +657,22 @@ namespace ServerAtrrak.Services
                 }
 
                 // Get subjects for the student's grade level and strand that have assigned teachers (schedule from teachersubject)
+                // Also get schoolId to find the correct active period
+                string? schoolId = null;
+                var schoolQuery = "SELECT SchoolId FROM student WHERE StudentId = @StudentId";
+                using (var scmd = new MySqlCommand(schoolQuery, connection))
+                {
+                    scmd.Parameters.AddWithValue("@StudentId", studentId);
+                    schoolId = (await scmd.ExecuteScalarAsync())?.ToString();
+                }
+
+                string? periodId = null;
+                if (!string.IsNullOrEmpty(schoolId))
+                {
+                    var period = await _periodService.GetActivePeriodAsync(schoolId, studentGradeLevel);
+                    periodId = period?.PeriodId;
+                }
+
                 var subjectsQuery = @"
                     SELECT 
                         s.SubjectId,
@@ -674,11 +690,13 @@ namespace ServerAtrrak.Services
                     INNER JOIN teacher t ON ts.TeacherId = t.TeacherId
                     WHERE s.GradeLevel = @GradeLevel
                     AND (s.Strand = @Strand OR (s.Strand IS NULL AND @Strand IS NULL))
+                    AND (@PeriodId IS NULL OR ts.PeriodId = @PeriodId)
                     ORDER BY COALESCE(ts.ScheduleStart, '00:00:00'), s.SubjectName";
 
                 using var command = new MySqlCommand(subjectsQuery, connection);
                 command.Parameters.AddWithValue("@GradeLevel", studentGradeLevel);
                 command.Parameters.AddWithValue("@Strand", studentStrand ?? (object)DBNull.Value);
+                command.Parameters.AddWithValue("@PeriodId", (object?)periodId ?? DBNull.Value);
 
                 using var reader = await command.ExecuteReaderAsync();
                 while (await reader.ReadAsync())

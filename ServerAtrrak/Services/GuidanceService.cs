@@ -374,17 +374,22 @@ namespace ServerAtrrak.Services
                 await connection.OpenAsync();
 
                 // 1. Check if there's an existing non-resolved case for this student in the current period
-                var activePeriod = await _periodService.GetActivePeriodAsync(studentId); // This might be wrong, need to get schoolId from student
-                // Let's get schoolId first
-                var getSchoolQuery = "SELECT SchoolId FROM student WHERE StudentId = @Sid";
+                // Let's get schoolId and gradeLevel first
+                var getStudentInfoQuery = "SELECT SchoolId, GradeLevel FROM student WHERE StudentId = @Sid";
                 string? schoolId = null;
-                using (var cmd = new MySqlCommand(getSchoolQuery, connection))
+                int gradeLevel = 0;
+                using (var cmd = new MySqlCommand(getStudentInfoQuery, connection))
                 {
                     cmd.Parameters.AddWithValue("@Sid", studentId);
-                    schoolId = (await cmd.ExecuteScalarAsync())?.ToString();
+                    using var reader = await cmd.ExecuteReaderAsync();
+                    if (await reader.ReadAsync())
+                    {
+                        schoolId = reader.IsDBNull(0) ? null : reader.GetString(0);
+                        gradeLevel = reader.IsDBNull(1) ? 0 : reader.GetInt32(1);
+                    }
                 }
                 
-                var activePeriodId = !string.IsNullOrEmpty(schoolId) ? (await _periodService.GetActivePeriodAsync(schoolId))?.PeriodId : null;
+                var activePeriodId = !string.IsNullOrEmpty(schoolId) ? (await _periodService.GetActivePeriodAsync(schoolId, gradeLevel))?.PeriodId : null;
 
                 var checkSql = "SELECT CaseId FROM guidance_cases WHERE StudentId = @Sid AND Status != 'Resolved' AND (@PeriodId IS NULL OR PeriodId = @PeriodId) LIMIT 1";
                 string? existingCaseId = null;

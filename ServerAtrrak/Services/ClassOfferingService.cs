@@ -95,18 +95,33 @@ namespace ServerAtrrak.Services
                 using var connection = new MySqlConnection(_dbConnection.GetConnection());
                 await connection.OpenAsync();
 
+                // Get schoolId and active period for this grade level
+                var teacherSql = "SELECT SchoolId FROM teacher WHERE TeacherId = @Tid";
+                using var tCmd = new MySqlCommand(teacherSql, connection);
+                tCmd.Parameters.AddWithValue("@Tid", adviserId);
+                var schoolId = (await tCmd.ExecuteScalarAsync())?.ToString();
+                
+                string? periodId = null;
+                if (!string.IsNullOrEmpty(schoolId))
+                {
+                    var period = await _periodService.GetActivePeriodAsync(schoolId, gradeLevel);
+                    periodId = period?.PeriodId;
+                }
+
                 var dayFilter = string.IsNullOrEmpty(dayOfWeek)
                     ? ""
                     : "AND (co.DayOfWeek IS NULL OR co.DayOfWeek = '' OR FIND_IN_SET(@DayOfWeek, co.DayOfWeek) > 0)";
 
                 var query = $@"SELECT {SelectColumns} {FromJoins}
                     WHERE co.AdviserId = @AdviserId AND co.Section = @Section AND co.GradeLevel = @GradeLevel
+                    AND (@PeriodId IS NULL OR co.PeriodId = @PeriodId)
                     {dayFilter}
                     ORDER BY co.ScheduleStart";
                 using var cmd = new MySqlCommand(query, connection);
                 cmd.Parameters.AddWithValue("@AdviserId", adviserId);
                 cmd.Parameters.AddWithValue("@Section", section);
                 cmd.Parameters.AddWithValue("@GradeLevel", gradeLevel);
+                cmd.Parameters.AddWithValue("@PeriodId", (object?)periodId ?? DBNull.Value);
                 if (!string.IsNullOrEmpty(dayOfWeek))
                     cmd.Parameters.AddWithValue("@DayOfWeek", dayOfWeek);
                 using var reader = await cmd.ExecuteReaderAsync();
