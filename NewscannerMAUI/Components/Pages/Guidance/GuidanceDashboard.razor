@@ -105,7 +105,7 @@
                 @if (dashboardData.DailyTrends != null && dashboardData.DailyTrends.Any())
                 {
                     <div class="waveform-container">
-                        <svg viewBox="0 0 1000 200" preserveAspectRatio="none" class="waveform-svg">
+                        <svg viewBox="-50 0 1100 250" preserveAspectRatio="none" class="waveform-svg">
                             <defs>
                                 <linearGradient id="barGradient" x1="0%" y1="0%" x2="0%" y2="100%">
                                     <stop offset="0%" style="stop-color:#00f2fe;stop-opacity:1" />
@@ -120,9 +120,12 @@
                             @{
                                 var trendList = dashboardData.DailyTrends;
                                 int barCount = trendList.Count;
+                                // Use 1000 units for the actual chart area
                                 double barWidth = 1000.0 / Math.Max(barCount, 30);
-                                double gap = barWidth * 0.2;
+                                double gap = barWidth * 0.25;
                                 double actualWidth = barWidth - gap;
+                                // Label skipping logic
+                                int skip = barCount > 10 ? (barCount > 20 ? 4 : 2) : 1;
                             }
 
                             @for (int i = 0; i < trendList.Count; i++)
@@ -131,16 +134,27 @@
                                 // Scale height (0-100% presence) to 120 units
                                 double height = (day.PresenceRate / 100.0) * 120;
                                 double x = i * barWidth;
+                                double centerX = x + (actualWidth / 2);
                                 
-                                <!-- Main Bar -->
-                                <rect x="@x" y="@(130 - height)" width="@actualWidth" height="@height" 
-                                      rx="@(actualWidth/2)" ry="@(actualWidth/2)" fill="url(#barGradient)" class="trend-bar">
-                                    <title>@day.Date.ToString("MMM dd"): @day.PresenceRate.ToString("F1")%</title>
-                                </rect>
+                                <g class="trend-group">
+                                    <!-- Main Bar -->
+                                    <rect x="@x" y="@(150 - height)" width="@actualWidth" height="@height" 
+                                          rx="@(actualWidth/2)" ry="@(actualWidth/2)" fill="url(#barGradient)" class="trend-bar">
+                                        <title>@day.Date.ToString("MMM dd"): @day.PresenceRate.ToString("F1")%</title>
+                                    </rect>
 
-                                <!-- Reflection -->
-                                <rect x="@x" y="135" width="@actualWidth" height="@(height * 0.4)" 
-                                      rx="@(actualWidth/2)" ry="@(actualWidth/2)" fill="url(#reflectGradient)" opacity="0.5" />
+                                    <!-- Reflection -->
+                                    <rect x="@x" y="155" width="@actualWidth" height="@(height * 0.4)" 
+                                          rx="@(actualWidth/2)" ry="@(actualWidth/2)" fill="url(#reflectGradient)" opacity="0.4" />
+
+                                    <!-- Labels -->
+                                    @if (i % skip == 0)
+                                    {
+                                        @((MarkupString)$"<text x='{centerX}' y='{(145 - height)}' text-anchor='middle' class='trend-label-pct'>{day.PresenceRate:F0}%</text>")
+                                        @((MarkupString)$"<text x='{centerX}' y='195' text-anchor='middle' class='trend-label-day'>{day.DayName}</text>")
+                                        @((MarkupString)$"<text x='{centerX}' y='215' text-anchor='middle' class='trend-label-date'>{day.Date:dd}</text>")
+                                    }
+                                </g>
                             }
                         </svg>
                     </div>
@@ -212,7 +226,7 @@
                     <select class="custom-select" @onchange='(e) => SetFilter(e.Value?.ToString() ?? "all")'>
                         <option value="all" selected="@(activeFilter == "all")">All Risks</option>
                         <option value="consecutive" selected="@(activeFilter == "consecutive")">3+ Straight Absences</option>
-                        <option value="summoned" selected="@(activeFilter == "summoned")">Summoned (Patawag)</option>
+                        <option value="summoned" selected="@(activeFilter == "summoned")">Summoned</option>
                     </select>
                 </div>
                 <div class="filter-group">
@@ -570,10 +584,8 @@
 
     private async Task ProcessSummon(string studentId, string riskSource)
     {
-        // 1. Update status to Summoned
-        await UpdateStatus(studentId, "Summoned");
-        
-        // 2. Automatically notify student/parent
+        // NotifyStudent already calls UpdateCaseStatusAsync internally to set status to 'Summoned'
+        // and logs the notification in notes. Calling both would cause duplicate updates.
         await NotifyStudent(studentId, $"Guidance Summon: {riskSource}");
     }
 
@@ -827,6 +839,15 @@
     
     .trend-bar { transition: height 0.3s ease, y 0.3s ease; cursor: pointer; }
     .trend-bar:hover { filter: brightness(1.2); }
+
+    .trend-group { cursor: pointer; }
+    .trend-label-pct { fill: #4facfe; font-size: 26px; font-weight: 800; pointer-events: none; opacity: 0; transition: opacity 0.2s ease; }
+    .trend-group:hover .trend-label-pct { opacity: 1; }
+    
+    .trend-label-day { fill: #64748b; font-size: 22px; font-weight: 700; text-transform: uppercase; pointer-events: none; transition: fill 0.2s; }
+    .trend-group:hover .trend-label-day { fill: #4facfe; }
+    
+    .trend-label-date { fill: #94a3b8; font-size: 18px; font-weight: 600; pointer-events: none; }
 
     .empty-trend { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; height: 100%; color: #cbd5e1; }
     .empty-trend i { font-size: 2rem; margin-bottom: 0.5rem; }

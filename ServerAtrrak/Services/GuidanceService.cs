@@ -340,21 +340,46 @@ namespace ServerAtrrak.Services
                 using var connection = new MySqlConnection(_dbConnection.GetConnection());
                 await connection.OpenAsync();
 
-                var sql = @"
-                    INSERT INTO guidance_cases (CaseId, StudentId, Status, LastFlaggedDate, Notes)
-                    VALUES (@CaseId, @StudentId, @Status, NOW(), @Notes)
-                    ON DUPLICATE KEY UPDATE 
-                        Status = @Status, 
-                        Notes = COALESCE(@Notes, Notes),
-                        UpdatedAt = NOW()";
-                
-                using var cmd = new MySqlCommand(sql, connection);
-                cmd.Parameters.AddWithValue("@CaseId", Guid.NewGuid().ToString());
-                cmd.Parameters.AddWithValue("@StudentId", studentId);
-                cmd.Parameters.AddWithValue("@Status", status);
-                cmd.Parameters.AddWithValue("@Notes", notes ?? (object)DBNull.Value);
+                // 1. Check if there's an existing non-resolved case for this student
+                var checkSql = "SELECT CaseId FROM guidance_cases WHERE StudentId = @Sid AND Status != 'Resolved' LIMIT 1";
+                string? existingCaseId = null;
+                using (var checkCmd = new MySqlCommand(checkSql, connection))
+                {
+                    checkCmd.Parameters.AddWithValue("@Sid", studentId);
+                    existingCaseId = (await checkCmd.ExecuteScalarAsync())?.ToString();
+                }
 
-                return await cmd.ExecuteNonQueryAsync() > 0;
+                string sql;
+                if (!string.IsNullOrEmpty(existingCaseId))
+                {
+                    // Update existing case
+                    sql = @"
+                        UPDATE guidance_cases 
+                        SET Status = @Status, 
+                            Notes = COALESCE(@Notes, Notes),
+                            UpdatedAt = NOW()
+                        WHERE CaseId = @CaseId";
+                    
+                    using var cmd = new MySqlCommand(sql, connection);
+                    cmd.Parameters.AddWithValue("@CaseId", existingCaseId);
+                    cmd.Parameters.AddWithValue("@Status", status);
+                    cmd.Parameters.AddWithValue("@Notes", notes ?? (object)DBNull.Value);
+                    return await cmd.ExecuteNonQueryAsync() > 0;
+                }
+                else
+                {
+                    // Create new case
+                    sql = @"
+                        INSERT INTO guidance_cases (CaseId, StudentId, Status, LastFlaggedDate, Notes)
+                        VALUES (@CaseId, @StudentId, @Status, NOW(), @Notes)";
+                    
+                    using var cmd = new MySqlCommand(sql, connection);
+                    cmd.Parameters.AddWithValue("@CaseId", Guid.NewGuid().ToString());
+                    cmd.Parameters.AddWithValue("@StudentId", studentId);
+                    cmd.Parameters.AddWithValue("@Status", status);
+                    cmd.Parameters.AddWithValue("@Notes", notes ?? (object)DBNull.Value);
+                    return await cmd.ExecuteNonQueryAsync() > 0;
+                }
             }
             catch (Exception ex)
             {
