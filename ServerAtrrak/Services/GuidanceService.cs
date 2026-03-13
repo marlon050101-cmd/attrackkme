@@ -266,11 +266,11 @@ namespace ServerAtrrak.Services
                     SectionsMonitored = sections,
                     StudentsAtRisk = flaggedStudents,
                     AllStudents = students,
-                    WeeklyAttendanceRate = await GetSchoolWeeklyAttendanceRateAsync(schoolId),
-                    DailyPresenceRate = await GetDailyPresenceRateAsync(schoolId),
+                    WeeklyAttendanceRate = await GetSchoolWeeklyAttendanceRateAsync(schoolId, students.Count),
+                    DailyPresenceRate = await GetDailyPresenceRateAsync(schoolId, students.Count),
                     CaseResolutionRate = await GetCaseResolutionRateAsync(schoolId),
-                    OnTimeArrivalRate = await GetOnTimeArrivalRateAsync(schoolId),
-                    DailyTrends = await GetDailyAttendanceTrendsAsync(schoolId, days)
+                    OnTimeArrivalRate = await GetOnTimeArrivalRateAsync(schoolId, students.Count),
+                    DailyTrends = await GetDailyAttendanceTrendsAsync(schoolId, days, students.Count)
                 };
             }
             catch (Exception ex)
@@ -280,7 +280,7 @@ namespace ServerAtrrak.Services
             }
         }
 
-        private async Task<List<DailyTrendData>> GetDailyAttendanceTrendsAsync(string schoolId, int days)
+        private async Task<List<DailyTrendData>> GetDailyAttendanceTrendsAsync(string schoolId, int days, int totalStudents)
         {
             var trends = new List<DailyTrendData>();
             try
@@ -291,7 +291,6 @@ namespace ServerAtrrak.Services
                 var query = @"
                     SELECT 
                         ds.Date,
-                        COUNT(*) as Total,
                         SUM(CASE WHEN ds.Status IN ('Whole Day', 'Half Day') THEN 1 ELSE 0 END) as Present,
                         SUM(CASE WHEN ds.Status = 'Absent' THEN 1 ELSE 0 END) as Absent
                     FROM student_daily_summary ds
@@ -309,7 +308,6 @@ namespace ServerAtrrak.Services
                 while (await reader.ReadAsync())
                 {
                     var date = reader.GetDateTime("Date");
-                    var total = Convert.ToInt32(reader["Total"]);
                     var present = Convert.ToInt32(reader["Present"]);
                     var absent = Convert.ToInt32(reader["Absent"]);
 
@@ -317,7 +315,8 @@ namespace ServerAtrrak.Services
                     {
                         Date = date,
                         DayName = date.ToString("ddd"),
-                        PresenceRate = total > 0 ? (double)present / total * 100 : 0,
+                        // Use total population if larger than the number of scan records found
+                        PresenceRate = totalStudents > 0 ? (double)present / totalStudents * 100 : 0,
                         PresentCount = present,
                         AbsentCount = absent
                     });
@@ -423,16 +422,27 @@ namespace ServerAtrrak.Services
             }
         }
 
-        private async Task<double> GetSchoolWeeklyAttendanceRateAsync(string schoolId)
+        private async Task<double> GetSchoolWeeklyAttendanceRateAsync(string schoolId, int totalStudents)
         {
+            if (totalStudents <= 0) return 0;
             try
             {
                 using var connection = new MySqlConnection(_dbConnection.GetConnection());
                 await connection.OpenAsync();
 
+                // Get count of unique dates in the last 7 days for this school
+                var dateCountQuery = "SELECT COUNT(DISTINCT Date) FROM student_daily_summary ds INNER JOIN student s ON ds.StudentId = s.StudentId WHERE s.SchoolId = @SchoolId AND ds.Date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)";
+                int schoolDays = 0;
+                using (var cmd = new MySqlCommand(dateCountQuery, connection))
+                {
+                    cmd.Parameters.AddWithValue("@SchoolId", schoolId);
+                    schoolDays = Convert.ToInt32(await cmd.ExecuteScalarAsync());
+                }
+                
+                if (schoolDays <= 0) return 0;
+
                 var query = @"
                     SELECT 
-                        COUNT(ds.Date) as Total,
                         SUM(CASE WHEN ds.Status IN ('Whole Day', 'Half Day') THEN 1 ELSE 0 END) as Present
                     FROM student_daily_summary ds
                     INNER JOIN student s ON ds.StudentId = s.StudentId
@@ -445,9 +455,9 @@ namespace ServerAtrrak.Services
                 using var reader = await cmd.ExecuteReaderAsync();
                 if (await reader.ReadAsync())
                 {
-                    long total = reader.IsDBNull(0) ? 0 : Convert.ToInt64(reader[0]);
-                    long present = reader.IsDBNull(1) ? 0 : Convert.ToInt64(reader[1]);
-                    return total > 0 ? (double)present / total * 100 : 0;
+                    long present = reader.IsDBNull(0) ? 0 : Convert.ToInt64(reader[0]);
+                    long totalExpected = (long)totalStudents * schoolDays;
+                    return totalExpected > 0 ? (double)present / totalExpected * 100 : 0;
                 }
                 return 0;
             }
@@ -458,8 +468,9 @@ namespace ServerAtrrak.Services
             }
         }
 
-        private async Task<double> GetDailyPresenceRateAsync(string schoolId)
+        private async Task<double> GetDailyPresenceRateAsync(string schoolId, int totalStudents)
         {
+            if (totalStudents <= 0) return 0;
             try
             {
                 using var connection = new MySqlConnection(_dbConnection.GetConnection());
@@ -468,7 +479,6 @@ namespace ServerAtrrak.Services
                 // Try today first
                 var query = @"
                     SELECT 
-                        COUNT(ds.Date) as Total,
                         SUM(CASE WHEN ds.Status IN ('Whole Day', 'Half Day') THEN 1 ELSE 0 END) as Present
                     FROM student_daily_summary ds
                     INNER JOIN student s ON ds.StudentId = s.StudentId
@@ -480,19 +490,18 @@ namespace ServerAtrrak.Services
                     using var reader = await cmd.ExecuteReaderAsync();
                     if (await reader.ReadAsync())
                     {
-                        long total = reader.IsDBNull(0) ? 0 : Convert.ToInt64(reader[0]);
-                        if (total > 0)
+                        var hasData = !reader.IsDBNull(0);
+                        if (hasData)
                         {
-                            long present = reader.IsDBNull(1) ? 0 : Convert.ToInt64(reader[1]);
-                            return (double)present / total * 100;
+                            long present = Convert.ToInt64(reader["Present"]);
+                            return (double)present / totalStudents * 100;
                         }
                     }
                 }
 
-                // Fallback to the most recent day if today is empty (e.g., early morning)
+                // Fallback to the most recent day if today is empty
                 var fallbackQuery = @"
                     SELECT 
-                        COUNT(ds.Date) as Total,
                         SUM(CASE WHEN ds.Status IN ('Whole Day', 'Half Day') THEN 1 ELSE 0 END) as Present
                     FROM student_daily_summary ds
                     INNER JOIN student s ON ds.StudentId = s.StudentId
@@ -507,9 +516,11 @@ namespace ServerAtrrak.Services
                     using var reader = await cmd.ExecuteReaderAsync();
                     if (await reader.ReadAsync())
                     {
-                        long total = reader.IsDBNull(0) ? 0 : Convert.ToInt64(reader[0]);
-                        long present = reader.IsDBNull(1) ? 0 : Convert.ToInt64(reader[1]);
-                        return total > 0 ? (double)present / total * 100 : 0;
+                        if (!reader.IsDBNull(0))
+                        {
+                            long present = Convert.ToInt64(reader["Present"]);
+                            return (double)present / totalStudents * 100;
+                        }
                     }
                 }
                 return 0;
@@ -544,29 +555,42 @@ namespace ServerAtrrak.Services
             catch { return 0; }
         }
 
-        private async Task<double> GetOnTimeArrivalRateAsync(string schoolId)
+        private async Task<double> GetOnTimeArrivalRateAsync(string schoolId, int totalStudents)
         {
+            if (totalStudents <= 0) return 0;
             try
             {
                 using var connection = new MySqlConnection(_dbConnection.GetConnection());
                 await connection.OpenAsync();
+
+                // Get count of unique dates in the last 7 days for this school
+                var dateCountQuery = "SELECT COUNT(DISTINCT Date) FROM student_daily_summary ds INNER JOIN student s ON ds.StudentId = s.StudentId WHERE s.SchoolId = @SchoolId AND ds.Date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)";
+                int schoolDays = 0;
+                using (var cmd = new MySqlCommand(dateCountQuery, connection))
+                {
+                    cmd.Parameters.AddWithValue("@SchoolId", schoolId);
+                    schoolDays = Convert.ToInt32(await cmd.ExecuteScalarAsync());
+                }
+
+                if (schoolDays <= 0) return 0;
+
                 var query = @"
                     SELECT 
-                        COUNT(ds.Date) as Attended,
                         SUM(CASE WHEN ds.Status = 'Whole Day' AND ds.TimeIn IS NOT NULL THEN 1 ELSE 0 END) as OnTime
                     FROM student_daily_summary ds
                     INNER JOIN student s ON ds.StudentId = s.StudentId
                     WHERE s.SchoolId = @SchoolId 
                       AND ds.Date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
                       AND ds.Status IN ('Whole Day', 'Half Day')";
+
                 using var cmd = new MySqlCommand(query, connection);
                 cmd.Parameters.AddWithValue("@SchoolId", schoolId);
                 using var reader = await cmd.ExecuteReaderAsync();
                 if (await reader.ReadAsync())
                 {
-                    long attended = reader.IsDBNull(0) ? 0 : Convert.ToInt64(reader[0]);
-                    long onTime = reader.IsDBNull(1) ? 0 : Convert.ToInt64(reader[1]);
-                    return attended > 0 ? (double)onTime / attended * 100 : 0;
+                    long onTime = reader.IsDBNull(0) ? 0 : Convert.ToInt64(reader[0]);
+                    long totalExpected = (long)totalStudents * schoolDays;
+                    return totalExpected > 0 ? (double)onTime / totalExpected * 100 : 0;
                 }
                 return 0;
             }
